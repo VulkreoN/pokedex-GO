@@ -1,0 +1,127 @@
+{
+    "@@locale": "en",
+    "appTitle": "PoGo Companion",
+    "pokedexTab": "Pokédex",
+    "myListsTab": "My Lists",
+    "gameInfoTab": "Game Info",
+    "settingsTab": "Settings",
+    "searchHint": "Search Pokémon (Name or #)",
+    "statsLabel": "Stats",
+    "attackLabel": "Attack",
+    "defenseLabel": "Defense",
+    "staminaLabel": "Stamina",
+    "typesLabel": "Types",
+    "formsLabel": "Forms / Costumes",
+    "megaEvolutionsLabel": "Mega Evolutions",
+    "shinyAvailable": "Shiny Available",
+    "shinyUnavailable": "Shiny Not Available",
+    "megaAvailable": "Mega Evolution Available",
+    "megaUnavailable": "Mega Evolution Not Available",
+    "addToList": "Add to List",
+    "createListTitle": "Create New List",
+    "listNameHint": "List Name",
+    "listDescriptionHint": "Description (Optional)",
+    "createButton": "Create",
+    "cancelButton": "Cancel",
+    "deleteListTitle": "Delete List",
+    "deleteListContent": "Are you sure you want to delete the list \"{listName}\"?",
+    "@deleteListContent": {
+        "placeholders": {
+            "listName": {
+                "type": "String"
+            }
+        }
+    },
+    "deleteButton": "Delete",
+    "importList": "Import List",
+    "exportList": "Export List",
+    "listDetailsTitle": "{listName}",
+    "@listDetailsTitle": {
+        "placeholders": {
+            "listName": {
+                "type": "String"
+            }
+        }
+    },
+    "collectedLabel": "Collected",
+    "maleLabel": "Male",
+    "femaleLabel": "Female",
+    "normalLabel": "Normal",
+    "shinyTargetLabel": "Shiny",
+    "megaTargetLabel": "Mega",
+    "removeEntry": "Remove",
+    "copyIds": "Copy IDs",
+    "idsCopied": "Pokémon IDs copied to clipboard!",
+    "questsTab": "Quests",
+    "raidsTab": "Raids",
+    "refreshButton": "Refresh",
+    "loading": "Loading...",
+    "error": "An error occurred: {message}",
+    "@error": {
+        "placeholders": {
+            "message": {
+                "type": "String"
+            }
+        }
+    },
+    "noResults": "No Pokémon found.",
+    "noLists": "You haven't created any lists yet. Tap '+' to create one!",
+    "noEntries": "This list is empty. Add Pokémon from the Pokédex.",
+    "noQuests": "No current quests data available. Try refreshing.",
+    "noRaids": "No current raid data available. Try refreshing.",
+    "selectList": "Select List",
+    "addSelectedTo": "Add {count} Pokémon to:",
+    "@addSelectedTo": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "selectPokemonFirst": "Long-press to select Pokémon first.",
+    "listImported": "List \"{listName}\" imported successfully!",
+    "@listImported": {
+        "placeholders": {
+            "listName": {
+                "type": "String"
+            }
+        }
+    },
+    "listImportError": "Failed to import list. Invalid file format or read error.",
+    "listExported": "List \"{listName}\" exported.",
+     "@listExported": {
+        "placeholders": {
+            "listName": {
+                "type": "String"
+            }
+        }
+    },
+    "listExportError": "Failed to export list.",
+    "languageSetting": "Language",
+    "english": "English",
+    "french": "French",
+    "unknownPokemon": "Unknown Pokémon",
+    "unknownType": "Unknown Type",
+    "unknownQuest": "Unknown Quest",
+    "unknownReward": "Unknown Reward",
+    "unknownError": "An unknown error occurred",
+    "clearSelection": "Clear Selection",
+    "numSelected": "{count} Selected",
+    "@numSelected": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "addEntryToList": "Add Entry to List",
+    "targetShiny": "Target Shiny?",
+    "targetMega": "Target Mega?",
+    "notesLabel": "Notes",
+    "saveButton": "Save",
+    "editEntry": "Edit Entry",
+    "addPokemon": "Add Pokémon",
+    "pokemonAlreadyInList": "This Pokémon variation is already in the list.",
+    "confirmRemoveTitle": "Remove Entry?",
+    "confirmRemoveContent": "Are you sure you want to remove this entry from the list?"
+}
