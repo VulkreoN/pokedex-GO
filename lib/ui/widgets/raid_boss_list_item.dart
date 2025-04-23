@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:mydexpogo/config/api_config.dart'; // Corrected import
-import 'package:mydexpogo/data/models/pokemon.dart'; // Corrected import
-import 'package:mydexpogo/data/models/raid_boss.dart'; // Corrected import
-import 'package:mydexpogo/ui/widgets/loading_indicator.dart'; // Corrected import
-import 'package:mydexpogo/utils/image_helper.dart'; // Corrected import
-import 'package:mydexpogo/utils/localization_helper.dart'; // Corrected import
-import 'package:mydexpogo/ui/screens/pokemon_detail_screen.dart'; // Corrected import (for navigation)
+import 'package:mydexpogo/config/api_config.dart';
+import 'package:mydexpogo/data/models/pokemon.dart';
+// ** Import PokedexDisplayItem **
+import 'package:mydexpogo/data/models/pokedex_display_item.dart';
+import 'package:mydexpogo/data/models/raid_boss.dart';
+import 'package:mydexpogo/ui/widgets/loading_indicator.dart';
+import 'package:mydexpogo/utils/image_helper.dart';
+import 'package:mydexpogo/utils/localization_helper.dart';
+import 'package:mydexpogo/ui/screens/pokemon_detail_screen.dart';
 
 
 class RaidBossListItem extends StatelessWidget {
@@ -23,25 +25,20 @@ class RaidBossListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use AppLocalizations.of(context)! directly for testing if context.l10n fails
-    // final l10n = AppLocalizations.of(context)!;
-    final l10n = context.l10n; // Keep using helper for now
+    final l10n = context.l10n;
     final textTheme = Theme.of(context).textTheme;
-    final int? dexNr = raidBoss.dexNr; // Use parsed dexNr
+    final int? dexNr = raidBoss.dexNr;
 
-    // Determine image URL
-    String? imageUrl = raidBoss.iconUrl; // Use iconUrl helper from model
+    String? imageUrl = raidBoss.iconUrl;
     if (imageUrl == null && dexNr != null) {
-       imageUrl = ApiConfig.fallbackPokemonIconUrl(dexNr); // Fallback
+       imageUrl = ApiConfig.fallbackPokemonIconUrl(dexNr);
     }
 
     String displayName = raidBoss.localizedName(locale);
-    // Add form if available and not already in name
     if (raidBoss.form != null && !displayName.toLowerCase().contains(raidBoss.form!.toLowerCase())) {
        displayName += ' (${raidBoss.form})';
     }
 
-    // Create a local variable for pokemonData to help with null promotion
     final Pokemon? localPokemonData = pokemonData;
 
     return ListTile(
@@ -61,26 +58,42 @@ class RaidBossListItem extends StatelessWidget {
                          Icon(Icons.star, color: Colors.amber.shade700, size: 16),
                 ],
              )
-           : fallbackPokemonImage(dexNr ?? 0, size: 40), // Fallback if no URL
+           : fallbackPokemonImage(dexNr ?? 0, size: 40),
        title: Text(displayName),
-       // Explicitly check if localPokemonData is not null before building the subtitle Wrap
        subtitle: localPokemonData != null ? Wrap(
            spacing: 4.0,
            children: [
-               // Access properties only if localPokemonData is not null
                if (localPokemonData.primaryType != null)
                    Chip(label: Text(localPokemonData.primaryType!.localizedName(locale)), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
                if (localPokemonData.secondaryType != null)
                    Chip(label: Text(localPokemonData.secondaryType!.localizedName(locale)), padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
            ],
-       ) : null, // Return null if localPokemonData is null
+       ) : null,
        onTap: () {
-           // Navigate only if localPokemonData is not null
+           // ** FIX: Create PokedexDisplayItem and pass it **
            if (localPokemonData != null) {
+               // Create a display item representing this specific raid boss form
+               // Note: We might not have the exact PokemonAssetForm here,
+               // so we pass null for assetForm. The detail screen will show base info.
+               // If the raid boss API provided more specific asset details, we could use those.
+               final displayItem = PokedexDisplayItem(
+                   basePokemon: localPokemonData,
+                   // We don't have the specific assetForm for the raid boss form here,
+                   // unless we add logic to find it based on raidBoss.form name.
+                   // Passing null means detail screen shows base image/info primarily.
+                   assetForm: localPokemonData.assetForms.firstWhere(
+                       (f) => f.form == raidBoss.form, // Try to find matching form
+                       orElse: () => localPokemonData.assetForms.firstWhere( // Fallback to base form asset
+                           (f) => f.form == null && f.costume == null,
+                           orElse: () => null!, // Should have a base form
+                       ) ,
+                   ),
+               );
+
                Navigator.push(
                    context,
-                   // Pass the non-nullable localPokemonData here
-                   MaterialPageRoute(builder: (context) => PokemonDetailScreen(pokemon: localPokemonData))
+                   // Pass the created displayItem
+                   MaterialPageRoute(builder: (context) => PokemonDetailScreen(displayItem: displayItem))
                );
            }
        },

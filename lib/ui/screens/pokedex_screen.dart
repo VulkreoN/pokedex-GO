@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mydexpogo/data/models/custom_list.dart'; // Corrected import
-import 'package:mydexpogo/data/models/list_entry.dart'; // Corrected import
-import 'package:mydexpogo/data/models/pokemon.dart'; // Corrected import
-import 'package:mydexpogo/providers/app_providers.dart'; // Corrected import
+import 'package:mydexpogo/data/models/custom_list.dart';
+import 'package:mydexpogo/data/models/list_entry.dart';
+import 'package:mydexpogo/data/models/pokemon.dart';
+import 'package:mydexpogo/providers/app_providers.dart';
 import 'package:mydexpogo/ui/screens/pokemon_detail_screen.dart'; // Corrected import
-import 'package:mydexpogo/ui/widgets/error_message.dart'; // Corrected import
-import 'package:mydexpogo/ui/widgets/loading_indicator.dart'; // Corrected import
-import 'package:mydexpogo/ui/widgets/pokemon_list_item.dart'; // Corrected import
-import 'package:mydexpogo/utils/localization_helper.dart'; // Corrected import
+import 'package:mydexpogo/ui/widgets/error_message.dart';
+import 'package:mydexpogo/ui/widgets/loading_indicator.dart';
+import 'package:mydexpogo/ui/widgets/pokedex_list_item.dart'; // Use new list item
+import 'package:mydexpogo/utils/localization_helper.dart';
+import 'package:mydexpogo/data/models/pokedex_display_item.dart'; // Use display item
 
-import 'package:collection/collection.dart'; // For firstWhereOrNull
+import 'package:collection/collection.dart';
 
-// State for managing selected Pokémon IDs
-final selectedPokemonProvider = StateProvider<Set<int>>((ref) => {});
+// State for managing selected PokedexDisplayItem keys (String)
+final selectedPokedexItemProvider = StateProvider<Set<String>>((ref) => {});
 
 class PokedexScreen extends ConsumerStatefulWidget {
   const PokedexScreen({super.key});
@@ -24,8 +25,6 @@ class PokedexScreen extends ConsumerStatefulWidget {
 
 class _PokedexScreenState extends ConsumerState<PokedexScreen> {
   final TextEditingController _searchController = TextEditingController();
-  // Remove _isSelectionMode, derive it directly from selectedPokemonProvider
-  // bool _isSelectionMode = false;
 
   @override
   void dispose() {
@@ -33,37 +32,33 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
     super.dispose();
   }
 
-  void _toggleSelection(int dexNr) {
-    final selected = ref.read(selectedPokemonProvider);
-    final notifier = ref.read(selectedPokemonProvider.notifier);
-    // No need for setState here as Riverpod handles rebuilds
-    if (selected.contains(dexNr)) {
-      notifier.state = Set.from(selected)..remove(dexNr);
+  void _toggleSelection(String displayKey) {
+    final selected = ref.read(selectedPokedexItemProvider);
+    final notifier = ref.read(selectedPokedexItemProvider.notifier);
+    if (selected.contains(displayKey)) {
+      notifier.state = Set.from(selected)..remove(displayKey);
     } else {
-      notifier.state = Set.from(selected)..add(dexNr);
+      notifier.state = Set.from(selected)..add(displayKey);
     }
-    // _isSelectionMode = notifier.state.isNotEmpty; // Derived from provider now
   }
 
    void _clearSelection() {
-       ref.read(selectedPokemonProvider.notifier).state = {};
-       // _isSelectionMode = false; // Derived from provider now
+       ref.read(selectedPokedexItemProvider.notifier).state = {};
    }
 
-   void _selectAll(List<Pokemon> currentlyVisibleList) {
-       final allIds = currentlyVisibleList.map((p) => p.dexNr).toSet();
-       ref.read(selectedPokemonProvider.notifier).state = allIds;
-       // _isSelectionMode = true; // Derived from provider now
+   void _selectAll(List<PokedexDisplayItem> currentlyVisibleList) {
+       final allKeys = currentlyVisibleList.map((item) => item.displayKey).toSet();
+       ref.read(selectedPokedexItemProvider.notifier).state = allKeys;
    }
 
-   void _showAddToListDialog(BuildContext context, Set<int> selectedIds) {
-       final customLists = ref.read(customListsProvider); // Read current lists
+   void _showAddToListDialog(BuildContext context, Set<String> selectedDisplayKeys) {
+       final customLists = ref.read(customListsProvider);
        final l10n = context.l10n;
+       final allDisplayItems = ref.read(pokedexDisplayItemsProvider);
+       final selectedItems = allDisplayItems.where((item) => selectedDisplayKeys.contains(item.displayKey)).toList();
 
        if (customLists.isEmpty) {
-           ScaffoldMessenger.of(context).showSnackBar(
-               SnackBar(content: Text(l10n.noLists))
-           );
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.noLists)));
            return;
        }
 
@@ -71,8 +66,8 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
            context: context,
            builder: (BuildContext context) {
                return AlertDialog(
-                   title: Text(l10n.addSelectedTo(selectedIds.length)),
-                   content: SizedBox( // Constrain height if list is long
+                   title: Text(l10n.addSelectedTo(selectedItems.length)),
+                   content: SizedBox(
                       width: double.maxFinite,
                       child: ListView.builder(
                            shrinkWrap: true,
@@ -82,12 +77,8 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
                                return ListTile(
                                    title: Text(list.name),
                                    onTap: () {
-                                       // !! IMPORTANT !!
-                                       // This currently only adds BASE Pokemon.
-                                       // Implementing variation selection requires
-                                       // navigating to a new screen here instead.
-                                       _addSelectedPokemonToList(list.name, selectedIds);
-                                       Navigator.of(context).pop(); // Close dialog
+                                       _addSelectedItemsToList(list.name, selectedItems);
+                                       Navigator.of(context).pop();
                                    },
                                );
                            },
@@ -104,28 +95,30 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
        );
    }
 
-   // !! This function still only adds BASE Pokemon entries !!
-   void _addSelectedPokemonToList(String listName, Set<int> selectedIds) {
+   void _addSelectedItemsToList(String listName, List<PokedexDisplayItem> selectedItems) {
        final listNotifier = ref.read(customListsProvider.notifier);
        int addedCount = 0;
        int skippedCount = 0;
 
        final targetList = ref.read(customListsProvider).firstWhereOrNull((l) => l.name == listName);
-       final existingKeys = targetList?.entries.map((e) => e.entryKey).toSet() ?? {};
+       final existingKeysInList = targetList?.entries.map((e) => e.entryKey).toSet() ?? {};
 
-       for (final dexNr in selectedIds) {
-           // Create a basic entry (non-shiny, non-mega, base form)
-           final newEntry = ListEntry(pokemonId: dexNr);
+       for (final item in selectedItems) {
+           final newEntry = ListEntry(
+              pokemonId: item.dexNr,
+              form: item.form,
+              costume: item.costume,
+           );
 
-           if (!existingKeys.contains(newEntry.entryKey)) {
+           if (!existingKeysInList.contains(newEntry.entryKey)) {
                 try {
                    listNotifier.addEntryToList(listName, newEntry);
                    addedCount++;
                 } catch (e) {
-                   print("Error adding Pokémon $dexNr to $listName: $e");
+                   print("Error adding ${item.displayName(ref.read(localeProvider).languageCode)} to $listName: $e");
                    skippedCount++;
                    ScaffoldMessenger.of(context).showSnackBar(
-                       SnackBar(content: Text("Error adding $dexNr: ${e.toString().replaceFirst("Exception: ", "")}"))
+                       SnackBar(content: Text("Error adding ${item.displayName(ref.read(localeProvider).languageCode)}: ${e.toString().replaceFirst("Exception: ", "")}"))
                    );
                 }
            } else {
@@ -137,7 +130,7 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
 
        if (addedCount > 0 || skippedCount > 0) {
            ScaffoldMessenger.of(context).showSnackBar(
-               SnackBar(content: Text("Added $addedCount Pokémon. Skipped $skippedCount duplicates.")) // TODO: Localize
+               SnackBar(content: Text("Added $addedCount items. Skipped $skippedCount duplicates/errors."))
            );
        }
    }
@@ -145,35 +138,24 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredDisplayItems = ref.watch(filteredPokedexProvider);
     final pokedexAsync = ref.watch(pokedexProvider);
-    final searchQuery = ref.watch(pokedexSearchQueryProvider);
-    final selectedIds = ref.watch(selectedPokemonProvider);
+    final selectedDisplayKeys = ref.watch(selectedPokedexItemProvider);
     final l10n = context.l10n;
     final locale = ref.watch(localeProvider).languageCode;
-    final bool isSelectionMode = selectedIds.isNotEmpty; // Derive selection mode
+    final bool isSelectionMode = selectedDisplayKeys.isNotEmpty;
 
     return Scaffold(
        appBar: AppBar(
            title: isSelectionMode
-               ? Text(l10n.numSelected(selectedIds.length))
+               ? Text(l10n.numSelected(selectedDisplayKeys.length))
                : Text(l10n.pokedexTab),
            actions: isSelectionMode
                ? [
-                    // Add Select All Button
                     IconButton(
                        icon: const Icon(Icons.select_all),
-                       tooltip: "Select All Visible", // TODO: Localize
-                       // Pass the currently visible list to select all from it
-                       onPressed: () {
-                            pokedexAsync.whenData((fullList) {
-                                final filteredList = fullList.where((pokemon) {
-                                   final query = searchQuery.toLowerCase();
-                                   if (query.isEmpty) return true;
-                                   return pokemon.allLocalizedNamesForSearch.any((name) => name.contains(query));
-                                }).toList();
-                                _selectAll(filteredList);
-                            });
-                       }
+                       tooltip: "Select All Visible",
+                       onPressed: () => _selectAll(filteredDisplayItems),
                     ),
                    IconButton(
                        icon: const Icon(Icons.clear),
@@ -183,14 +165,12 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
                    IconButton(
                        icon: const Icon(Icons.playlist_add),
                        tooltip: l10n.addToList,
-                       onPressed: selectedIds.isNotEmpty
-                           ? () => _showAddToListDialog(context, selectedIds)
+                       onPressed: selectedDisplayKeys.isNotEmpty
+                           ? () => _showAddToListDialog(context, selectedDisplayKeys)
                            : null,
                    ),
                  ]
-               : [
-                   // Add filter button here if needed
-               ],
+               : [],
        ),
       body: Column(
         children: [
@@ -204,7 +184,7 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.0),
                 ),
-                suffixIcon: searchQuery.isNotEmpty
+                suffixIcon: ref.watch(pokedexSearchQueryProvider).isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear),
                         onPressed: () {
@@ -221,43 +201,40 @@ class _PokedexScreenState extends ConsumerState<PokedexScreen> {
           ),
           Expanded(
             child: pokedexAsync.when(
-              data: (fullPokedexList) {
-                // Apply filtering
-                final filteredList = fullPokedexList.where((pokemon) {
-                   final query = searchQuery.toLowerCase();
-                   if (query.isEmpty) return true;
-                   return pokemon.allLocalizedNamesForSearch.any((name) => name.contains(query));
-                }).toList();
-
-                if (filteredList.isEmpty) {
-                  return Center(child: Text(l10n.noResults));
+              data: (_) {
+                if (filteredDisplayItems.isEmpty && ref.watch(pokedexSearchQueryProvider).isNotEmpty) {
+                   return Center(child: Text(l10n.noResults));
                 }
-                // Use ListView.builder
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 8.0), // Add padding if needed
-                  itemCount: filteredList.length,
-                  itemBuilder: (context, index) {
-                    final pokemon = filteredList[index];
-                    final isSelected = selectedIds.contains(pokemon.dexNr);
+                if (filteredDisplayItems.isEmpty && ref.watch(pokedexSearchQueryProvider).isEmpty && !pokedexAsync.isLoading) {
+                    return Center(child: Text(l10n.noResults));
+                }
 
-                    return PokemonListItem(
-                      pokemon: pokemon,
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  itemCount: filteredDisplayItems.length,
+                  itemBuilder: (context, index) {
+                    final item = filteredDisplayItems[index];
+                    final isSelected = selectedDisplayKeys.contains(item.displayKey);
+
+                    return PokedexListItem(
+                      displayItem: item,
                       locale: locale,
                       isSelected: isSelected,
                       onTap: () {
                         if (isSelectionMode) {
-                          _toggleSelection(pokemon.dexNr);
+                          _toggleSelection(item.displayKey);
                         } else {
+                          // ** Pass the specific PokedexDisplayItem **
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => PokemonDetailScreen(pokemon: pokemon),
+                              builder: (context) => PokemonDetailScreen(displayItem: item), // Pass displayItem
                             ),
                           );
                         }
                       },
                       onLongPress: () {
-                         _toggleSelection(pokemon.dexNr);
+                         _toggleSelection(item.displayKey);
                       },
                     );
                   },

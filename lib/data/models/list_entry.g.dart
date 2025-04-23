@@ -20,19 +20,18 @@ class ListEntryAdapter extends TypeAdapter<ListEntry> {
       pokemonId: fields[0] as int,
       form: fields[1] as String?,
       costume: fields[2] as String?,
-      isShinyTarget: fields[3] as bool,
-      isMegaTarget: fields[4] as bool,
-      collectedMale: fields[5] as bool,
-      collectedFemale: fields[6] as bool,
-      collectedNormal: fields[7] as bool,
-      notes: fields[8] as String?,
+      collectedNormalMale: fields[3] as bool,
+      collectedNormalFemale: fields[4] as bool,
+      collectedShinyMale: fields[5] as bool,
+      collectedShinyFemale: fields[6] as bool,
+      notes: fields[7] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ListEntry obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.pokemonId)
       ..writeByte(1)
@@ -40,16 +39,14 @@ class ListEntryAdapter extends TypeAdapter<ListEntry> {
       ..writeByte(2)
       ..write(obj.costume)
       ..writeByte(3)
-      ..write(obj.isShinyTarget)
+      ..write(obj.collectedNormalMale)
       ..writeByte(4)
-      ..write(obj.isMegaTarget)
+      ..write(obj.collectedNormalFemale)
       ..writeByte(5)
-      ..write(obj.collectedMale)
+      ..write(obj.collectedShinyMale)
       ..writeByte(6)
-      ..write(obj.collectedFemale)
+      ..write(obj.collectedShinyFemale)
       ..writeByte(7)
-      ..write(obj.collectedNormal)
-      ..writeByte(8)
       ..write(obj.notes);
   }
 
@@ -77,11 +74,10 @@ ListEntry _$ListEntryFromJson(Map<String, dynamic> json) {
     pokemonId: (json['pokemonId'] as num).toInt(),
     form: json['form'] as String?,
     costume: json['costume'] as String?,
-    isShinyTarget: json['isShinyTarget'] as bool? ?? false,
-    isMegaTarget: json['isMegaTarget'] as bool? ?? false,
-    collectedMale: json['collectedMale'] as bool? ?? false,
-    collectedFemale: json['collectedFemale'] as bool? ?? false,
-    collectedNormal: json['collectedNormal'] as bool? ?? false,
+    collectedNormalMale: json['collectedNormalMale'] as bool? ?? false,
+    collectedNormalFemale: json['collectedNormalFemale'] as bool? ?? false,
+    collectedShinyMale: json['collectedShinyMale'] as bool? ?? false,
+    collectedShinyFemale: json['collectedShinyFemale'] as bool? ?? false,
     notes: json['notes'] as String?,
   );
 }
@@ -90,10 +86,9 @@ Map<String, dynamic> _$ListEntryToJson(ListEntry instance) => <String, dynamic>{
       'pokemonId': instance.pokemonId,
       'form': instance.form,
       'costume': instance.costume,
-      'isShinyTarget': instance.isShinyTarget,
-      'isMegaTarget': instance.isMegaTarget,
-      'collectedMale': instance.collectedMale,
-      'collectedFemale': instance.collectedFemale,
-      'collectedNormal': instance.collectedNormal,
+      'collectedNormalMale': instance.collectedNormalMale,
+      'collectedNormalFemale': instance.collectedNormalFemale,
+      'collectedShinyMale': instance.collectedShinyMale,
+      'collectedShinyFemale': instance.collectedShinyFemale,
       'notes': instance.notes,
     };
