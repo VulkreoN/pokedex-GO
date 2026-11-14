@@ -14,6 +14,7 @@ import { ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { MePage } from './pages/MePage.js';
+import { ReviewPage } from './pages/ReviewPage.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
 
@@ -95,6 +96,7 @@ export function App() {
               <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
               <Route path="/friends/:id" element={<RequireAuth><FriendListsPage /></RequireAuth>} />
               <Route path="/me" element={<MePage />} />
+              <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

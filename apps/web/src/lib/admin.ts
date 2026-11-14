@@ -15,6 +15,7 @@ export interface DataStatus {
   stats: { species?: number; variants?: number; datamined?: number } | null;
   eventsArchived: number;
   sources: SourceFreshness[];
+  feed?: { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number };
 }
 export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; updatedBy: string | null; updatedAt: string }
 

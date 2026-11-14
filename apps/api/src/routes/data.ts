@@ -5,6 +5,7 @@ import { isValidVariantKey } from '@mydexpogo/shared';
 import { z } from 'zod';
 import { requireRole, type AuthEnv } from '../auth.js';
 import { dataService } from '../data/service.js';
+import { feedService } from '../feed/service.js';
 import { db, schema } from '../db/index.js';
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
@@ -23,7 +24,7 @@ export const dataRoutes = new Hono<AuthEnv>()
     c.header('content-type', 'application/json; charset=utf-8');
     return c.body(dataService.getEventsBody());
   })
-  .get('/status', (c) => c.json(dataService.getStatus()))
+  .get('/status', (c) => c.json({ ...dataService.getStatus(), feed: feedService.status }))
   .post('/refresh', requireRole('admin'), async (c) => {
     const started = await dataService.refresh(`manual by ${c.get('user').username}`);
     return c.json({ started, status: dataService.getStatus() }, started ? 202 : 409);

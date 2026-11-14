@@ -89,6 +89,19 @@ L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain
 
 Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial, obscur, purifié, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
 
+## Signaux de sortie
+
+Le statut « sorti » automatique dépend du game master publié sur GitHub par PokeMiners, qui a souvent des semaines de retard. Pour aller plus vite, l'API relève des signaux et les met dans une file « À confirmer » (« Moi » → « À confirmer », rôle gérant) :
+
+- **News officielles** (`NEWS_LOCALES=fr`) : chaque article de pokemongo.com/news est lu ; s'il cite un Pokémon avec un mot de costume, ses variantes non sorties sont proposées. Un gérant coche et valide.
+- **Discord PokeMiners** : leurs salons d'annonces (`gm-realtime-updates`, `asset-realtime-updates`, `new-event-info`) publient les changements en direct, des semaines avant leur GitHub. Ce sont des salons d'annonces, donc tu peux les suivre dans ton propre serveur :
+  1. Crée un serveur Discord à toi (ou utilise le tien) avec un salon par flux, par exemple `#pm-gm`, `#pm-assets`, `#pm-events`.
+  2. Sur le serveur PokeMiners, bouton « Suivre » de chaque salon d'annonces → choisis ton serveur et le salon cible. Les messages y sont recopiés automatiquement.
+  3. Sur discord.com/developers, crée une application, onglet Bot → « Reset Token » (c'est `DISCORD_BOT_TOKEN`), active « Message Content Intent ». Onglet OAuth2 → URL Generator, scope `bot`, permissions « View Channels » et « Read Message History », ouvre l'URL pour inviter le bot dans ton serveur.
+  4. Active le mode développeur Discord, clic droit sur chaque salon → « Copier l'identifiant », et renseigne `DISCORD_CHANNELS=gm=123…,assets=456…,events=789…`.
+
+  Les messages `gm` dont la pièce jointe contient un template de forme (`V0025_POKEMON_PIKACHU_…`, `form: "…"`) sont appliqués automatiquement : présent dans le game master = utilisable en jeu. Les messages `assets` et les news attendent un gérant. Les pièces jointes sont stockées dans le volume `appdata` (les liens Discord expirent).
+
 ## Recherche dans le jeu
 
 Depuis une liste, « Copier pour le jeu » génère des chaînes pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme) : numéros compressés en plages, une chaîne par combinaison (`&shiny`, `&costume`, `&female`, `&alola`...), découpées à 200 caractères.

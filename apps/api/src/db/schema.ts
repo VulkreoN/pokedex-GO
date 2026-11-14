@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -92,5 +92,48 @@ export const variantOverrides = pgTable('variant_overrides', {
   labelEn: text('label_en'),
   labelFr: text('label_fr'),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export interface FeedAttachment {
+  name: string;
+  /** Local path under DATA_DIR/feed, served by the API (Discord CDN links expire). */
+  file: string | null;
+  contentType: string | null;
+  size: number;
+  /** Text content for small text attachments (game master diffs). */
+  text?: string;
+}
+export interface FeedMatch {
+  variantKey: string;
+  reason: string;
+}
+
+/** Release signals pulled from PokeMiners' Discord announcement channels and the official news, reviewed by managers. */
+export const feedItems = pgTable(
+  'feed_items',
+  {
+    id: text('id').primaryKey(), // "discord:<message id>" | "news:<slug>"
+    source: text('source').notNull(), // "discord:gm" | "discord:assets" | "discord:events" | "news"
+    title: text('title'),
+    content: text('content').notNull().default(''),
+    url: text('url'),
+    attachments: jsonb('attachments').$type<FeedAttachment[]>().notNull().default([]),
+    matches: jsonb('matches').$type<FeedMatch[]>().notNull().default([]),
+    status: text('status', { enum: ['new', 'done', 'ignored'] }).notNull().default('new'),
+    /** Set when the job applied the matches itself (game master confirmation). */
+    auto: boolean('auto').notNull().default(false),
+    postedAt: timestamp('posted_at', { withTimezone: true }).notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    handledBy: text('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+  },
+  (t) => [index('feed_items_status_idx').on(t.status, t.postedAt), index('feed_items_source_idx').on(t.source, t.postedAt)],
+);
+
+/** Cursor per polled source (last Discord message id, last news slug set...). */
+export const feedCursors = pgTable('feed_cursors', {
+  source: text('source').primaryKey(),
+  cursor: text('cursor').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

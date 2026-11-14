@@ -53,6 +53,8 @@ class DataService {
   private overridesCache: ManualOverrides | null = null;
 
   get ready() { return this.raw !== null; }
+  /** Raw generated dataset (no manager overrides), for matching jobs. */
+  get rawDataset(): Dataset | null { return this.raw; }
   getStatus(): DataStatus { return { ...this.status, eventsArchived: this.events.length }; }
   getEventsBody() { return this.eventsBody; }
 

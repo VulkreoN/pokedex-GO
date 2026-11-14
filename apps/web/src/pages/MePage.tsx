@@ -54,6 +54,17 @@ export function MePage() {
           </section>
         )}
 
+        {(me.data?.role === 'manager' || me.data?.role === 'admin') && (
+          <Link to="/review" className="card flex items-center gap-3 p-4">
+            <span className="flex-1">
+              <span className="block font-bold">{t.review_title}</span>
+              <span className="block text-sm text-ink-2">{t.review_pending(status.data?.feed?.pending ?? 0)}</span>
+            </span>
+            {(status.data?.feed?.pending ?? 0) > 0 && <span className="tnum rounded-full bg-berry px-2 py-0.5 text-xs font-bold text-white">{status.data?.feed?.pending}</span>}
+            <span className="text-ink-3">›</span>
+          </Link>
+        )}
+
         <section>
           <h2 className="mb-2 text-base font-bold">{t.language}</h2>
           <div className="flex gap-2">

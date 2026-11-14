@@ -3,6 +3,7 @@ name: mydexpogo-dev
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: mydex
       POSTGRES_PASSWORD: mydex

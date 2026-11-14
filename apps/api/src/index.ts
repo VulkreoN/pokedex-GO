@@ -11,6 +11,8 @@ import { friendRoutes } from './routes/friends.js';
 import { listRoutes, sharedRoutes } from './routes/lists.js';
 import { dataRoutes, overrideRoutes, userRoutes } from './routes/data.js';
 import { dataService } from './data/service.js';
+import { feedRoutes } from './routes/feed.js';
+import { feedService } from './feed/service.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
 
@@ -26,6 +28,7 @@ app.route('/friends', friendRoutes);
 app.route('/data', dataRoutes);
 app.route('/overrides', overrideRoutes);
 app.route('/users', userRoutes);
+app.route('/feed', feedRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -39,4 +42,4 @@ export type AppType = typeof app;
 serve({ fetch: app.fetch, port: env.port }, (info) => {
   console.log(`API listening on http://localhost:${info.port}/api`);
 });
-void dataService.start();
+void dataService.start().then(() => feedService.start());
