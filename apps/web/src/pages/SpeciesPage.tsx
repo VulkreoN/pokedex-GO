@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
+import { ManagerSheet } from '../components/ManagerSheet.js';
+import { useMe } from '../lib/auth.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useDataset } from '../lib/dataset.js';
@@ -18,6 +20,9 @@ export function SpeciesPage() {
   const dataset = useDataset();
   const [shiny, setShiny] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
+  const [managing, setManaging] = useState<VariantGroup | null>(null);
+  const me = useMe();
+  const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const idx = dataset.data;
   const species = idx?.speciesByDex.get(dex);
   const variants = useMemo(() => idx?.variantsByDex.get(dex) ?? [], [idx, dex]);
@@ -94,6 +99,11 @@ export function SpeciesPage() {
                           {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
                         </span>
                       </button>
+                      {isManager && (
+                        <button type="button" onClick={() => setManaging(g)} className="mt-0.5 w-full rounded-md py-0.5 text-[11px] font-semibold text-sky hover:bg-paper-2" aria-label={t.manage_variant}>
+                          {t.manage_variant}
+                        </button>
+                      )}
                     </li>
                   );
                 })}
@@ -104,6 +114,7 @@ export function SpeciesPage() {
         {variants.some((v) => v.datamined) && <p className="text-xs text-ink-3">{t.datamined_hint}</p>}
       </main>
       <AddToListSheet idx={idx} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />
+      {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
     </>
   );
 }

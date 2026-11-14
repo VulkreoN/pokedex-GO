@@ -6,6 +6,7 @@ import { createSession, destroySession, hashPassword, publicUser, requireAuth, u
 import { db, schema } from '../db/index.js';
 import { newFriendCode, newId } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
+import { env } from '../env.js';
 
 const credentials = z.object({
   username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, 'letters, digits and _ only'),
@@ -25,7 +26,10 @@ export const authRoutes = new Hono<AuthEnv>()
       friendCode = newFriendCode();
     }
     const id = newId();
-    const [user] = await db.insert(schema.users).values({ id, username, passwordHash, friendCode }).returning();
+    const [countRow] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(schema.users);
+    const existing = countRow?.n ?? 0;
+    const role = existing === 0 || env.adminUsernames.includes(username.toLowerCase()) ? 'admin' : 'user'; // the first account owns the instance
+    const [user] = await db.insert(schema.users).values({ id, username, passwordHash, friendCode, role }).returning();
     await createSession(c, id);
     return c.json({ user: publicUser(user!) }, 201);
   })
@@ -33,6 +37,10 @@ export const authRoutes = new Hono<AuthEnv>()
     const { username, password } = c.req.valid('json');
     const [user] = await db.select().from(schema.users).where(sql`lower(${schema.users.username}) = lower(${username})`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, password))) return c.json({ error: 'invalid_credentials' }, 401);
+    if (user.role !== 'admin' && env.adminUsernames.includes(user.username.toLowerCase())) {
+      await db.update(schema.users).set({ role: 'admin' }).where(sql`${schema.users.id} = ${user.id}`);
+      user.role = 'admin';
+    }
     await createSession(c, user.id);
     return c.json({ user: publicUser(user) });
   })

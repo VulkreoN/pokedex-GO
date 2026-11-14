@@ -114,10 +114,13 @@ export interface ListDetail extends ListSummary {
   entries: ListEntry[];
 }
 
+export type Role = 'user' | 'manager' | 'admin';
+
 export interface PublicUser {
   id: string;
   username: string;
   friendCode: string;
+  role: Role;
   createdAt: string;
 }
 

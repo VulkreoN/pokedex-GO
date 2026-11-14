@@ -40,7 +40,7 @@ export default defineConfig({
             options: { cacheName: 'leekduck', expiration: { maxEntries: 1000, maxAgeSeconds: 14 * 86400 }, cacheableResponse: { statuses: [0, 200] } },
           },
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/data/') && !url.pathname.endsWith('/status'),
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'dataset', expiration: { maxEntries: 4 } },
           },

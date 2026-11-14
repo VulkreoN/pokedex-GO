@@ -25,18 +25,20 @@ import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } fro
 import overrides from './overrides.json' with { type: 'json' };
 import { updateEventArchive } from './events.js';
 
-/* ---------- CLI ---------- */
-const args = new Map(process.argv.slice(2).map((a) => {
-  const [k, v] = a.replace(/^--/, '').split('=');
-  return [k!, v ?? 'true'];
-}));
-const here = path.dirname(fileURLToPath(import.meta.url));
-const outDir = path.resolve(here, args.get('out') ?? '../../../apps/web/public/data');
-const fetchOpts: FetchOptions = {
-  cacheDir: path.resolve(here, '../.cache'),
-  maxAgeHours: Number(args.get('max-age') ?? 24),
-  offline: args.get('offline') === 'true',
-};
+export interface BuildOptions {
+  fetch: FetchOptions;
+  /** Manual overrides stored by the app (managers), applied after the file overrides. */
+  manual?: ManualOverrides;
+  log?: (msg: string) => void;
+}
+
+/** What a manager can change from the web app, keyed by variant key. */
+export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null }>;
+
+export interface BuildResult {
+  dataset: Dataset;
+  stats: { species: number; released: number; variants: number; datamined: number; byKind: Record<string, number> };
+}
 
 /* ---------- Source shapes (only what we read) ---------- */
 interface GmTemplate {
@@ -94,8 +96,11 @@ interface AssetGroup {
   shiny?: string;
 }
 
-/* ---------- Main ---------- */
-async function main() {
+/* ---------- Build ---------- */
+export async function buildDataset(options: BuildOptions): Promise<BuildResult> {
+  const fetchOpts = options.fetch;
+  const log = options.log ?? console.log;
+  const manual = options.manual ?? {};
   const [gm, tree, textsEn, textsFr, costumeEnum, shinyList] = await Promise.all([
     fetchJson<GmTemplate[]>('gameMaster', fetchOpts),
     fetchAssetsTree<Tree>(fetchOpts),
@@ -103,7 +108,7 @@ async function main() {
     fetchJson<Texts>('textsFr', fetchOpts),
     fetchJson<CostumeEnum[]>('costumes', fetchOpts),
     fetchJson<ShinyList>('shiny', fetchOpts).catch((e) => {
-      console.warn(`shiny list unavailable (${e.message}); shinyReleased will be null`);
+      log(`shiny list unavailable (${e.message}); shinyReleased will be null`);
       return null;
     }),
   ]);
@@ -160,7 +165,7 @@ async function main() {
       if (token !== f.form) sp.gmForms.set(f.form, !!f.isCostume);
     }
   }
-  console.log(`game master: ${speciesByDex.size} species, ${[...speciesByDex.values()].reduce((n, s) => n + s.gmForms.size, 0)} forms`);
+  log(`game master: ${speciesByDex.size} species, ${[...speciesByDex.values()].reduce((n, s) => n + s.gmForms.size, 0)} forms`);
 
   /* Assets: parse addressable filenames from the 256px folder, then the full-size folder, then legacy icons */
   const groups = new Map<string, AssetGroup>();
@@ -202,7 +207,7 @@ async function main() {
     else cur.normal = ASSET_BASE_LEGACY + e.path.slice(FOLDER_LEGACY.length);
     legacy.set(dex, cur);
   }
-  console.log(`assets: ${groups.size} variant pictures, ${legacy.size} legacy icons`);
+  log(`assets: ${groups.size} variant pictures, ${legacy.size} legacy icons`);
 
   /* Variants */
   const variants: Variant[] = [];
@@ -232,6 +237,8 @@ async function main() {
     else inGameMaster = true;
     let datamined = !inGameMaster || !g?.normal;
     if (statusOverrides[key]) datamined = statusOverrides[key] === 'datamined';
+    const m = manual[key];
+    if (m && m.released !== null && m.released !== undefined) datamined = !m.released;
     const v: Variant = {
       key,
       dex: sp.dex,
@@ -239,7 +246,7 @@ async function main() {
       costume,
       gender,
       kind,
-      label: labelFor(sp, form, costume),
+      label: manual[key]?.label ?? labelFor(sp, form, costume),
       img: g?.normal ?? null,
       hasShiny: !!g?.shiny,
       datamined,
@@ -307,30 +314,64 @@ async function main() {
     version: `${now.toISOString().slice(0, 10).replaceAll('-', '')}.${hash}`,
     generatedAt: now.toISOString(),
     assetBase: ASSET_BASE,
-    sources: Object.fromEntries(Object.entries(SOURCES).filter(([k]) => k !== 'assetsBranch')),
+    sources: { ...SOURCES },
     species,
     variants,
   };
-  await mkdir(outDir, { recursive: true });
-  await writeFile(path.join(outDir, 'pokedex.json'), JSON.stringify(dataset));
-  await writeFile(
-    path.join(outDir, 'manifest.json'),
-    JSON.stringify({ version: dataset.version, generatedAt: dataset.generatedAt, speciesCount: species.length, variantCount: variants.length }, null, 2),
-  );
-
-  const archive = await updateEventArchive(outDir, fetchOpts.offline).catch((e) => {
-    console.warn(`event archive not updated: ${(e as Error).message}`);
-    return null;
-  });
-  if (archive) console.log(`events archive: ${archive.total} events (${archive.added} new)`);
-
   const byKind = variants.reduce<Record<string, number>>((acc, v) => ((acc[v.kind] = (acc[v.kind] ?? 0) + 1), acc), {});
-  console.log(`wrote ${path.join(outDir, 'pokedex.json')} v${dataset.version}`);
-  console.log(`species ${species.length} (released ${species.filter((s) => s.released).length}, genderDiff ${species.filter((s) => s.genderDiff).length})`);
-  console.log(`variants ${variants.length}`, byKind, `datamined ${variants.filter((v) => v.datamined).length}, no picture ${variants.filter((v) => !v.img).length}`);
+  const stats = {
+    species: species.length,
+    released: species.filter((s) => s.released).length,
+    variants: variants.length,
+    datamined: variants.filter((v) => v.datamined).length,
+    byKind,
+  };
+  log(`dataset v${dataset.version}: ${stats.species} species, ${stats.variants} variants (${stats.datamined} datamined)`);
+  return { dataset, stats };
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+/** Applies manager overrides to an already built dataset without refetching anything. */
+export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides): Dataset {
+  if (!Object.keys(manual).length) return dataset;
+  return {
+    ...dataset,
+    variants: dataset.variants.map((v) => {
+      const m = manual[v.key];
+      if (!m) return v;
+      return {
+        ...v,
+        datamined: m.released === null || m.released === undefined ? v.datamined : !m.released,
+        label: m.label ?? v.label,
+      };
+    }),
+  };
+}
+
+/* ---------- CLI: pnpm --filter @mydexpogo/data build [--offline] [--max-age=24] [--out=dir] ---------- */
+const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isCli) {
+  const args = new Map(process.argv.slice(2).map((a) => {
+    const [k, v] = a.replace(/^--/, '').split('=');
+    return [k!, v ?? 'true'];
+  }));
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const outDir = path.resolve(here, args.get('out') ?? '../dist');
+  const fetchOpts: FetchOptions = {
+    cacheDir: path.resolve(here, '../.cache'),
+    maxAgeHours: Number(args.get('max-age') ?? 24),
+    offline: args.get('offline') === 'true',
+  };
+  buildDataset({ fetch: fetchOpts })
+    .then(async ({ dataset, stats }) => {
+      await mkdir(outDir, { recursive: true });
+      await writeFile(path.join(outDir, 'pokedex.json'), JSON.stringify(dataset));
+      await writeFile(path.join(outDir, 'manifest.json'), JSON.stringify({ version: dataset.version, generatedAt: dataset.generatedAt, speciesCount: stats.species, variantCount: stats.variants }, null, 2));
+      const archive = await updateEventArchive(outDir, fetchOpts.offline).catch((e: Error) => (console.warn(`event archive not updated: ${e.message}`), null));
+      if (archive) console.log(`events archive: ${archive.total} events (${archive.added} new)`);
+      console.log(`wrote ${outDir}`);
+    })
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    });
+}

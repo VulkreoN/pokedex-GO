@@ -22,16 +22,16 @@ export interface ArchivedEvent {
   lastSeen: string;
 }
 
-export async function updateEventArchive(outDir: string, offline: boolean): Promise<{ total: number; added: number }> {
-  const file = path.join(outDir, 'events-archive.json');
-  const existing: ArchivedEvent[] = await readFile(file, 'utf8')
-    .then((s) => JSON.parse(s) as ArchivedEvent[])
-    .catch(() => []);
-  if (offline) return { total: existing.length, added: 0 };
+export type LiveEvent = Omit<ArchivedEvent, 'firstSeen' | 'lastSeen'>;
+
+export async function fetchLiveEvents(): Promise<LiveEvent[]> {
   const res = await fetch(SCRAPEDDUCK_EVENTS, { headers: { 'user-agent': 'mydexpogo-data-pipeline' } });
   if (!res.ok) throw new Error(`events: HTTP ${res.status}`);
-  const live = (await res.json()) as Omit<ArchivedEvent, 'firstSeen' | 'lastSeen'>[];
-  const now = new Date().toISOString();
+  return (await res.json()) as LiveEvent[];
+}
+
+/** Merges live events into an archive. Pure: returns the new archive and how many events were new. */
+export function mergeEvents(existing: ArchivedEvent[], live: LiveEvent[], now = new Date().toISOString()): { all: ArchivedEvent[]; added: number } {
   const byId = new Map(existing.map((e) => [e.eventID, e]));
   let added = 0;
   for (const e of live) {
@@ -52,6 +52,17 @@ export async function updateEventArchive(outDir: string, offline: boolean): Prom
     });
   }
   const all = [...byId.values()].sort((a, b) => (b.start ?? '').localeCompare(a.start ?? ''));
+  return { all, added };
+}
+
+/** File-based wrapper used by the CLI. */
+export async function updateEventArchive(outDir: string, offline: boolean): Promise<{ total: number; added: number }> {
+  const file = path.join(outDir, 'events-archive.json');
+  const existing: ArchivedEvent[] = await readFile(file, 'utf8')
+    .then((s) => JSON.parse(s) as ArchivedEvent[])
+    .catch(() => []);
+  if (offline) return { total: existing.length, added: 0 };
+  const { all, added } = mergeEvents(existing, await fetchLiveEvents());
   await writeFile(file, JSON.stringify(all));
   return { total: all.length, added };
 }

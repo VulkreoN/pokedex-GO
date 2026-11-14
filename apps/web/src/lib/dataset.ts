@@ -37,7 +37,7 @@ export function useDataset() {
   return useQuery({
     queryKey: ['dataset'],
     queryFn: async () => {
-      const res = await fetch('/data/pokedex.json');
+      const res = await fetch('/api/data/pokedex.json');
       if (!res.ok) throw new Error('dataset');
       return buildIndex((await res.json()) as Dataset);
     },

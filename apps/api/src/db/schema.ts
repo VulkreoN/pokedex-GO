@@ -8,6 +8,8 @@ export const users = pgTable(
     username: text('username').notNull(),
     passwordHash: text('password_hash').notNull(),
     friendCode: text('friend_code').notNull(),
+    /** user | manager (can mark variants released) | admin (can promote, refresh data) */
+    role: text('role', { enum: ['user', 'manager', 'admin'] }).notNull().default('user'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -81,3 +83,14 @@ export const friendships = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.friendId] })],
 );
+
+/** Manual corrections made by managers from the web app, applied on top of the generated dataset. */
+export const variantOverrides = pgTable('variant_overrides', {
+  variantKey: text('variant_key').primaryKey(),
+  /** true = released, false = not yet, null = follow automatic detection */
+  released: boolean('released'),
+  labelEn: text('label_en'),
+  labelFr: text('label_fr'),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

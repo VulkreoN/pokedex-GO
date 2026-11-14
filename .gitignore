@@ -11,3 +11,5 @@ coverage/
 .cache/
 # generated dataset cache (sources downloaded by the pipeline)
 packages/data/.cache/
+packages/data/dist/
+apps/api/.data/

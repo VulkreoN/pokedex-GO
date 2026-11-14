@@ -13,4 +13,5 @@ RUN pnpm --filter @mydexpogo/web build
 FROM caddy:2-alpine
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /srv
-EXPOSE 80
+EXPOSE 80 443
+CMD ["sh", "-c", "export SITE_ADDRESS=${DOMAIN:-:80}; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]

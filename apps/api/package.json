@@ -14,6 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^2.1.8",
     "@hono/zod-validator": "^0.9.1",
+    "@mydexpogo/data": "workspace:*",
     "@mydexpogo/shared": "workspace:*",
     "@node-rs/argon2": "^2.2.2",
     "drizzle-orm": "^0.45.4",

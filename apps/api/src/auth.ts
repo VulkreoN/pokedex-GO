@@ -9,7 +9,8 @@ import { hashToken, newId, newSessionToken } from './lib/ids.js';
 export const SESSION_COOKIE = 'sid';
 const SESSION_DAYS = 30;
 
-export type AuthUser = { id: string; username: string; friendCode: string; createdAt: Date };
+export type Role = 'user' | 'manager' | 'admin';
+export type AuthUser = { id: string; username: string; friendCode: string; role: Role; createdAt: Date };
 
 export async function hashPassword(password: string): Promise<string> {
   return hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
@@ -53,8 +54,8 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, row.sid));
     return null;
   }
-  const { id, username, friendCode, createdAt } = row.user;
-  return { id, username, friendCode, createdAt };
+  const { id, username, friendCode, role, createdAt } = row.user;
+  return { id, username, friendCode, role, createdAt };
 }
 
 export type AuthEnv = { Variables: { user: AuthUser } };
@@ -68,7 +69,18 @@ export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
 };
 
 export function publicUser(u: AuthUser) {
-  return { id: u.id, username: u.username, friendCode: u.friendCode, createdAt: u.createdAt.toISOString() };
+  return { id: u.id, username: u.username, friendCode: u.friendCode, role: u.role, createdAt: u.createdAt.toISOString() };
 }
+
+const RANK: Record<Role, number> = { user: 0, manager: 1, admin: 2 };
+
+/** Requires a session and at least the given role. */
+export const requireRole = (role: Role): MiddlewareHandler<AuthEnv> => async (c, next) => {
+  const user = await userFromRequest(c);
+  if (!user) return c.json({ error: 'unauthorized' }, 401);
+  if (RANK[user.role] < RANK[role]) return c.json({ error: 'forbidden' }, 403);
+  c.set('user', user);
+  await next();
+};
 
 export { newId };

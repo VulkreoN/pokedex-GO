@@ -63,7 +63,7 @@ export const useEvents = () =>
     queryFn: async () => {
       const [liveEvents, archive] = await Promise.all([
         getJson<GameEvent[]>(`${BASE}events.json`).catch(() => [] as GameEvent[]),
-        getJson<GameEvent[]>('/data/events-archive.json').catch(() => [] as GameEvent[]),
+        getJson<GameEvent[]>('/api/data/events-archive.json').catch(() => [] as GameEvent[]),
       ]);
       const byId = new Map<string, GameEvent>();
       for (const e of archive) byId.set(e.eventID, e);

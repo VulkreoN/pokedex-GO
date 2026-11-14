@@ -12,8 +12,13 @@ docker compose up -d --build
 # http://localhost:8080
 ```
 
-Trois conteneurs : `db` (Postgres 17), `api` (Hono + Drizzle, applique les migrations au démarrage), `web` (Caddy qui sert le front et proxifie `/api`).
-Derrière HTTPS, mets `COOKIE_SECURE=true` dans `.env`.
+Trois conteneurs : `db` (Postgres 17), `api` (Hono + Drizzle, applique les migrations au démarrage et régénère les données toute seule), `web` (Caddy qui sert le front et proxifie `/api`).
+
+### Sur un serveur avec un nom de domaine
+
+Dans `.env` : `DOMAIN=dex.example.com`, `WEB_PORT=80`, `WEB_HTTPS_PORT=443`, `COOKIE_SECURE=true`. Pointe le DNS vers le serveur, `docker compose up -d --build`, Caddy obtient et renouvelle le certificat tout seul. Rien d'autre à planifier : le job de données tourne dans l'API.
+
+Le premier compte créé est administrateur. Depuis « Moi », il peut promouvoir des gérants (qui marquent une variante « sortie » ou la renomment depuis la fiche Pokémon) et forcer un rafraîchissement des données.
 
 ## Développer
 
@@ -28,7 +33,9 @@ Tests et typage : `pnpm test`, `pnpm typecheck`.
 
 ## Données
 
-`pnpm data:build` régénère `apps/web/public/data/pokedex.json` à partir de :
+L'API reconstruit le dataset toutes les `DATA_REFRESH_HOURS` heures (6 par défaut) et le sert sur `/api/data/pokedex.json`, avec les corrections des gérants appliquées. « Moi » affiche la date de génération, la dernière modification de chaque source amont et la prochaine exécution. `pnpm data:build` fait la même chose en ligne de commande vers `packages/data/dist` pour déboguer.
+
+Sources :
 
 - PokeMiners `game_masters` (espèces, formes, types, flag costume),
 - PokeMiners `pogo_assets` (toutes les images, y compris les costumes dataminés pas encore sortis),
@@ -36,12 +43,11 @@ Tests et typage : `pnpm test`, `pnpm typecheck`.
 - WatWowMap `pogo-data-api` (noms des costumes historiques),
 - pogoapi.net (shinies sortis par espèce).
 
-Une variante est marquée `datamined` quand elle existe dans les fichiers du jeu mais pas encore dans le game master. Le game master publié par PokeMiners a parfois quelques semaines de retard : `packages/data/src/overrides.json` permet de forcer un statut ou un libellé.
-Le workflow GitHub `Refresh dataset` relance la génération chaque nuit et commit s'il y a du nouveau.
+Une variante est marquée « pas encore sortie » quand elle existe dans les fichiers du jeu mais pas encore dans le game master. Le game master publié par PokeMiners a parfois des semaines de retard : un gérant corrige ça en deux taps depuis l'app, et `packages/data/src/overrides.json` garde les corrections permanentes.
 
 Les images sont servies depuis GitHub (PokeMiners) et mises en cache par le service worker.
 
-L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain, œufs) lit en direct les JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures. Leek Duck ne garde que le présent et le futur : le pipeline archive chaque événement vu dans `apps/web/public/data/events-archive.json`, ce qui alimente l'onglet « Passés ».
+L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain, œufs) lit en direct les JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
 
 Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial, obscur, purifié, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
 

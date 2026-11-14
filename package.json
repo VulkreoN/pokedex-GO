@@ -2,7 +2,7 @@
   "name": "mydexpogo",
   "private": true,
   "version": "2.0.0",
-  "description": "Pokémon GO collection lists you share with friends, with up-to-date costume and shiny data.",
+  "description": "Pok\u00e9mon GO collection lists you share with friends, with up-to-date costume and shiny data.",
   "packageManager": "pnpm@10.18.0",
   "engines": {
     "node": ">=22"
@@ -13,8 +13,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "data:build": "pnpm --filter @mydexpogo/data build",
-    "db:migrate": "pnpm --filter @mydexpogo/api db:migrate"
+    "db:migrate": "pnpm --filter @mydexpogo/api db:migrate",
+    "data:build": "pnpm --filter @mydexpogo/data build"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
