@@ -184,7 +184,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       if (tok === 's') shiny = true;
       else if (tok === 'g2') female = true;
       else if (tok.startsWith('f')) form = tok.slice(1);
-      else if (tok.startsWith('c')) costume = tok.slice(1);
+      else if (tok.startsWith('c')) costume = tok.slice(1).toUpperCase(); // one stray lowercase file upstream (cMay_2023)
       else return; // unknown token: skip file
     }
     const key = makeVariantKey({ dex, form, costume, gender: female ? 'f' : null });

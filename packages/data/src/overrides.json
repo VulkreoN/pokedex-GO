@@ -32,6 +32,26 @@
     "FLYING_01": {
       "en": "Flying (balloons)",
       "fr": "Volant (ballons)"
+    },
+    "GOGGLES_2026": {
+      "en": "Friede's goggles",
+      "fr": "Lunettes de Friede"
+    },
+    "GOTOUR_2023_BANDANA": {
+      "en": "GO Tour 2023 bandana",
+      "fr": "Bandana GO Tour 2023"
+    },
+    "GOTOUR_2023_HAT": {
+      "en": "GO Tour 2023 hat",
+      "fr": "Chapeau GO Tour 2023"
+    },
+    "646.fNORMAL": {
+      "en": "Kyurem",
+      "fr": "Kyurem"
+    },
+    "649.fNORMAL": {
+      "en": "Normal",
+      "fr": "Normal"
     }
   },
   "status": {
@@ -46,9 +66,24 @@
     "854.fA_HALLOWEEN_2026_01": "released",
     "854.fP_HALLOWEEN_2026_01": "released",
     "855.fA_HALLOWEEN_2026_01": "released",
-    "855.fP_HALLOWEEN_2026_01": "released"
+    "855.fP_HALLOWEEN_2026_01": "released",
+    "4.fGOGGLES_2026": "released",
+    "5.fGOGGLES_2026": "released",
+    "6.fGOGGLES_2026": "released",
+    "705.fHISUIAN": "released",
+    "706.fHISUIAN": "released",
+    "398.fMEGA": "released",
+    "609.fMEGA": "released",
+    "774.fMETEOR": "released",
+    "25.cGOTOUR_2023_BANDANA": "released",
+    "25.cGOTOUR_2023_BANDANA.g2": "released",
+    "25.cGOTOUR_2023_HAT": "released",
+    "25.cGOTOUR_2023_HAT.g2": "released",
+    "646.fNORMAL": "released",
+    "649.fNORMAL": "released"
   },
   "statusNotes": {
-    "2026-11-14": "Halloween 2026 part I (27 oct.): Pikachu chapeau+cape, Nosferapti/Nostenfer/Nosferalto haut-de-forme, Théffroi/Polthégeist noeud. GO Wild Area 2026 (14 nov.): Mackogneur veste moderne en raids 3*. Game master PokeMiners en retard (29 août)."
+    "2026-11-14": "Halloween 2026 part I (27 oct.): Pikachu chapeau+cape, Nosferapti/Nostenfer/Nosferalto haut-de-forme, Théffroi/Polthégeist noeud. GO Wild Area 2026 (14 nov.): Mackogneur veste moderne en raids 3*. Game master PokeMiners en retard (29 août).",
+    "2026-11-14 (2)": "Vérifié: Salamèche/Reptincel/Dracaufeu lunettes de Friede (Horizons, 16 sept. 2026); Mucuscule/Muplodocus de Hisui (Wild Area Sendai/Mexico, 6 nov. 2026, pas encore mondial); Méga-Étouraptor (19 sept.) et Méga-Lugulabre (31 oct.) en Super Méga Raids; Météno forme Météore (Minior Showers: Leonids, 14 nov.); Pikachu bandana/chapeau GO Tour Hoenn 2023; Kyurem/Genesect NORMAL = forme de base. Restent inconnus: Pikachu casque de verre 2026, K 2026, anniversaire Thaïlande, Xerneas neutre, Shifours bread dough, Météno météore coloré."
   }
 }
