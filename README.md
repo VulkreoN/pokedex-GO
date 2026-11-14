@@ -20,6 +20,44 @@ Dans `.env` : `DOMAIN=dex.example.com`, `WEB_PORT=80`, `WEB_HTTPS_PORT=443`, `CO
 
 Le premier compte créé est administrateur. Depuis « Moi », il peut promouvoir des gérants (qui marquent une variante « sortie » ou la renomment depuis la fiche Pokémon) et forcer un rafraîchissement des données.
 
+## Exploitation
+
+### Secrets
+
+Tout passe par le fichier `.env` à la racine (copié depuis `.env.example`), lu par Docker Compose et jamais commité (`.gitignore`). Sur le serveur : `chmod 600 .env`. Il contient le mot de passe Postgres, éventuellement un `GITHUB_TOKEN` (lecture seule, dépôts publics) et `ADMIN_USERNAMES`. Les sessions n'ont pas besoin de secret : ce sont des jetons aléatoires stockés hachés en base.
+
+### Base de données à la main
+
+Postgres n'est pas exposé hors du réseau Docker. Pour y entrer :
+
+```bash
+docker compose exec db psql -U mydex -d mydex
+```
+
+```sql
+select username, role, created_at from users order by created_at;
+update users set role = 'admin'   where username = 'hakim';   -- ou 'manager' / 'user'
+select * from variant_overrides;                               -- corrections des gérants
+delete from sessions where user_id = (select id from users where username = 'hakim');  -- déconnecter partout
+```
+
+Sauvegarde / restauration :
+
+```bash
+docker compose exec -T db pg_dump -U mydex mydex | gzip > backup-$(date +%F).sql.gz
+gunzip -c backup-2026-11-14.sql.gz | docker compose exec -T db psql -U mydex -d mydex
+```
+
+Le volume `appdata` (dataset, archive d'événements, cache des sources) se régénère tout seul, pas besoin de le sauvegarder.
+
+### Logs
+
+```bash
+docker compose logs -f api     # job de données, requêtes
+docker compose logs -f web     # Caddy, certificats
+docker compose logs -f db
+```
+
 ## Développer
 
 ```bash
