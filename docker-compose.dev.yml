@@ -1,0 +1,15 @@
+# Dev: only the database runs in Docker, the API and the web app run with `pnpm dev` for hot reload.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mydex
+      POSTGRES_PASSWORD: mydex
+      POSTGRES_DB: mydex
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata_dev:

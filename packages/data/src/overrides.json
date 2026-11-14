@@ -1,0 +1,14 @@
+{
+  "$comment": "Manual fixes applied last. labels: by variant key or by form/costume token. status: force 'released' or 'datamined' by variant key.",
+  "labels": {
+    "FALL_2019": { "en": "Witch hat", "fr": "Chapeau de sorcière" },
+    "HALLOWEEN_2017": { "en": "Witch hat 2017", "fr": "Chapeau de sorcière 2017" },
+    "HOLIDAY_2016": { "en": "Santa hat 2016", "fr": "Bonnet de Noël 2016" },
+    "ONE_YEAR_ANNIVERSARY": { "en": "Ash hat", "fr": "Casquette de Sacha" },
+    "ANNIVERSARY": { "en": "Party hat", "fr": "Chapeau de fête" },
+    "NIGHTCAP": { "en": "Nightcap", "fr": "Bonnet de nuit" },
+    "COPY_2019": { "en": "Clone", "fr": "Clone" },
+    "FLYING_01": { "en": "Flying (balloons)", "fr": "Volant (ballons)" }
+  },
+  "status": {}
+}

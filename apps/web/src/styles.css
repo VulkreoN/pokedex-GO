@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/bricolage-grotesque';
+
+/*
+  Tokens. One family (Bricolage Grotesque), a pale map-green paper, deep ink,
+  grass green for "caught", sky blue for the main action, gold only for shiny.
+*/
+@theme {
+  --font-sans: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-paper: #f1f5f2;
+  --color-paper-2: #e6ece8;
+  --color-ink: #14232b;
+  --color-ink-2: #3d4f58;
+  --color-ink-3: #7b8a91;
+  --color-dust: #c9d3cc;
+  --color-grass: #2e9e6b;
+  --color-grass-2: #d9f0e4;
+  --color-sky: #2f6df6;
+  --color-sky-2: #dce7ff;
+  --color-shiny: #e8b43a;
+  --color-shiny-2: #fff1cc;
+  --color-berry: #d9485f;
+  --radius-card: 14px;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --paper: var(--color-paper);
+  --paper-2: var(--color-paper-2);
+  --ink: var(--color-ink);
+  --ink-2: var(--color-ink-2);
+  --ink-3: var(--color-ink-3);
+  --dust: var(--color-dust);
+}
+.dark {
+  color-scheme: dark;
+  --paper: #0f1b21;
+  --paper-2: #182830;
+  --ink: #edf2ef;
+  --ink-2: #b6c3bc;
+  --ink-3: #7b8a91;
+  --dust: #2b3a42;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'opsz' 14, 'wdth' 100;
+  overscroll-behavior-y: none;
+}
+h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.01em; line-height: 1.1; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Pokédex silhouette: a missing Pokémon shows as a dark cut-out, like the in-game "seen" entries */
+.silhouette { filter: brightness(0) opacity(0.28); }
+.dark .silhouette { filter: brightness(0) invert(1) opacity(0.22); }
+
+/* Safe areas for installed PWA */
+.pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+:focus-visible { outline: 3px solid var(--color-sky); outline-offset: 2px; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
