@@ -30,21 +30,21 @@ export function LoginPage() {
     <>
       <main className="mx-auto max-w-sm px-4 pb-24 pt-16">
         <h2 className="text-[28px] font-bold leading-tight">{t.welcome_title}</h2>
-        <p className="mb-6 mt-2 text-[15px] text-[var(--ink-2)]">{t.welcome_text}</p>
+        <p className="mb-6 mt-2 text-[15px] text-ink-2">{t.welcome_text}</p>
         <form onSubmit={submit} className="space-y-3">
           <TextField label={t.username} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" required minLength={3} maxLength={20} />
           <TextField label={t.password} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} />
           {error && <p className="text-sm text-berry">{error}</p>}
           <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending}>{mode === 'login' ? t.login : t.register}</Button>
         </form>
-        <p className="mt-4 text-center text-sm text-[var(--ink-2)]">
+        <p className="mt-4 text-center text-sm text-ink-2">
           {mode === 'login' ? t.no_account : t.has_account}{' '}
           <button type="button" className="font-semibold text-sky" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}>
             {mode === 'login' ? t.register : t.login}
           </button>
         </p>
-        <p className="mt-8 text-center text-xs text-[var(--ink-3)]">{t.login_hint}</p>
-        <p className="mt-6 text-center text-sm"><Link to="/dex" className="font-semibold text-[var(--ink-2)] underline">{t.browse_without_account}</Link></p>
+        <p className="mt-8 text-center text-xs text-ink-3">{t.login_hint}</p>
+        <p className="mt-6 text-center text-sm"><Link to="/dex" className="font-semibold text-ink-2 underline">{t.browse_without_account}</Link></p>
       </main>
     </>
   );

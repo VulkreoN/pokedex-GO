@@ -53,7 +53,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return (
       <main className="mx-auto max-w-sm px-6 py-20 text-center">
         <p className="text-lg font-bold">Oups.</p>
-        <p className="mt-2 text-sm text-[var(--ink-2)]">{this.state.error.message}</p>
+        <p className="mt-2 text-sm text-ink-2">{this.state.error.message}</p>
         <a href="/" className="mt-6 inline-block rounded-xl bg-sky px-4 py-3 font-semibold text-white">Recharger</a>
       </main>
     );

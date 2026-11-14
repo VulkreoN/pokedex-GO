@@ -59,7 +59,7 @@ export function FriendsPage() {
       <TopBar title={t.friends} />
       <main className="mx-auto max-w-3xl space-y-5 px-3 pb-24">
         {me.data && (
-          <section className="rounded-card bg-ink p-4 text-paper dark:bg-paper dark:text-ink">
+          <section className="rounded-card sky-header rounded-card p-4">
             <div className="text-sm opacity-70">{t.my_code}</div>
             <div className="tnum mt-1 text-[28px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
             <Button tone="ghost" className="mt-2 bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" onClick={async () => { if (await copyText(me.data!.friendCode)) toast(t.copied); }}>{t.copy}</Button>
@@ -77,14 +77,14 @@ export function FriendsPage() {
             <h2 className="mb-2 text-base font-bold">{t.requests}</h2>
             <ul className="space-y-2">
               {incoming.map((r) => (
-                <li key={r.id} className="flex items-center gap-2 rounded-card border border-[var(--dust)] p-3">
+                <li key={r.id} className="flex items-center gap-2 rounded-card border border-line p-3">
                   <span className="flex-1 font-semibold">{r.from.username}</span>
                   <Button tone="primary" className="min-h-9 px-3 text-sm" onClick={() => respond.mutate({ id: r.id, action: 'accept' })}>{t.accept}</Button>
                   <Button tone="ghost" className="min-h-9 px-3 text-sm" onClick={() => respond.mutate({ id: r.id, action: 'decline' })}>{t.decline}</Button>
                 </li>
               ))}
               {outgoing.map((r) => (
-                <li key={r.id} className="flex items-center gap-2 rounded-card border border-dashed border-[var(--dust)] p-3 text-[var(--ink-2)]">
+                <li key={r.id} className="flex items-center gap-2 rounded-card border border-dashed border-line p-3 text-ink-2">
                   <span className="flex-1">{t.sent_to(r.to.username)}</span>
                   <Button tone="ghost" className="min-h-9 px-3 text-sm" onClick={() => respond.mutate({ id: r.id, action: 'decline' })}>{t.cancel}</Button>
                 </li>
@@ -94,12 +94,12 @@ export function FriendsPage() {
         )}
 
         <section>
-          <h2 className="mb-2 text-base font-bold">{t.friends} <span className="tnum font-normal text-[var(--ink-3)]">{friends.data?.length ?? ''}</span></h2>
+          <h2 className="mb-2 text-base font-bold">{t.friends} <span className="tnum font-normal text-ink-3">{friends.data?.length ?? ''}</span></h2>
           {friends.isPending && <Spinner />}
           {friends.data?.length === 0 && <Empty>{t.no_friends}</Empty>}
           <ul className="space-y-2">
             {friends.data?.map((f) => (
-              <li key={f.id} className="flex items-center gap-2 rounded-card border border-[var(--dust)] p-2 pl-3">
+              <li key={f.id} className="flex items-center gap-2 rounded-card border border-line p-2 pl-3">
                 <Link to={`/friends/${f.id}`} className="min-w-0 flex-1 py-2 font-semibold">{f.username}</Link>
                 <Button tone="ghost" className="min-h-9 px-3 text-sm" onClick={() => { if (confirm(`${t.remove_friend} ${f.username} ?`)) removeFriend.mutate(f.id); }}>{t.remove_friend}</Button>
               </li>
@@ -125,15 +125,15 @@ export function FriendListsPage() {
         <ul className="space-y-2">
           {q.data?.lists.map((l) => (
             <li key={l.id}>
-              <Link to={`/lists/${l.id}`} className="block rounded-card border border-[var(--dust)] p-3 hover:bg-[var(--paper-2)]/60">
+              <Link to={`/lists/${l.id}`} className="card block p-3 hover:brightness-[0.98]">
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-[17px] font-bold">{l.name}</span>
                   <VisibilityIcon v={l.visibility} />
                 </div>
-                {l.description && <p className="mt-0.5 truncate text-sm text-[var(--ink-2)]">{l.description}</p>}
+                {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
                 <div className="mt-2 flex items-center gap-3">
                   <Progress done={l.doneCount} total={l.entryCount} />
-                  <span className="tnum shrink-0 text-xs font-semibold text-[var(--ink-2)]">{t.progress(l.doneCount, l.entryCount)}</span>
+                  <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{t.progress(l.doneCount, l.entryCount)}</span>
                 </div>
               </Link>
             </li>

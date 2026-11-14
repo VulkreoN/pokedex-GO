@@ -26,22 +26,22 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[var(--ink-2)]">{t.game_strings_help}</p>
+      <p className="text-sm text-ink-2">{t.game_strings_help}</p>
       <Chip active={onlyMissing} onClick={() => setOnlyMissing((v) => !v)}>
         {t.only_missing}
       </Chip>
-      {strings.length === 0 && <p className="py-6 text-center text-sm text-[var(--ink-3)]">{t.nothing_here}</p>}
+      {strings.length === 0 && <p className="py-6 text-center text-sm text-ink-3">{t.nothing_here}</p>}
       <ul className="space-y-2">
         {strings.map((s) => (
-          <li key={s.text} className="rounded-card border border-[var(--dust)] p-3">
+          <li key={s.text} className="rounded-card border border-line bg-paper p-3">
             <div className="mb-1 flex items-center justify-between gap-2 text-sm">
               <span className="font-semibold">
                 {label(s.modifiers)}
-                {s.batches > 1 && <span className="text-[var(--ink-3)]"> {s.batch}/{s.batches}</span>}
+                {s.batches > 1 && <span className="text-ink-3"> {s.batch}/{s.batches}</span>}
               </span>
-              <span className="tnum text-[var(--ink-3)]">{s.count}</span>
+              <span className="tnum text-ink-3">{s.count}</span>
             </div>
-            <code className="block break-all rounded-lg bg-[var(--paper-2)] p-2 text-[13px] leading-snug">{s.text}</code>
+            <code className="block break-all rounded-lg bg-paper-2 p-2 text-[13px] leading-snug">{s.text}</code>
             <Button
               tone="primary"
               className="mt-2 w-full"

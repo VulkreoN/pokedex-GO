@@ -30,13 +30,13 @@ export function MePage() {
       <TopBar title={t.nav_me} />
       <main className="mx-auto max-w-3xl space-y-6 px-3 pb-24">
         {me.data ? (
-          <section className="rounded-card border border-[var(--dust)] p-4">
+          <section className="rounded-card border border-line p-4">
             <div className="text-[22px] font-bold">{me.data.username}</div>
-            <div className="tnum text-sm text-[var(--ink-2)]">{t.my_code} · {fmtCode(me.data.friendCode)}</div>
+            <div className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</div>
             <Button className="mt-3" onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
           </section>
         ) : (
-          <section className="rounded-card bg-ink p-4 text-paper dark:bg-paper dark:text-ink">
+          <section className="rounded-card sky-header rounded-card p-4">
             <h2 className="text-[22px] font-bold leading-tight">{t.welcome_title}</h2>
             <p className="mt-1 text-sm opacity-80">{t.welcome_text}</p>
             <Link to="/login" className="mt-3 inline-block"><Button tone="primary">{t.login}</Button></Link>
@@ -61,15 +61,15 @@ export function MePage() {
           </div>
         </section>
 
-        <section className="text-sm text-[var(--ink-2)]">
-          <h2 className="mb-1 text-base font-bold text-[var(--ink)]">{t.data_version}</h2>
+        <section className="text-sm text-ink-2">
+          <h2 className="mb-1 text-base font-bold text-ink">{t.data_version}</h2>
           {ds && (
             <p>
               <span className="tnum">{ds.version}</span>, {t.data_generated(new Date(ds.generatedAt).toLocaleDateString(lang))}. {ds.species.length} Pokémon, {ds.variants.length} {t.variants_count(2).split(' ')[1]}.
             </p>
           )}
           <p className="mt-1">{t.data_sources}</p>
-          <p className="mt-3 text-xs text-[var(--ink-3)]">{t.install_hint}</p>
+          <p className="mt-3 text-xs text-ink-3">{t.install_hint}</p>
         </section>
 
         {me.data && (
@@ -79,7 +79,7 @@ export function MePage() {
         )}
       </main>
       <Sheet open={deleting} onClose={() => setDeleting(false)} title={t.delete_account}>
-        <p className="mb-3 text-sm text-[var(--ink-2)]">{t.confirm_delete_account}</p>
+        <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
         <TextField type="password" label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         <Button
           tone="danger"

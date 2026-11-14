@@ -50,7 +50,7 @@ export function PokedexPage() {
             placeholder={t.search_placeholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="min-h-11 w-full rounded-xl border border-[var(--dust)] bg-[var(--paper-2)] px-3 text-[16px] placeholder:text-[var(--ink-3)] focus:border-sky"
+            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
             aria-label={t.search_placeholder}
           />
           <div className="-mx-3 mt-2 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none]">
@@ -63,7 +63,7 @@ export function PokedexPage() {
               value={gen}
               onChange={(e) => setGen(Number(e.target.value))}
               aria-label={t.filter_gen}
-              className="min-h-9 shrink-0 rounded-full border border-[var(--dust)] bg-transparent px-3 text-sm font-medium text-[var(--ink-2)]"
+              className="min-h-9 shrink-0 rounded-full border border-line bg-transparent px-3 text-sm font-medium text-ink-2"
             >
               <option value={0}>{t.filter_gen} {t.gen_all.toLowerCase()}</option>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => (
@@ -78,7 +78,7 @@ export function PokedexPage() {
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
         {dataset.data && (
           <>
-            <p className="tnum py-2 text-xs text-[var(--ink-3)]">{t.species_count(rows.length)}</p>
+            <p className="tnum py-2 text-xs font-semibold text-ink-3">{t.species_count(rows.length)}</p>
             {rows.length === 0 && <Empty>{t.nothing_here}</Empty>}
             <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
               {rows.map((s) => {
@@ -89,12 +89,12 @@ export function PokedexPage() {
                 const hasDatamined = vs.some((v) => v.datamined);
                 return (
                   <li key={s.dex} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 118px' }}>
-                    <Link to={`/dex/${s.dex}`} className="flex flex-col items-center rounded-card bg-[var(--paper-2)]/60 px-1 pb-2 pt-1 transition hover:bg-[var(--paper-2)]">
+                    <Link to={`/dex/${s.dex}`} className="card flex flex-col items-center px-1 pb-2 pt-1 transition hover:brightness-[0.97]">
                       <div className="relative">
-                        <span className="tnum absolute -left-1 top-0 text-[11px] font-semibold text-[var(--ink-3)]">#{s.dex}</span>
+                        <span className="tnum absolute -left-1 top-0 text-[11px] font-semibold text-ink-3">#{s.dex}</span>
                         <Sprite idx={idx} variant={cover} muted={!s.released} size={72} />
                         {extra > 0 && (
-                          <span className="tnum absolute -right-1 bottom-0 rounded-md bg-ink px-1 text-[10px] font-bold text-paper dark:bg-paper dark:text-ink">+{extra}</span>
+                          <span className="tnum absolute -right-1 bottom-0 rounded-md bg-ink px-1 text-[10px] font-bold text-card">+{extra}</span>
                         )}
                         {hasDatamined && <span className="absolute -right-1 top-0 h-2 w-2 rounded-full bg-sky" aria-label={t.filter_datamined} />}
                       </div>

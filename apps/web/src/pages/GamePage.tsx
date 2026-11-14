@@ -25,7 +25,7 @@ export function GamePage() {
         {tab === 'events' && <Events />}
         {tab === 'research' && <Research />}
         {tab === 'eggs' && <Eggs />}
-        <p className="mt-8 text-center text-xs text-[var(--ink-3)]">{t.live_source}</p>
+        <p className="mt-8 text-center text-xs text-ink-3">{t.live_source}</p>
       </main>
     </>
   );
@@ -43,14 +43,14 @@ function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; 
       {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{p.name}</span>}
     </span>
   );
-  return dex ? <Link to={`/dex/${dex}`} className="rounded-lg hover:bg-[var(--paper-2)]">{body}</Link> : body;
+  return dex ? <Link to={`/dex/${dex}`} className="rounded-lg hover:bg-paper-2">{body}</Link> : body;
 }
 
 function Section({ title, count, children }: { title: ReactNode; count?: number; children: ReactNode }) {
   return (
     <section className="mb-6">
       <h2 className="mb-2 text-base font-bold">
-        {title} {count !== undefined && <span className="tnum font-normal text-[var(--ink-3)]">{count}</span>}
+        {title} {count !== undefined && <span className="tnum font-normal text-ink-3">{count}</span>}
       </h2>
       {children}
     </section>
@@ -97,16 +97,16 @@ function Raids() {
         <Section key={tier} title={tierLabel(tier, lang)} count={bosses.length}>
           <ul className="space-y-2">
             {bosses.map((b) => (
-              <li key={b.name} className="flex items-center gap-3 rounded-card border border-[var(--dust)] p-2">
+              <li key={b.name} className="card flex items-center gap-3 p-2">
                 <Mon p={b} size={56} caption={false} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 font-semibold">
                     <span className="truncate">{b.name}</span>
                     {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
                   </div>
-                  <div className="tnum text-xs text-[var(--ink-2)]">
+                  <div className="tnum text-xs text-ink-2">
                     PC {b.combatPower.normal.min}–{b.combatPower.normal.max}
-                    <span className="text-[var(--ink-3)]"> · {t.boosted} {b.combatPower.boosted.min}–{b.combatPower.boosted.max}</span>
+                    <span className="text-ink-3"> · {t.boosted} {b.combatPower.boosted.min}–{b.combatPower.boosted.max}</span>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
@@ -119,13 +119,13 @@ function Raids() {
         </Section>
       ))}
       <Section title={t.raids_upcoming} count={upcoming.length}>
-        {upcoming.length === 0 && <p className="text-sm text-[var(--ink-3)]">{t.nothing_here}</p>}
+        {upcoming.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
         <ul className="space-y-2">
           {upcoming.map((e) => (
-            <li key={e.eventID} className="rounded-card border border-[var(--dust)] p-3">
+            <li key={e.eventID} className="card p-3">
               <div className="flex items-center gap-2">
                 <Badge tone={eventStatus(e) === 'current' ? 'grass' : 'muted'}>{eventStatus(e) === 'current' ? t.status_current : t.status_upcoming}</Badge>
-                <span className="text-xs text-[var(--ink-2)]">{formatRange(e.start, e.end, lang)}</span>
+                <span className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</span>
               </div>
               <div className="mt-1 font-semibold">{e.name}</div>
               {e.extraData?.raidbattles?.bosses && (
@@ -169,10 +169,10 @@ function EventCard({ e, lang }: { e: GameEvent; lang: string }) {
   const t = useT();
   const x = e.extraData;
   return (
-    <li className="overflow-hidden rounded-card border border-[var(--dust)]">
+    <li className="card overflow-hidden">
       {e.image && <img src={e.image} alt="" loading="lazy" className="aspect-[2/1] w-full object-cover" />}
       <div className="p-3">
-        <div className="flex items-center gap-2 text-xs text-[var(--ink-2)]">
+        <div className="flex items-center gap-2 text-xs text-ink-2">
           <Badge tone="muted">{e.heading}</Badge>
           <span>{formatRange(e.start, e.end, lang)}</span>
         </div>
@@ -187,7 +187,7 @@ function EventCard({ e, lang }: { e: GameEvent; lang: string }) {
         {x?.communityday && (
           <div className="mt-2">
             <div className="flex flex-wrap gap-2">{x.communityday.spawns.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}</div>
-            <ul className="mt-2 space-y-0.5 text-sm text-[var(--ink-2)]">
+            <ul className="mt-2 space-y-0.5 text-sm text-ink-2">
               {x.communityday.bonuses.map((b) => <li key={b.text}>• {b.text}</li>)}
             </ul>
           </div>
@@ -214,7 +214,7 @@ function Research() {
         <Section key={type} title={t.research_types[type] ?? type} count={tasks.length}>
           <ul className="space-y-2">
             {tasks.map((task) => (
-              <li key={task.text} className="rounded-card border border-[var(--dust)] p-3">
+              <li key={task.text} className="card p-3">
                 <div className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: task.text }} />
                 <div className="mt-2 flex flex-wrap gap-2">{task.rewards.map((r, i) => <Mon key={`${r.name}-${i}`} p={r} size={48} />)}</div>
               </li>

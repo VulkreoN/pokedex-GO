@@ -41,12 +41,12 @@ export function SpeciesPage() {
   return (
     <>
       <TopBar
-        title={<span><span className="tnum mr-2 text-[var(--ink-3)]">#{dex}</span>{localized(species.name, lang)}</span>}
+        title={<span><span className="tnum mr-2 text-ink-3">#{dex}</span>{localized(species.name, lang)}</span>}
         back
         actions={
           <div className="flex">
-            {prev && <Link to={`/dex/${prev.dex}`} className="tnum px-2 py-2 text-sm font-semibold text-[var(--ink-2)]" aria-label={localized(prev.name, lang)}>‹ {prev.dex}</Link>}
-            {next && <Link to={`/dex/${next.dex}`} className="tnum px-2 py-2 text-sm font-semibold text-[var(--ink-2)]" aria-label={localized(next.name, lang)}>{next.dex} ›</Link>}
+            {prev && <Link to={`/dex/${prev.dex}`} className="tnum px-2 py-2 text-sm font-semibold text-ink-2" aria-label={localized(prev.name, lang)}>‹ {prev.dex}</Link>}
+            {next && <Link to={`/dex/${next.dex}`} className="tnum px-2 py-2 text-sm font-semibold text-ink-2" aria-label={localized(next.name, lang)}>{next.dex} ›</Link>}
           </div>
         }
       />
@@ -68,7 +68,7 @@ export function SpeciesPage() {
         {sections.map(([title, groups]) =>
           groups.length ? (
             <section key={title} className="mb-5">
-              <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-[var(--ink-3)]">{groups.length}</span></h2>
+              <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-ink-3">{groups.length}</span></h2>
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {groups.map((g) => {
                   const v = g.variants[0]!;
@@ -79,12 +79,12 @@ export function SpeciesPage() {
                       <button
                         type="button"
                         onClick={() => setAdding(g)}
-                        className="flex h-full w-full flex-col items-center rounded-card border border-[var(--dust)] px-1.5 pb-2 pt-2 text-center transition hover:bg-[var(--paper-2)]/60 active:scale-[0.98]"
+                        className="card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98]"
                         aria-label={`${t.add} ${localized(g.label, lang) || localized(species.name, lang)}`}
                       >
                         <div className="relative">
                           <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
-                          {g.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-[var(--ink-3)]">♂♀</span>}
+                          {g.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3">♂♀</span>}
                           {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
                         </div>
                         <span className="mt-1 line-clamp-2 w-full text-[12px] font-semibold leading-tight">{localized(g.label, lang) || localized(species.name, lang)}</span>
@@ -101,7 +101,7 @@ export function SpeciesPage() {
             </section>
           ) : null,
         )}
-        {variants.some((v) => v.datamined) && <p className="text-xs text-[var(--ink-3)]">{t.datamined_hint}</p>}
+        {variants.some((v) => v.datamined) && <p className="text-xs text-ink-3">{t.datamined_hint}</p>}
       </main>
       <AddToListSheet idx={idx} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />
     </>

@@ -89,18 +89,18 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
         }
       >
         <div className="mx-auto max-w-3xl px-3 pb-2">
-          {!owner && <p className="text-sm text-[var(--ink-2)]">{t.by(list.ownerName)}</p>}
-          {list.description && <p className="text-sm text-[var(--ink-2)]">{list.description}</p>}
+          {!owner && <p className="muted text-sm">{t.by(list.ownerName)}</p>}
+          {list.description && <p className="muted text-sm">{list.description}</p>}
           <div className="mt-2 flex items-center gap-3">
             <Progress done={done} total={list.entries.length} />
-            <span className="tnum shrink-0 text-xs font-semibold text-[var(--ink-2)]">{t.progress(done, list.entries.length)}</span>
+            <span className="muted tnum shrink-0 text-xs font-semibold">{t.progress(done, list.entries.length)}</span>
           </div>
           <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
               <Chip key={v} active={view === v} onClick={() => setView(v)}>{{ missing: t.missing, caught: t.caught, all: t.filter_all }[v]}</Chip>
             ))}
           </div>
-          <Button tone="primary" className="mt-2 w-full gap-2" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
+          <Button tone="ghost" className="mt-2 w-full gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
             {t.copy_for_game}
           </Button>
@@ -127,28 +127,28 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
                   onClick={() => toggle(e)}
                   onContextMenu={(ev) => { ev.preventDefault(); setSelected(e); }}
                   aria-pressed={e.done}
-                  className={`flex w-full flex-col items-center rounded-card px-1 pb-2 pt-1 transition ${e.done ? 'bg-grass-2/70 dark:bg-grass/15' : 'bg-[var(--paper-2)]/60'} ${owner ? 'hover:brightness-95 active:scale-[0.97]' : 'cursor-default'}`}
+                  className={`card flex w-full flex-col items-center px-1 pb-2 pt-1 transition ${e.done ? 'ring-2 ring-go' : ''} ${owner ? 'hover:brightness-95 active:scale-[0.97]' : 'cursor-default'}`}
                 >
                   <div className="relative">
                     <Sprite idx={idx} variant={v} shiny={e.shiny} muted={!e.done} size={72} />
-                    {e.shiny && <Sparkle className={`absolute -right-1 top-0 ${e.done ? 'text-shiny' : 'text-[var(--ink-3)]'}`} />}
+                    {e.shiny && <Sparkle className={`absolute -right-1 top-0 ${e.done ? 'text-shiny' : 'text-ink-3'}`} />}
                     {e.done && (
-                      <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-grass text-white">
+                      <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
                       </span>
                     )}
                     {v.datamined && !e.done && <span className="absolute -right-1 bottom-0 h-2 w-2 rounded-full bg-sky" />}
                   </div>
                   <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(sp.name, lang)}</span>
-                  {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-[var(--ink-3)]">{localized(v.label, lang)}</span>}
+                  {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
                   {(v.gender || e.tag) && (
-                    <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-[var(--ink-2)]">
+                    <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">
                       {[v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.tag ? t[`tag_${e.tag}`] : ''].filter(Boolean).join(' · ')}
                     </span>
                   )}
                 </button>
                 {owner && (
-                  <button type="button" onClick={() => setSelected(e)} className="mt-0.5 w-full text-center text-[10px] text-[var(--ink-3)] hover:text-berry" aria-label={t.remove_entry}>···</button>
+                  <button type="button" onClick={() => setSelected(e)} className="mt-0.5 w-full text-center text-[10px] text-ink-3 hover:text-berry" aria-label={t.remove_entry}>···</button>
                 )}
               </li>
             );
@@ -222,11 +222,11 @@ function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }:
         <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
         <VisibilityField value={visibility} onChange={setVisibility} />
         <Button tone="primary" className="w-full" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), description: description.trim() || null, visibility })}>{t.save}</Button>
-        <div className="rounded-card border border-[var(--dust)] p-3">
+        <div className="rounded-card border border-line p-3">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{t.share} {shareUrl && <Badge tone="grass">{t.share_on}</Badge>}</div>
           {shareUrl ? (
             <div className="space-y-2">
-              <code className="block break-all rounded-lg bg-[var(--paper-2)] p-2 text-xs">{shareUrl}</code>
+              <code className="block break-all rounded-lg bg-paper-2 p-2 text-xs">{shareUrl}</code>
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={async () => { if (await copyText(shareUrl)) toast(t.link_copied); }}>{t.copy_link}</Button>
                 <Button tone="ghost" onClick={() => onShare(false)}>{t.share_off}</Button>

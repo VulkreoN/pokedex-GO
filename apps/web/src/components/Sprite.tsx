@@ -11,8 +11,8 @@ export function Sprite({ idx, variant, shiny = false, muted = false, size = 64, 
   const url = imageUrl(idx, variant, shiny) ?? imageUrl(idx, variant, false);
   if (!url || failed) {
     return (
-      <div className={`flex items-center justify-center rounded-full bg-[var(--paper-2)] ${className}`} style={{ width: size, height: size }} aria-hidden>
-        <div className="h-1/2 w-1/2 rounded-full border-4 border-[var(--dust)]" />
+      <div className={`flex items-center justify-center rounded-full bg-paper-2 ${className}`} style={{ width: size, height: size }} aria-hidden>
+        <div className="h-1/2 w-1/2 rounded-full border-4 border-line" />
       </div>
     );
   }

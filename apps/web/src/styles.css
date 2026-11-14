@@ -2,47 +2,78 @@
 @import '@fontsource-variable/bricolage-grotesque';
 
 /*
-  Tokens. One family (Bricolage Grotesque), a pale map-green paper, deep ink,
-  grass green for "caught", sky blue for the main action, gold only for shiny.
+  Pokémon GO palette: a sky gradient header (teal to blue), a pale map-green page,
+  white cards, GO green for actions, gold only for shiny. Dark mode is the night map:
+  slate blue, never black.
 */
-@theme {
-  --font-sans: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
-  --color-paper: #f1f5f2;
-  --color-paper-2: #e6ece8;
-  --color-ink: #14232b;
-  --color-ink-2: #3d4f58;
-  --color-ink-3: #7b8a91;
-  --color-dust: #c9d3cc;
-  --color-grass: #2e9e6b;
-  --color-grass-2: #d9f0e4;
-  --color-sky: #2f6df6;
-  --color-sky-2: #dce7ff;
-  --color-shiny: #e8b43a;
-  --color-shiny-2: #fff1cc;
-  --color-berry: #d9485f;
-  --radius-card: 14px;
-}
-
-@custom-variant dark (&:where(.dark, .dark *));
-
 :root {
   color-scheme: light;
-  --paper: var(--color-paper);
-  --paper-2: var(--color-paper-2);
-  --ink: var(--color-ink);
-  --ink-2: var(--color-ink-2);
-  --ink-3: var(--color-ink-3);
-  --dust: var(--color-dust);
+  --paper: #e9f4ea;          /* map green, very light */
+  --paper-2: #d9ebdb;        /* pressed / secondary surfaces */
+  --card: #ffffff;
+  --line: #cfe0d2;
+  --ink: #233842;
+  --ink-2: #4a5f6a;
+  --ink-3: #6e828c;
+  --sky-top: #40c2d6;
+  --sky-bottom: #3f8fe0;
+  --on-sky: #ffffff;
+  --go: #2a9d5c;             /* primary action */
+  --go-soft: #d7f2e2;
+  --go-ink: #1b6b3f;
+  --sky: #2f7fd6;            /* links */
+  --shiny: #e9b20f;
+  --shiny-soft: #fff1c2;
+  --berry: #e0434b;
+  --shadow: 0 1px 2px rgb(35 56 66 / 0.06), 0 6px 16px -8px rgb(35 56 66 / 0.18);
 }
 .dark {
   color-scheme: dark;
-  --paper: #0f1b21;
-  --paper-2: #182830;
-  --ink: #edf2ef;
-  --ink-2: #b6c3bc;
-  --ink-3: #7b8a91;
-  --dust: #2b3a42;
+  --paper: #1f2e3a;
+  --paper-2: #2a3c4a;
+  --card: #283a48;
+  --line: #3a5061;
+  --ink: #edf4f6;
+  --ink-2: #b9c9d1;
+  --ink-3: #8ea2ad;
+  --sky-top: #1f6d7c;
+  --sky-bottom: #234c7e;
+  --on-sky: #ffffff;
+  --go: #37b26f;
+  --go-soft: #234a39;
+  --go-ink: #a6e7c3;
+  --sky: #74b3ff;
+  --shiny: #f0c23a;
+  --shiny-soft: #4a3d17;
+  --berry: #ff6b72;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 8px 20px -10px rgb(0 0 0 / 0.5);
 }
+
+@theme inline {
+  --font-sans: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-go: var(--go);
+  --color-go-soft: var(--go-soft);
+  --color-go-ink: var(--go-ink);
+  --color-sky: var(--sky);
+  --color-shiny: var(--shiny);
+  --color-shiny-soft: var(--shiny-soft);
+  --color-berry: var(--berry);
+  --color-grass: var(--go);
+  --color-grass-2: var(--go-soft);
+  --color-sky-2: var(--go-soft);
+  --color-shiny-2: var(--shiny-soft);
+  --radius-card: 16px;
+  --shadow-card: var(--shadow);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 html, body, #root { height: 100%; }
 body {
@@ -59,13 +90,35 @@ body {
 h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.01em; line-height: 1.1; }
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* Header: the GO sky */
+.sky-header {
+  background: linear-gradient(160deg, var(--sky-top), var(--sky-bottom));
+  color: var(--on-sky);
+  box-shadow: 0 4px 18px -8px rgb(20 60 90 / 0.45);
+}
+.sky-header input, .sky-header select {
+  background: rgb(255 255 255 / 0.92);
+  color: #233842;
+  border-color: transparent;
+}
+.dark .sky-header input, .dark .sky-header select { background: rgb(255 255 255 / 0.14); color: #fff; }
+.dark .sky-header input::placeholder { color: rgb(255 255 255 / 0.7); }
+.sky-header .chip { border-color: rgb(255 255 255 / 0.45); color: #fff; background: rgb(255 255 255 / 0.12); }
+.sky-header .chip-active { background: #fff; color: #233842; border-color: #fff; }
+.sky-header .icon-btn { color: #fff; }
+.sky-header .icon-btn:hover { background: rgb(255 255 255 / 0.15); }
+.sky-header .muted { color: rgb(255 255 255 / 0.8); }
+.sky-header .track { background: rgb(255 255 255 / 0.25); }
+
 /* Pokédex silhouette: a missing Pokémon shows as a dark cut-out, like the in-game "seen" entries */
-.silhouette { filter: brightness(0) opacity(0.28); }
-.dark .silhouette { filter: brightness(0) invert(1) opacity(0.22); }
+.silhouette { filter: brightness(0) opacity(0.3); }
+.dark .silhouette { filter: brightness(0) invert(1) opacity(0.3); }
+
+.card { background: var(--card); box-shadow: var(--shadow); border-radius: var(--radius-card); }
 
 /* Safe areas for installed PWA */
 .pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
 .pt-safe { padding-top: env(safe-area-inset-top); }
 
-:focus-visible { outline: 3px solid var(--color-sky); outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; border-radius: 6px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

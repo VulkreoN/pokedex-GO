@@ -88,9 +88,9 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
         <div className="mb-4">
           <div className="mb-2 flex items-baseline gap-2">
             <span className="font-bold">{localized(species.name, lang)}</span>
-            <span className="text-sm text-[var(--ink-2)]">{localized(group.label, lang) || t.normal}</span>
+            <span className="text-sm text-ink-2">{localized(group.label, lang) || t.normal}</span>
           </div>
-          <p className="mb-1.5 text-xs font-medium text-[var(--ink-3)]">{t.which_versions}</p>
+          <p className="mb-1.5 text-xs font-medium text-ink-3">{t.which_versions}</p>
           <div className="grid grid-cols-4 gap-1.5">
             {options.map((o) => {
               const on = picked.has(o.id);
@@ -100,7 +100,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
                   type="button"
                   aria-pressed={on}
                   onClick={() => setPicked((p) => { const n = new Set(p); on ? n.delete(o.id) : n.add(o.id); return n; })}
-                  className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition ${on ? 'border-ink bg-[var(--paper-2)] dark:border-paper' : 'border-[var(--dust)] text-[var(--ink-2)]'}`}
+                  className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition ${on ? 'border-go bg-go-soft' : 'border-line text-ink-2'}`}
                 >
                   <span className="relative">
                     <Sprite idx={idx} variant={o.variant} shiny={o.shiny} size={56} />
@@ -112,7 +112,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
               );
             })}
           </div>
-          <p className="mb-1.5 mt-3 text-xs font-medium text-[var(--ink-3)]">{t.trait}</p>
+          <p className="mb-1.5 mt-3 text-xs font-medium text-ink-3">{t.trait}</p>
           <div className="flex flex-wrap gap-1.5">
             {ENTRY_TAGS.map((tg) => (
               <Chip key={tg} active={tag === tg} onClick={() => setTag(tg)} className="min-h-8 px-2.5 text-xs">
@@ -122,21 +122,21 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
           </div>
         </div>
       )}
-      {lists.data?.length === 0 && !newName && <p className="mb-3 text-sm text-[var(--ink-2)]">{t.no_lists_yet}</p>}
+      {lists.data?.length === 0 && !newName && <p className="mb-3 text-sm text-ink-2">{t.no_lists_yet}</p>}
       <ul className="mb-3 space-y-1">
         {lists.data?.map((l) => {
           const on = selected.has(l.id);
           return (
             <li key={l.id}>
-              <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-2 hover:bg-[var(--paper-2)]">
+              <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-2 hover:bg-paper-2">
                 <input
                   type="checkbox"
                   checked={on}
                   onChange={() => setSelected((s) => { const n = new Set(s); on ? n.delete(l.id) : n.add(l.id); return n; })}
-                  className="h-5 w-5 accent-sky"
+                  className="h-5 w-5 accent-go"
                 />
                 <span className="flex-1 font-medium">{l.name}</span>
-                <span className="tnum text-sm text-[var(--ink-3)]">{l.entryCount}</span>
+                <span className="tnum text-sm text-ink-3">{l.entryCount}</span>
               </label>
             </li>
           );
