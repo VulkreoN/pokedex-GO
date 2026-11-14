@@ -1,14 +1,54 @@
 {
-  "$comment": "Manual fixes applied last. labels: by variant key or by form/costume token. status: force 'released' or 'datamined' by variant key.",
+  "$comment": "Manual fixes applied last. labels: by variant key or by form/costume token. status: force 'released' or 'datamined' by variant key. Dated notes say why.",
   "labels": {
-    "FALL_2019": { "en": "Witch hat", "fr": "Chapeau de sorcière" },
-    "HALLOWEEN_2017": { "en": "Witch hat 2017", "fr": "Chapeau de sorcière 2017" },
-    "HOLIDAY_2016": { "en": "Santa hat 2016", "fr": "Bonnet de Noël 2016" },
-    "ONE_YEAR_ANNIVERSARY": { "en": "Ash hat", "fr": "Casquette de Sacha" },
-    "ANNIVERSARY": { "en": "Party hat", "fr": "Chapeau de fête" },
-    "NIGHTCAP": { "en": "Nightcap", "fr": "Bonnet de nuit" },
-    "COPY_2019": { "en": "Clone", "fr": "Clone" },
-    "FLYING_01": { "en": "Flying (balloons)", "fr": "Volant (ballons)" }
+    "FALL_2019": {
+      "en": "Witch hat",
+      "fr": "Chapeau de sorcière"
+    },
+    "HALLOWEEN_2017": {
+      "en": "Witch hat 2017",
+      "fr": "Chapeau de sorcière 2017"
+    },
+    "HOLIDAY_2016": {
+      "en": "Santa hat 2016",
+      "fr": "Bonnet de Noël 2016"
+    },
+    "ONE_YEAR_ANNIVERSARY": {
+      "en": "Ash hat",
+      "fr": "Casquette de Sacha"
+    },
+    "ANNIVERSARY": {
+      "en": "Party hat",
+      "fr": "Chapeau de fête"
+    },
+    "NIGHTCAP": {
+      "en": "Nightcap",
+      "fr": "Bonnet de nuit"
+    },
+    "COPY_2019": {
+      "en": "Clone",
+      "fr": "Clone"
+    },
+    "FLYING_01": {
+      "en": "Flying (balloons)",
+      "fr": "Volant (ballons)"
+    }
   },
-  "status": {}
+  "status": {
+    "68.fWILDAREA_2026_01": "released",
+    "25.fHALLOWEEN_2026": "released",
+    "25.fHALLOWEEN_2026.g2": "released",
+    "41.fHALLOWEEN_2026_01": "released",
+    "41.fHALLOWEEN_2026_01.g2": "released",
+    "42.fHALLOWEEN_2026_01": "released",
+    "42.fHALLOWEEN_2026_01.g2": "released",
+    "169.fHALLOWEEN_2026_01": "released",
+    "854.fA_HALLOWEEN_2026_01": "released",
+    "854.fP_HALLOWEEN_2026_01": "released",
+    "855.fA_HALLOWEEN_2026_01": "released",
+    "855.fP_HALLOWEEN_2026_01": "released"
+  },
+  "statusNotes": {
+    "2026-11-14": "Halloween 2026 part I (27 oct.): Pikachu chapeau+cape, Nosferapti/Nostenfer/Nosferalto haut-de-forme, Théffroi/Polthégeist noeud. GO Wild Area 2026 (14 nov.): Mackogneur veste moderne en raids 3*. Game master PokeMiners en retard (29 août)."
+  }
 }
