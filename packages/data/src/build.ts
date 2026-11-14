@@ -7,7 +7,7 @@
  * Output: <out>/pokedex.json and <out>/manifest.json (default: apps/web/public/data).
  */
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -22,7 +22,6 @@ import {
 } from '@mydexpogo/shared';
 import { ASSET_BASE, ASSET_BASE_FULL, ASSET_BASE_LEGACY, POKEAPI_ARTWORK, SOURCES, fetchAssetsTree, fetchJson, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
-import overrides from './overrides.json' with { type: 'json' };
 import { updateEventArchive } from './events.js';
 
 export interface BuildOptions {
@@ -212,8 +211,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   /* Variants */
   const variants: Variant[] = [];
   const femaleKeys = new Set([...groups.values()].filter((g) => g.female).map((g) => makeVariantKey({ dex: g.dex, form: g.form, costume: g.costume, gender: null })));
-  const labelOverrides = overrides.labels as Record<string, LocalizedText>;
-  const statusOverrides = overrides.status as Record<string, 'released' | 'datamined'>;
+  // Read at build time (not a static import) so a long-running job picks up edits without restarting.
+  const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { labels: Record<string, LocalizedText>; status: Record<string, 'released' | 'datamined'> };
+  const labelOverrides = overrides.labels;
+  const statusOverrides = overrides.status;
 
   const labelFor = (sp: Species, form: string | null, costume: string | null): LocalizedText | null => {
     if (costume) {
