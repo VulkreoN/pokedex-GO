@@ -23,6 +23,10 @@ const fr = {
   datamined: 'Pas encore sorti',
   datamined_hint: 'Trouvé dans les fichiers du jeu, pas encore vu dans le game master.',
   no_shiny: 'Pas de shiny',
+  no_evolve: "n'évolue pas",
+  rarity_legendary: 'Légendaire',
+  rarity_mythic: 'Fabuleux',
+  rarity_ultra_beast: 'Ultra-Chimère',
   unreleased_species: 'Pas encore dans GO',
   variants_count: (n: number) => `${n} variante${n > 1 ? 's' : ''}`,
   add_to_list: 'Ajouter à une liste',
@@ -51,6 +55,7 @@ const fr = {
   progress: (done: number, total: number) => `${done} / ${total} attrapés`,
   empty_list: 'Liste vide. Ajoute des Pokémon depuis le Pokédex.',
   copy_for_game: 'Copier pour le jeu',
+  copy_short: 'Pour le jeu',
   game_strings_title: 'Recherche dans le jeu',
   game_strings_help:
     "Colle une chaîne dans la barre de recherche de ton stockage Pokémon (pas celle du Pokédex, qui n'accepte qu'un terme). Une chaîne par combinaison, découpée si elle dépasse 200 caractères.",
@@ -85,6 +90,7 @@ const fr = {
   register: 'Créer un compte',
   logout: 'Se déconnecter',
   login_hint: 'Un pseudo et un mot de passe, rien de plus.',
+  browse_without_account: 'Parcourir le Pokédex sans compte',
   no_account: 'Pas de compte ?',
   has_account: 'Déjà un compte ?',
   login_required: 'Connecte-toi pour continuer.',
@@ -141,6 +147,10 @@ const en: Dict = {
   datamined: 'Not released yet',
   datamined_hint: 'Found in the game files, not seen in the game master yet.',
   no_shiny: 'No shiny',
+  no_evolve: "can't evolve",
+  rarity_legendary: 'Legendary',
+  rarity_mythic: 'Mythical',
+  rarity_ultra_beast: 'Ultra Beast',
   unreleased_species: 'Not in GO yet',
   variants_count: (n) => `${n} variant${n > 1 ? 's' : ''}`,
   add_to_list: 'Add to a list',
@@ -169,6 +179,7 @@ const en: Dict = {
   progress: (done, total) => `${done} / ${total} caught`,
   empty_list: 'Empty list. Add Pokémon from the Pokédex.',
   copy_for_game: 'Copy for the game',
+  copy_short: 'For the game',
   game_strings_title: 'In-game search',
   game_strings_help:
     "Paste a string in your Pokémon storage search bar (not the Pokédex one, which only takes a single term). One string per combination, split when it exceeds 200 characters.",
@@ -203,6 +214,7 @@ const en: Dict = {
   register: 'Create account',
   logout: 'Log out',
   login_hint: 'A username and a password, nothing else.',
+  browse_without_account: 'Browse the Pokédex without an account',
   no_account: 'No account?',
   has_account: 'Already have one?',
   login_required: 'Log in to continue.',
@@ -260,4 +272,14 @@ export function detectLang(): Lang {
     if (saved === 'fr' || saved === 'en') return saved;
   } catch {}
   return navigator.language.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+}
+
+const TYPES_FR: Record<string, string> = {
+  normal: 'Normal', fire: 'Feu', water: 'Eau', grass: 'Plante', electric: 'Électrik', ice: 'Glace', fighting: 'Combat', poison: 'Poison',
+  ground: 'Sol', flying: 'Vol', psychic: 'Psy', bug: 'Insecte', rock: 'Roche', ghost: 'Spectre', dragon: 'Dragon', dark: 'Ténèbres', steel: 'Acier', fairy: 'Fée',
+};
+
+export function typeName(type: string, lang: Lang): string {
+  if (lang === 'fr') return TYPES_FR[type] ?? type;
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }

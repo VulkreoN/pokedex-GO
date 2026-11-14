@@ -65,6 +65,7 @@ const genOf = (dex: number) => GEN_BOUNDS.findIndex((max) => dex <= max) + 1 || 
 const typeOf = (t?: string): PokemonType | null => (t ? (t.replace('POKEMON_TYPE_', '').toLowerCase() as PokemonType) : null);
 const rarityOf = (c?: string): Rarity =>
   c === 'POKEMON_CLASS_LEGENDARY' ? 'legendary' : c === 'POKEMON_CLASS_MYTHIC' ? 'mythic' : c === 'POKEMON_CLASS_ULTRA_BEAST' ? 'ultra_beast' : 'normal';
+const GENDER_ORDER: Record<string, number> = { n: 0, m: 1, f: 2 };
 const KIND_ORDER: Record<VariantKind, number> = { base: 0, regional: 1, form: 2, costume: 3, mega: 4, gmax: 5 };
 
 function textsToMap(t: Texts): Map<string, string> {
@@ -290,7 +291,7 @@ async function main() {
     a.dex - b.dex ||
     KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
     (a.label?.en ?? '').localeCompare(b.label?.en ?? '') ||
-    (a.gender ?? '').localeCompare(b.gender ?? ''),
+    GENDER_ORDER[a.gender ?? 'n'] - GENDER_ORDER[b.gender ?? 'n'],
   );
 
   const species: Species[] = [...speciesByDex.values()]

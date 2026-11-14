@@ -36,6 +36,9 @@ describe('buildSearchStrings', () => {
     }
     expect(out.reduce((n, s) => n + s.count, 0)).toBe(120);
   });
+  it('ignores male targets, keeps female ones', () => {
+    expect(buildSearchStrings([{ dex: 41, gender: 'm' }, { dex: 42, gender: 'f' }]).map((s) => s.text)).toEqual(['41', '42&female']);
+  });
   it('orders modifiers consistently', () => {
     const [s] = buildSearchStrings([{ dex: 19, region: 'alola', gender: 'f', shiny: true }]);
     expect(s!.text).toBe('19&alola&female&shiny');

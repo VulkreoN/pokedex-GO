@@ -99,9 +99,11 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
               <Chip key={v} active={view === v} onClick={() => setView(v)}>{{ missing: t.missing, caught: t.caught, all: t.filter_all }[v]}</Chip>
             ))}
-            <span className="flex-1" />
-            <Button tone="primary" className="min-h-9 shrink-0 px-3 text-sm" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>{t.copy_for_game}</Button>
           </div>
+          <Button tone="primary" className="mt-2 w-full gap-2" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
+            {t.copy_for_game}
+          </Button>
         </div>
       </TopBar>
 
@@ -109,7 +111,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}
-            {owner && <><br /><Link to="/" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link></>}
+            {owner && <><br /><Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link></>}
           </Empty>
         )}
         {list.entries.length > 0 && entries.length === 0 && <Empty>{t.nothing_here}</Empty>}

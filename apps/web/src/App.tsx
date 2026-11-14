@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
@@ -29,8 +29,34 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return null;
+}
+
+/** Logged-in users land on the Pokédex, others on the login page (the Pokédex stays reachable at /dex). */
+function Home() {
+  const me = useMe();
+  if (me.isPending) return <Spinner />;
+  return <Navigate to={me.data ? '/dex' : '/login'} replace />;
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <main className="mx-auto max-w-sm px-6 py-20 text-center">
+        <p className="text-lg font-bold">Oups.</p>
+        <p className="mt-2 text-sm text-[var(--ink-2)]">{this.state.error.message}</p>
+        <a href="/" className="mt-6 inline-block rounded-xl bg-sky px-4 py-3 font-semibold text-white">Recharger</a>
+      </main>
+    );
+  }
 }
 
 export function App() {
@@ -55,8 +81,10 @@ export function App() {
         <ToastProvider>
           <BrowserRouter>
             <ScrollToTop />
+            <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<PokedexPage />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/dex" element={<PokedexPage />} />
               <Route path="/dex/:dex" element={<SpeciesPage />} />
               <Route path="/lists" element={<RequireAuth><ListsPage /></RequireAuth>} />
               <Route path="/lists/:id" element={<RequireAuth><ListPage /></RequireAuth>} />
@@ -67,6 +95,7 @@ export function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </ErrorBoundary>
             <BottomNav />
           </BrowserRouter>
         </ToastProvider>

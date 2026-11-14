@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router';
-import { Button, TextField, TopBar } from '../components/ui.js';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { Button, TextField } from '../components/ui.js';
 import { useAuthMutation } from '../lib/auth.js';
 import { useT } from '../lib/i18n.js';
 import { errorMessage } from './FriendsPage.js';
@@ -20,7 +20,7 @@ export function LoginPage() {
     setError(null);
     try {
       await auth.mutateAsync({ username: username.trim(), password });
-      navigate((location.state as { from?: string } | null)?.from ?? '/lists', { replace: true });
+      navigate((location.state as { from?: string } | null)?.from ?? '/dex', { replace: true });
     } catch (err) {
       setError(errorMessage(t, err));
     }
@@ -28,8 +28,7 @@ export function LoginPage() {
 
   return (
     <>
-      <TopBar title={mode === 'login' ? t.login : t.register} back />
-      <main className="mx-auto max-w-sm px-4 pb-24 pt-4">
+      <main className="mx-auto max-w-sm px-4 pb-24 pt-16">
         <h2 className="text-[28px] font-bold leading-tight">{t.welcome_title}</h2>
         <p className="mb-6 mt-2 text-[15px] text-[var(--ink-2)]">{t.welcome_text}</p>
         <form onSubmit={submit} className="space-y-3">
@@ -45,6 +44,7 @@ export function LoginPage() {
           </button>
         </p>
         <p className="mt-8 text-center text-xs text-[var(--ink-3)]">{t.login_hint}</p>
+        <p className="mt-6 text-center text-sm"><Link to="/dex" className="font-semibold text-[var(--ink-2)] underline">{t.browse_without_account}</Link></p>
       </main>
     </>
   );

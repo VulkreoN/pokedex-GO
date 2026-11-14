@@ -83,8 +83,7 @@ function modifiersOf(t: SearchTarget): string[] {
   if (t.region) mods.push(t.region);
   if (t.costume) mods.push('costume');
   if (t.gmax) mods.push('gigantamax');
-  if (t.gender === 'f') mods.push('female');
-  else if (t.gender === 'm') mods.push('male');
+  if (t.gender === 'f') mods.push('female'); // male is the default appearance, no filter needed
   if (t.shiny) mods.push('shiny');
   return mods;
 }

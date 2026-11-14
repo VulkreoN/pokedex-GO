@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router';
+import { NavLink, useLocation, useNavigate } from 'react-router';
 import { useT } from '../lib/i18n.js';
 
 type Tone = 'primary' | 'quiet' | 'danger' | 'ghost';
@@ -75,7 +75,7 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
     <header className="pt-safe sticky top-0 z-20 bg-[var(--paper)]/90 backdrop-blur">
       <div className="mx-auto flex min-h-14 max-w-3xl items-center gap-1 px-3">
         {back && (
-          <IconButton label={t.close} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}>
+          <IconButton label={t.close} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/dex'))}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </IconButton>
         )}
@@ -89,8 +89,10 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
 
 export function BottomNav() {
   const t = useT();
+  const { pathname } = useLocation();
+  if (pathname === '/login') return null;
   const items = [
-    { to: '/', label: t.nav_dex, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
+    { to: '/dex', label: t.nav_dex, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
     { to: '/lists', label: t.nav_lists, icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /> },
     { to: '/friends', label: t.nav_friends, icon: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /> },
     { to: '/me', label: t.nav_me, icon: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /> },
@@ -102,7 +104,7 @@ export function BottomNav() {
           <NavLink
             key={it.to}
             to={it.to}
-            end={it.to === '/'}
+            end={false}
             className={({ isActive }) => `flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold ${isActive ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}
           >
             {({ isActive }) => (

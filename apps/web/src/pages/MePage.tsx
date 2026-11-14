@@ -33,7 +33,7 @@ export function MePage() {
           <section className="rounded-card border border-[var(--dust)] p-4">
             <div className="text-[22px] font-bold">{me.data.username}</div>
             <div className="tnum text-sm text-[var(--ink-2)]">{t.my_code} · {fmtCode(me.data.friendCode)}</div>
-            <Button className="mt-3" onClick={async () => { await logout.mutateAsync(); navigate('/'); }}>{t.logout}</Button>
+            <Button className="mt-3" onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
           </section>
         ) : (
           <section className="rounded-card bg-ink p-4 text-paper dark:bg-paper dark:text-ink">

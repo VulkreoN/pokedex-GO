@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import type { Variant } from '@mydexpogo/shared';
-import { AddToListSheet } from '../components/AddToList.js';
+import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
-import { Badge, Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useDataset } from '../lib/dataset.js';
-import { localized, useLang, useT } from '../lib/i18n.js';
+import { localized, typeName, useLang, useT } from '../lib/i18n.js';
 
 const TYPE_COLORS: Record<string, string> = {
   normal: '#a8a77a', fire: '#ee8130', water: '#6390f0', grass: '#7ac74c', electric: '#f7d02c', ice: '#96d9d6', fighting: '#c22e28', poison: '#a33ea1',
@@ -18,20 +17,24 @@ export function SpeciesPage() {
   const dex = Number(useParams().dex);
   const dataset = useDataset();
   const [shiny, setShiny] = useState(false);
-  const [adding, setAdding] = useState<Variant | null>(null);
-
-  if (dataset.isPending) return <Spinner />;
+  const [adding, setAdding] = useState<VariantGroup | null>(null);
   const idx = dataset.data;
   const species = idx?.speciesByDex.get(dex);
+  const variants = useMemo(() => idx?.variantsByDex.get(dex) ?? [], [idx, dex]);
+
+  const sections = useMemo(() => {
+    const by = (kinds: string[]) => groupVariants(variants.filter((v) => kinds.includes(v.kind)));
+    return [
+      [t.normal, by(['base'])],
+      [t.filter_regional, by(['regional'])],
+      [t.filter_forms, by(['form'])],
+      [t.filter_costumes, by(['costume'])],
+      [t.filter_mega, by(['mega', 'gmax'])],
+    ] as [string, VariantGroup[]][];
+  }, [variants, t]);
+
+  if (dataset.isPending) return <Spinner />;
   if (!idx || !species) return <Empty>{t.err_not_found}</Empty>;
-  const variants = idx.variantsByDex.get(dex) ?? [];
-  const groups: [string, Variant[]][] = [
-    [t.normal, variants.filter((v) => v.kind === 'base')],
-    [t.filter_regional, variants.filter((v) => v.kind === 'regional')],
-    [t.filter_forms, variants.filter((v) => v.kind === 'form')],
-    [t.filter_costumes, variants.filter((v) => v.kind === 'costume')],
-    [t.filter_mega, variants.filter((v) => v.kind === 'mega' || v.kind === 'gmax')],
-  ];
   const prev = idx.speciesByDex.get(dex - 1);
   const next = idx.speciesByDex.get(dex + 1);
 
@@ -50,9 +53,9 @@ export function SpeciesPage() {
       <main className="mx-auto max-w-3xl px-3 pb-24">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {species.types.map((ty) => (
-            <span key={ty} className="rounded-md px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white" style={{ background: TYPE_COLORS[ty] ?? '#888' }}>{ty}</span>
+            <span key={ty} className="rounded-md px-2 py-0.5 text-xs font-bold text-white" style={{ background: TYPE_COLORS[ty] ?? '#888' }}>{typeName(ty, lang)}</span>
           ))}
-          {species.rarity !== 'normal' && <Badge tone="muted">{species.rarity.replace('_', ' ')}</Badge>}
+          {species.rarity !== 'normal' && <Badge tone="muted">{t[`rarity_${species.rarity}`]}</Badge>}
           {!species.released && <Badge tone="datamined">{t.unreleased_species}</Badge>}
           {species.shinyReleased === false && <Badge tone="muted">{t.no_shiny}</Badge>}
           <span className="ml-auto" />
@@ -62,30 +65,35 @@ export function SpeciesPage() {
           </Chip>
         </div>
 
-        {groups.map(([title, vs]) =>
-          vs.length ? (
+        {sections.map(([title, groups]) =>
+          groups.length ? (
             <section key={title} className="mb-5">
-              <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-[var(--ink-3)]">{vs.length}</span></h2>
-              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {vs.map((v) => {
+              <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-[var(--ink-3)]">{groups.length}</span></h2>
+              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {groups.map((g) => {
+                  const v = g.variants[0]!;
                   const shinyMissing = shiny && !v.hasShiny;
+                  const datamined = g.variants.some((x) => x.datamined);
                   return (
-                    <li key={v.key} className="flex flex-col rounded-card border border-[var(--dust)] p-2">
-                      <div className="flex items-start gap-2">
-                        <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={64} />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold">{localized(v.label, lang) || localized(species.name, lang)}</div>
-                          <div className="text-xs text-[var(--ink-2)]">{v.gender === 'f' ? t.female : v.gender === 'm' ? t.male : ''}</div>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {v.datamined && <Badge tone="datamined">{t.datamined}</Badge>}
-                            {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
-                            {v.noEvolve && <Badge tone="muted">no evolve</Badge>}
-                          </div>
+                    <li key={g.id}>
+                      <button
+                        type="button"
+                        onClick={() => setAdding(g)}
+                        className="flex h-full w-full flex-col items-center rounded-card border border-[var(--dust)] px-1.5 pb-2 pt-2 text-center transition hover:bg-[var(--paper-2)]/60 active:scale-[0.98]"
+                        aria-label={`${t.add} ${localized(g.label, lang) || localized(species.name, lang)}`}
+                      >
+                        <div className="relative">
+                          <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
+                          {g.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-[var(--ink-3)]">♂♀</span>}
+                          {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
                         </div>
-                      </div>
-                      <Button tone="quiet" className="mt-2 min-h-10 w-full text-sm" disabled={shinyMissing} onClick={() => setAdding(v)}>
-                        {shiny && <Sparkle className="text-shiny" />} {t.add}
-                      </Button>
+                        <span className="mt-1 line-clamp-2 w-full text-[12px] font-semibold leading-tight">{localized(g.label, lang) || localized(species.name, lang)}</span>
+                        <span className="mt-1 flex flex-wrap justify-center gap-1">
+                          {datamined && <Badge tone="datamined">{t.datamined}</Badge>}
+                          {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
+                          {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
+                        </span>
+                      </button>
                     </li>
                   );
                 })}
@@ -95,7 +103,7 @@ export function SpeciesPage() {
         )}
         {variants.some((v) => v.datamined) && <p className="text-xs text-[var(--ink-3)]">{t.datamined_hint}</p>}
       </main>
-      <AddToListSheet idx={idx} variant={adding} shiny={shiny} onClose={() => setAdding(null)} />
+      <AddToListSheet idx={idx} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />
     </>
   );
 }
