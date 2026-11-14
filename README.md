@@ -41,6 +41,10 @@ Le workflow GitHub `Refresh dataset` relance la génération chaque nuit et comm
 
 Les images sont servies depuis GitHub (PokeMiners) et mises en cache par le service worker.
 
+L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain, œufs) lit en direct les JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures. Leek Duck ne garde que le présent et le futur : le pipeline archive chaque événement vu dans `apps/web/public/data/events-archive.json`, ce qui alimente l'onglet « Passés ».
+
+Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial, obscur, purifié, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
+
 ## Recherche dans le jeu
 
 Depuis une liste, « Copier pour le jeu » génère des chaînes pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme) : numéros compressés en plages, une chaîne par combinaison (`&shiny`, `&costume`, `&female`, `&alola`...), découpées à 200 caractères.

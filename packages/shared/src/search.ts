@@ -9,7 +9,7 @@
  * There is no way to OR two AND-groups, so each modifier combination is its own string.
  * A third-party tool reports a 200-character limit on the in-game field, so strings are split in batches.
  */
-import type { Gender, Variant } from './types.js';
+import type { EntryTag, Gender, Variant } from './types.js';
 
 export type Region = 'alola' | 'galar' | 'hisui' | 'paldea';
 
@@ -20,6 +20,7 @@ export interface SearchTarget {
   gender?: Gender | null;
   region?: Region | null;
   gmax?: boolean;
+  tag?: EntryTag;
 }
 
 export interface SearchString {
@@ -67,10 +68,11 @@ export function regionOfForm(form: string | null): Region | null {
 }
 
 /** Turns a dataset variant into a search target. Pass genderDiff of the species to decide whether a gender filter is meaningful. */
-export function targetFromVariant(v: Variant, shiny: boolean, genderDiff: boolean): SearchTarget {
+export function targetFromVariant(v: Variant, shiny: boolean, genderDiff: boolean, tag: EntryTag = ''): SearchTarget {
   return {
     dex: v.dex,
     shiny,
+    tag,
     costume: v.kind === 'costume',
     gender: genderDiff && v.gender ? v.gender : null,
     region: v.kind === 'regional' ? regionOfForm(v.form) : null,
@@ -85,6 +87,7 @@ function modifiersOf(t: SearchTarget): string[] {
   if (t.gmax) mods.push('gigantamax');
   if (t.gender === 'f') mods.push('female'); // male is the default appearance, no filter needed
   if (t.shiny) mods.push('shiny');
+  if (t.tag) mods.push(t.tag); // lucky, background, shadow, purified, xxl, xxs are all in-game keywords
   return mods;
 }
 

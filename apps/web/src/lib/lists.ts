@@ -46,7 +46,7 @@ export const useUpsertEntries = () =>
 
 export const useRemoveEntries = () =>
   useListMutation(
-    (vars: { id: string; entries: { variantKey: string; shiny: boolean }[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'DELETE', body: { entries: vars.entries } }),
+    (vars: { id: string; entries: { variantKey: string; shiny: boolean; tag: ListEntry['tag'] }[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'DELETE', body: { entries: vars.entries } }),
     (vars) => [['lists'], ['list', vars.id]],
   );
 

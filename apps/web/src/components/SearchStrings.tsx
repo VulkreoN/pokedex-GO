@@ -16,12 +16,13 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       .flatMap((e) => {
         const v = idx.variantByKey.get(e.variantKey);
         const sp = v && idx.speciesByDex.get(v.dex);
-        return v && sp ? [targetFromVariant(v, e.shiny, sp.genderDiff)] : [];
+        return v && sp ? [targetFromVariant(v, e.shiny, sp.genderDiff, e.tag)] : [];
       });
     return buildSearchStrings(targets);
   }, [entries, idx, onlyMissing]);
 
-  const label = (mods: string[]) => (mods.length ? mods.map((m) => ({ shiny: t.shiny, costume: t.filter_costumes, female: t.female, male: t.male, gigantamax: 'Gigantamax' })[m] ?? m).join(' + ') : t.filter_all);
+  const names: Record<string, string> = { shiny: t.shiny, costume: t.filter_costumes, female: t.female, gigantamax: 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background, shadow: t.tag_shadow, purified: t.tag_purified, xxl: t.tag_xxl, xxs: t.tag_xxs };
+  const label = (mods: string[]) => (mods.length ? mods.map((m) => names[m] ?? m).join(' + ') : t.filter_all);
 
   return (
     <div className="space-y-3">

@@ -48,12 +48,14 @@ export const listEntries = pgTable(
     listId: text('list_id').notNull().references(() => lists.id, { onDelete: 'cascade' }),
     variantKey: text('variant_key').notNull(),
     shiny: boolean('shiny').notNull().default(false),
+    /** '' | lucky | background | shadow | purified | xxl | xxs */
+    tag: text('tag').notNull().default(''),
     done: boolean('done').notNull().default(false),
     note: text('note'),
     position: integer('position').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny] })],
+  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag] })],
 );
 
 export const friendRequests = pgTable(

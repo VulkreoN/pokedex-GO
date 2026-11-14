@@ -70,7 +70,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
 
   const toggle = (e: ListEntry) => {
     if (!owner) return;
-    upsert.mutate({ id: list.id, entries: [{ variantKey: e.variantKey, shiny: e.shiny, done: !e.done, note: e.note }] });
+    upsert.mutate({ id: list.id, entries: [{ variantKey: e.variantKey, shiny: e.shiny, tag: e.tag, done: !e.done, note: e.note }] });
   };
 
   const shareUrl = list.shareToken ? `${location.origin}/s/${list.shareToken}` : null;
@@ -121,7 +121,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
             const sp = v && idx.speciesByDex.get(v.dex);
             if (!v || !sp) return null;
             return (
-              <li key={`${e.variantKey}:${e.shiny}`} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 118px' }}>
+              <li key={`${e.variantKey}:${e.shiny}:${e.tag}`} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 118px' }}>
                 <button
                   type="button"
                   onClick={() => toggle(e)}
@@ -140,7 +140,12 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
                     {v.datamined && !e.done && <span className="absolute -right-1 bottom-0 h-2 w-2 rounded-full bg-sky" />}
                   </div>
                   <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(sp.name, lang)}</span>
-                  <span className="w-full truncate text-center text-[10px] leading-tight text-[var(--ink-3)]">{[localized(v.label, lang), v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : ''].filter(Boolean).join(' ')}</span>
+                  {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-[var(--ink-3)]">{localized(v.label, lang)}</span>}
+                  {(v.gender || e.tag) && (
+                    <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-[var(--ink-2)]">
+                      {[v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.tag ? t[`tag_${e.tag}`] : ''].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                 </button>
                 {owner && (
                   <button type="button" onClick={() => setSelected(e)} className="mt-0.5 w-full text-center text-[10px] text-[var(--ink-3)] hover:text-berry" aria-label={t.remove_entry}>···</button>
@@ -181,7 +186,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
             </Button>
             <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="block"><Button className="w-full">{t.nav_dex}</Button></Link>
             {owner && (
-              <Button tone="danger" className="w-full" onClick={async () => { await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny }] }); setSelected(null); }}>
+              <Button tone="danger" className="w-full" onClick={async () => { await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] }); setSelected(null); }}>
                 {t.remove_entry}
               </Button>
             )}

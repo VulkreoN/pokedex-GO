@@ -82,10 +82,15 @@ export interface DatasetManifest {
 
 export type ListVisibility = 'private' | 'friends' | 'link';
 
+/** Optional extra trait of a hunted Pokémon. Empty string = none. */
+export const ENTRY_TAGS = ['', 'lucky', 'background', 'shadow', 'purified', 'xxl', 'xxs'] as const;
+export type EntryTag = (typeof ENTRY_TAGS)[number];
+
 export interface ListEntry {
   variantKey: string;
   /** The target is the shiny version of the variant. */
   shiny: boolean;
+  tag: EntryTag;
   /** Caught / owned. */
   done: boolean;
   note: string | null;

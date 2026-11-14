@@ -23,6 +23,7 @@ import {
 import { ASSET_BASE, ASSET_BASE_FULL, ASSET_BASE_LEGACY, POKEAPI_ARTWORK, SOURCES, fetchAssetsTree, fetchJson, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import overrides from './overrides.json' with { type: 'json' };
+import { updateEventArchive } from './events.js';
 
 /* ---------- CLI ---------- */
 const args = new Map(process.argv.slice(2).map((a) => {
@@ -291,7 +292,7 @@ async function main() {
     a.dex - b.dex ||
     KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
     (a.label?.en ?? '').localeCompare(b.label?.en ?? '') ||
-    GENDER_ORDER[a.gender ?? 'n'] - GENDER_ORDER[b.gender ?? 'n'],
+    (GENDER_ORDER[a.gender ?? 'n'] ?? 0) - (GENDER_ORDER[b.gender ?? 'n'] ?? 0),
   );
 
   const species: Species[] = [...speciesByDex.values()]
@@ -316,6 +317,12 @@ async function main() {
     path.join(outDir, 'manifest.json'),
     JSON.stringify({ version: dataset.version, generatedAt: dataset.generatedAt, speciesCount: species.length, variantCount: variants.length }, null, 2),
   );
+
+  const archive = await updateEventArchive(outDir, fetchOpts.offline).catch((e) => {
+    console.warn(`event archive not updated: ${(e as Error).message}`);
+    return null;
+  });
+  if (archive) console.log(`events archive: ${archive.total} events (${archive.added} new)`);
 
   const byKind = variants.reduce<Record<string, number>>((acc, v) => ((acc[v.kind] = (acc[v.kind] ?? 0) + 1), acc), {});
   console.log(`wrote ${path.join(outDir, 'pokedex.json')} v${dataset.version}`);

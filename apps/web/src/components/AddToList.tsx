@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Variant } from '@mydexpogo/shared';
+import { ENTRY_TAGS, type EntryTag, type Variant } from '@mydexpogo/shared';
 import { Link } from 'react-router';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
@@ -26,7 +26,21 @@ export function groupVariants(variants: Variant[]): VariantGroup[] {
   return [...groups.values()];
 }
 
-/** Picks gender + shiny, then one or more of the user's lists, and adds the entry to each. */
+interface Option {
+  id: string;
+  variant: Variant;
+  shiny: boolean;
+}
+
+/** Every version collectors count separately: male / female x normal / shiny. */
+function optionsOf(group: VariantGroup): Option[] {
+  return group.variants.flatMap((variant) => [
+    { id: `${variant.key}:0`, variant, shiny: false },
+    ...(variant.hasShiny ? [{ id: `${variant.key}:1`, variant, shiny: true }] : []),
+  ]);
+}
+
+/** Picks the versions (gender x shiny), an optional trait, then one or more lists, and adds one entry per version to each. */
 export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: DatasetIndex; group: VariantGroup | null; initialShiny: boolean; onClose: () => void }) {
   const t = useT();
   const { lang } = useLang();
@@ -36,50 +50,75 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
   const create = useCreateList();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
-  const [variant, setVariant] = useState<Variant | null>(null);
-  const [shiny, setShiny] = useState(initialShiny);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [tag, setTag] = useState<EntryTag>('');
+  const options = group ? optionsOf(group) : [];
 
   useEffect(() => {
-    setVariant(group?.variants[0] ?? null);
-    setShiny(initialShiny);
+    if (!group) return;
+    const opts = optionsOf(group);
+    const first = opts.find((o) => o.shiny === initialShiny) ?? opts[0];
+    setPicked(new Set(first ? [first.id] : []));
+    setTag('');
   }, [group, initialShiny]);
 
-  const species = variant ? idx.speciesByDex.get(variant.dex) : null;
-  const canShiny = !!variant?.hasShiny;
+  const species = group ? idx.speciesByDex.get(group.variants[0]!.dex) : null;
+  const chosen = options.filter((o) => picked.has(o.id));
 
   const submit = async () => {
-    if (!variant) return;
+    if (!group || chosen.length === 0) return;
     const ids = [...selected];
     if (newName.trim()) {
       const r = await create.mutateAsync({ name: newName.trim() });
       ids.push(r.list.id);
     }
-    await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries: [{ variantKey: variant.key, shiny: shiny && canShiny, done: false }] })));
+    const entries = chosen.map((o) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false }));
+    await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     setSelected(new Set());
     setNewName('');
     onClose();
   };
 
+  const optionLabel = (o: Option) => [o.variant.gender === 'f' ? '♀' : o.variant.gender === 'm' ? '♂' : null, o.shiny ? t.shiny : t.normal].filter(Boolean).join(' ');
+
   return (
     <Sheet open={!!group} onClose={onClose} title={t.add_to_list}>
-      {group && variant && species && (
-        <div className="mb-4 flex items-center gap-3">
-          <Sprite idx={idx} variant={variant} shiny={shiny && canShiny} size={72} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-bold">{localized(species.name, lang)}</div>
-            <div className="text-sm text-[var(--ink-2)]">{localized(group.label, lang) || t.normal}</div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {group.variants.length > 1 &&
-                group.variants.map((v) => (
-                  <Chip key={v.key} active={variant.key === v.key} onClick={() => setVariant(v)} className="min-h-8 px-2.5 text-xs">
-                    {v.gender === 'f' ? `♀ ${t.female}` : `♂ ${t.male}`}
-                  </Chip>
-                ))}
-              <Chip active={shiny && canShiny} disabled={!canShiny} onClick={() => setShiny((s) => !s)} className="min-h-8 px-2.5 text-xs disabled:opacity-40">
-                <Sparkle className={shiny && canShiny ? 'text-shiny' : ''} /> {canShiny ? t.shiny : t.no_shiny}
+      {group && species && (
+        <div className="mb-4">
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="font-bold">{localized(species.name, lang)}</span>
+            <span className="text-sm text-[var(--ink-2)]">{localized(group.label, lang) || t.normal}</span>
+          </div>
+          <p className="mb-1.5 text-xs font-medium text-[var(--ink-3)]">{t.which_versions}</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {options.map((o) => {
+              const on = picked.has(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPicked((p) => { const n = new Set(p); on ? n.delete(o.id) : n.add(o.id); return n; })}
+                  className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition ${on ? 'border-ink bg-[var(--paper-2)] dark:border-paper' : 'border-[var(--dust)] text-[var(--ink-2)]'}`}
+                >
+                  <span className="relative">
+                    <Sprite idx={idx} variant={o.variant} shiny={o.shiny} size={56} />
+                    {o.shiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
+                    {on && <span className="absolute -left-1 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-grass text-[10px] text-white">✓</span>}
+                  </span>
+                  {optionLabel(o)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mb-1.5 mt-3 text-xs font-medium text-[var(--ink-3)]">{t.trait}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ENTRY_TAGS.map((tg) => (
+              <Chip key={tg} active={tag === tg} onClick={() => setTag(tg)} className="min-h-8 px-2.5 text-xs">
+                {t[`tag_${tg}`]}
               </Chip>
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -104,8 +143,8 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
         })}
       </ul>
       <TextField placeholder={t.new_list} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} />
-      <Button tone="primary" className="mt-3 w-full" disabled={(selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
-        {t.add}
+      <Button tone="primary" className="mt-3 w-full" disabled={chosen.length === 0 || (selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
+        {t.add} · {t.selected_count(chosen.length)}
       </Button>
       {lists.isError && (
         <p className="mt-3 text-center text-sm">

@@ -1,4 +1,5 @@
 # Dev: only the database runs in Docker, the API and the web app run with `pnpm dev` for hot reload.
+name: mydexpogo-dev
 services:
   db:
     image: postgres:17-alpine

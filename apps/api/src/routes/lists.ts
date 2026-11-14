@@ -1,7 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { isValidVariantKey, type ListDetail, type ListSummary } from '@mydexpogo/shared';
+import { ENTRY_TAGS, isValidVariantKey, type ListDetail, type ListSummary } from '@mydexpogo/shared';
 import { z } from 'zod';
 import { requireAuth, userFromRequest, type AuthEnv, type AuthUser } from '../auth.js';
 import { db, schema } from '../db/index.js';
@@ -16,6 +16,7 @@ const listBody = z.object({
 const entryBody = z.object({
   variantKey: z.string().refine(isValidVariantKey, 'invalid variant key'),
   shiny: z.boolean().default(false),
+  tag: z.enum(ENTRY_TAGS).default(''),
   done: z.boolean().default(false),
   note: z.string().trim().max(200).nullable().optional(),
 });
@@ -58,11 +59,11 @@ async function listDetail(id: string, viewerIsOwner: boolean): Promise<ListDetai
     .select()
     .from(schema.listEntries)
     .where(eq(schema.listEntries.listId, id))
-    .orderBy(schema.listEntries.position, schema.listEntries.variantKey, schema.listEntries.shiny);
+    .orderBy(schema.listEntries.position, schema.listEntries.variantKey, schema.listEntries.shiny, schema.listEntries.tag);
   return {
     ...summary,
     shareToken: viewerIsOwner ? summary.shareToken : null,
-    entries: entries.map((e) => ({ variantKey: e.variantKey, shiny: e.shiny, done: e.done, note: e.note })),
+    entries: entries.map((e) => ({ variantKey: e.variantKey, shiny: e.shiny, tag: e.tag as ListDetail['entries'][number]['tag'], done: e.done, note: e.note })),
   };
 }
 
@@ -94,7 +95,7 @@ async function copyList(source: typeof schema.lists.$inferSelect, owner: AuthUse
     await tx.insert(schema.lists).values({ id, ownerId: owner.id, name: source.name.slice(0, 60), description: source.description, visibility: 'friends' });
     const entries = await tx.select().from(schema.listEntries).where(eq(schema.listEntries.listId, source.id));
     if (entries.length) {
-      await tx.insert(schema.listEntries).values(entries.map((e) => ({ listId: id, variantKey: e.variantKey, shiny: e.shiny, done: false, note: null, position: e.position })));
+      await tx.insert(schema.listEntries).values(entries.map((e) => ({ listId: id, variantKey: e.variantKey, shiny: e.shiny, tag: e.tag, done: false, note: null, position: e.position })));
     }
   });
   return listDetail(id, true);
@@ -152,9 +153,9 @@ export const listRoutes = new Hono<AuthEnv>()
       for (const chunk of chunks(entries, 500)) {
         await tx
           .insert(schema.listEntries)
-          .values(chunk.map((e) => ({ listId: list.id, variantKey: e.variantKey, shiny: e.shiny, done: e.done, note: e.note ?? null, position: ++position })))
+          .values(chunk.map((e) => ({ listId: list.id, variantKey: e.variantKey, shiny: e.shiny, tag: e.tag, done: e.done, note: e.note ?? null, position: ++position })))
           .onConflictDoUpdate({
-            target: [schema.listEntries.listId, schema.listEntries.variantKey, schema.listEntries.shiny],
+            target: [schema.listEntries.listId, schema.listEntries.variantKey, schema.listEntries.shiny, schema.listEntries.tag],
             set: { done: sql`excluded.done`, note: sql`excluded.note`, updatedAt: new Date() },
           });
       }
@@ -162,14 +163,14 @@ export const listRoutes = new Hono<AuthEnv>()
     });
     return c.json({ list: await listDetail(list.id, true) });
   })
-  .delete('/:id/entries', zValidator('json', z.object({ entries: z.array(z.object({ variantKey: z.string(), shiny: z.boolean() })).min(1).max(3000) })), async (c) => {
+  .delete('/:id/entries', zValidator('json', z.object({ entries: z.array(z.object({ variantKey: z.string(), shiny: z.boolean(), tag: z.enum(ENTRY_TAGS).default('') })).min(1).max(3000) })), async (c) => {
     const me = c.get('user');
     const list = await getList(c.req.param('id'));
     if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
     const { entries } = c.req.valid('json');
     await db.transaction(async (tx) => {
       for (const e of entries) {
-        await tx.delete(schema.listEntries).where(and(eq(schema.listEntries.listId, list.id), eq(schema.listEntries.variantKey, e.variantKey), eq(schema.listEntries.shiny, e.shiny)));
+        await tx.delete(schema.listEntries).where(and(eq(schema.listEntries.listId, list.id), eq(schema.listEntries.variantKey, e.variantKey), eq(schema.listEntries.shiny, e.shiny), eq(schema.listEntries.tag, e.tag)));
       }
     });
     await touch(list.id);

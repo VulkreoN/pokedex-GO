@@ -8,6 +8,7 @@ import { useMe } from './lib/auth.js';
 import { LangContext, detectLang } from './lib/i18n.js';
 import { applyTheme, getTheme } from './lib/theme.js';
 import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
+import { GamePage } from './pages/GamePage.js';
 import { ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -89,6 +90,7 @@ export function App() {
               <Route path="/lists" element={<RequireAuth><ListsPage /></RequireAuth>} />
               <Route path="/lists/:id" element={<RequireAuth><ListPage /></RequireAuth>} />
               <Route path="/s/:token" element={<SharedListPage />} />
+              <Route path="/game" element={<GamePage />} />
               <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
               <Route path="/friends/:id" element={<RequireAuth><FriendListsPage /></RequireAuth>} />
               <Route path="/me" element={<MePage />} />

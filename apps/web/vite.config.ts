@@ -30,6 +30,16 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
+            urlPattern: ({ url }) => url.hostname === 'raw.githubusercontent.com' && url.pathname.includes('/ScrapedDuck/'),
+            handler: 'NetworkFirst',
+            options: { cacheName: 'live', networkTimeoutSeconds: 6, expiration: { maxEntries: 8 } },
+          },
+          {
+            urlPattern: ({ url }) => url.hostname === 'cdn.leekduck.com' || url.hostname === 'leekduck.com',
+            handler: 'CacheFirst',
+            options: { cacheName: 'leekduck', expiration: { maxEntries: 1000, maxAgeSeconds: 14 * 86400 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+          {
             urlPattern: ({ url }) => url.pathname.startsWith('/data/'),
             handler: 'StaleWhileRevalidate',
             options: { cacheName: 'dataset', expiration: { maxEntries: 4 } },
