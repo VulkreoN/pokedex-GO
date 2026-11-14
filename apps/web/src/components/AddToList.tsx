@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCreateList, useLists, useUpsertEntries } from '../lib/lists.js';
+import { selection } from '../lib/selection.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { useToast } from './toast.js';
 import { Button, Chip, Sheet, TextField } from './ui.js';
@@ -97,6 +98,14 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
     onClose();
   };
 
+  const toSelection = () => {
+    if (chosen.length === 0) return;
+    const entries = chosen.flatMap((o) => [...tags].map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag })));
+    selection.add(entries);
+    toast(t.added_to_selection(entries.length));
+    onClose();
+  };
+
   const optionLabel = (o: Option) => [o.variant.gender === 'f' ? '♀' : o.variant.gender === 'm' ? '♂' : null, o.shiny ? t.shiny : t.normal].filter(Boolean).join(' ');
 
   return (
@@ -151,6 +160,10 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
           </div>
         </div>
       )}
+      <Button tone="quiet" className="mb-4 w-full border border-line bg-card" disabled={chosen.length === 0} onClick={toSelection}>
+        {t.add_to_selection} · {t.selected_count(chosen.length * tags.size)}
+      </Button>
+      <p className="mb-1.5 text-xs font-medium text-ink-3">{t.or_directly}</p>
       {lists.data?.length === 0 && !newName && <p className="mb-3 text-sm text-ink-2">{t.no_lists_yet}</p>}
       <ul className="mb-3 space-y-1">
         {lists.data?.map((l) => {

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { ToastProvider } from './components/toast.js';
+import { SelectionBar } from './components/SelectionBar.js';
 import { BottomNav, Spinner } from './components/ui.js';
 import { useMe } from './lib/auth.js';
 import { LangContext, detectLang } from './lib/i18n.js';
@@ -98,6 +99,7 @@ export function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </ErrorBoundary>
+            <SelectionBar />
             <BottomNav />
           </BrowserRouter>
         </ToastProvider>
