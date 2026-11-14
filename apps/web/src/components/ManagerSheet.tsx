@@ -25,7 +25,8 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
 
   const save = async (mode: boolean | null) => {
     if (!group) return;
-    const label = en.trim() ? { en: en.trim(), ...(fr.trim() ? { fr: fr.trim() } : {}) } : null;
+    const changed = en.trim() !== (group.label?.en ?? '') || fr.trim() !== (group.label?.fr ?? '');
+    const label = changed && en.trim() ? { en: en.trim(), ...(fr.trim() ? { fr: fr.trim() } : {}) } : null;
     await Promise.all(group.variants.map((v) => set.mutateAsync({ variantKey: v.key, released: mode, label })));
     toast(t.saved);
     onClose();

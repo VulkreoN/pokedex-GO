@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
 import { useMe } from '../lib/auth.js';
-import { Sparkle, Sprite } from '../components/Sprite.js';
+import { Sparkle } from '../components/Sprite.js';
+import { VariantCard } from '../components/VariantCard.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useDataset } from '../lib/dataset.js';
 import { localized, typeName, useLang, useT } from '../lib/i18n.js';
@@ -75,38 +76,11 @@ export function SpeciesPage() {
             <section key={title} className="mb-5">
               <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-ink-3">{groups.length}</span></h2>
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {groups.map((g) => {
-                  const v = g.variants[0]!;
-                  const shinyMissing = shiny && !v.hasShiny;
-                  const datamined = g.variants.some((x) => x.datamined);
-                  return (
-                    <li key={g.id}>
-                      <button
-                        type="button"
-                        onClick={() => setAdding(g)}
-                        className="card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98]"
-                        aria-label={`${t.add} ${localized(g.label, lang) || localized(species.name, lang)}`}
-                      >
-                        <div className="relative">
-                          <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
-                          {g.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3">♂♀</span>}
-                          {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
-                        </div>
-                        <span className="mt-1 line-clamp-2 w-full text-[12px] font-semibold leading-tight">{localized(g.label, lang) || localized(species.name, lang)}</span>
-                        <span className="mt-1 flex flex-wrap justify-center gap-1">
-                          {datamined && <Badge tone="datamined">{t.datamined}</Badge>}
-                          {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
-                          {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
-                        </span>
-                      </button>
-                      {isManager && (
-                        <button type="button" onClick={() => setManaging(g)} className="mt-0.5 w-full rounded-md py-0.5 text-[11px] font-semibold text-sky hover:bg-paper-2" aria-label={t.manage_variant}>
-                          {t.manage_variant}
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
+                {groups.map((g) => (
+                  <li key={g.id}>
+                    <VariantCard idx={idx} species={species} group={g} shiny={shiny} onAdd={setAdding} onManage={isManager ? setManaging : undefined} />
+                  </li>
+                ))}
               </ul>
             </section>
           ) : null,

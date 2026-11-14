@@ -51,7 +51,8 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [tag, setTag] = useState<EntryTag>('');
+  /** Traits are multi-select: picking "lucky" and "none" adds both a plain and a lucky entry per version. */
+  const [tags, setTags] = useState<Set<EntryTag>>(new Set(['']));
   const options = group ? optionsOf(group) : [];
 
   useEffect(() => {
@@ -59,8 +60,24 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
     const opts = optionsOf(group);
     const first = opts.find((o) => o.shiny === initialShiny) ?? opts[0];
     setPicked(new Set(first ? [first.id] : []));
-    setTag('');
+    setTags(new Set(['']));
   }, [group, initialShiny]);
+
+  const toggleTag = (tg: EntryTag) =>
+    setTags((prev) => {
+      if (tg === '') return new Set(['']);
+      const n = new Set(prev);
+      n.delete('');
+      n.has(tg) ? n.delete(tg) : n.add(tg);
+      return n.size ? n : new Set(['']);
+    });
+  const presets: { label: string; ids: string[] }[] = options.length > 1
+    ? [
+        { label: group && group.variants.length > 1 ? `${t.normal} ♂♀` : t.normal, ids: options.filter((o) => !o.shiny).map((o) => o.id) },
+        { label: group && group.variants.length > 1 ? `${t.shiny} ♂♀` : t.shiny, ids: options.filter((o) => o.shiny).map((o) => o.id) },
+        { label: t.filter_all, ids: options.map((o) => o.id) },
+      ].filter((p) => p.ids.length > 0)
+    : [];
 
   const species = group ? idx.speciesByDex.get(group.variants[0]!.dex) : null;
   const chosen = options.filter((o) => picked.has(o.id));
@@ -72,7 +89,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
       const r = await create.mutateAsync({ name: newName.trim() });
       ids.push(r.list.id);
     }
-    const entries = chosen.map((o) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false }));
+    const entries = chosen.flatMap((o) => [...tags].map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false })));
     await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     setSelected(new Set());
@@ -91,6 +108,18 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
             <span className="text-sm text-ink-2">{localized(group.label, lang) || t.normal}</span>
           </div>
           <p className="mb-1.5 text-xs font-medium text-ink-3">{t.which_versions}</p>
+          {presets.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {presets.map((p) => {
+                const on = p.ids.every((id) => picked.has(id)) && picked.size === p.ids.length;
+                return (
+                  <Chip key={p.label} active={on} onClick={() => setPicked(new Set(p.ids))} className="min-h-8 px-2.5 text-xs">
+                    {p.label}
+                  </Chip>
+                );
+              })}
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-1.5">
             {options.map((o) => {
               const on = picked.has(o.id);
@@ -115,7 +144,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
           <p className="mb-1.5 mt-3 text-xs font-medium text-ink-3">{t.trait}</p>
           <div className="flex flex-wrap gap-1.5">
             {ENTRY_TAGS.map((tg) => (
-              <Chip key={tg} active={tag === tg} onClick={() => setTag(tg)} className="min-h-8 px-2.5 text-xs">
+              <Chip key={tg} active={tags.has(tg)} onClick={() => toggleTag(tg)} className="min-h-8 px-2.5 text-xs">
                 {t[`tag_${tg}`]}
               </Chip>
             ))}
@@ -144,7 +173,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
       </ul>
       <TextField placeholder={t.new_list} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} />
       <Button tone="primary" className="mt-3 w-full" disabled={chosen.length === 0 || (selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
-        {t.add} · {t.selected_count(chosen.length)}
+        {t.add} · {t.selected_count(chosen.length * tags.size)}
       </Button>
       {lists.isError && (
         <p className="mt-3 text-center text-sm">
