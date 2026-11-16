@@ -79,7 +79,10 @@ Sources :
 - PokeMiners `pogo_assets` (toutes les images, y compris les costumes dataminés pas encore sortis),
 - PokeMiners textes du jeu (noms FR/EN, libellés de formes),
 - WatWowMap `pogo-data-api` (noms des costumes historiques),
-- pogoapi.net (shinies sortis par espèce).
+- pogoapi.net (liste des espèces sorties, shinies sortis par espèce ; en retard de plusieurs mois, complétée par les espèces vues sur Leek Duck et les overrides),
+- trade.pokemongopro.com (fonds spéciaux : quel Pokémon peut porter quel fond d'évènement ou de lieu).
+
+Une espèce est « sortie » si elle est dans la liste pogoapi, ou vue sur Leek Duck (raids, œufs, études, évènements, mémorisé dans le volume), ou forcée par un override ; avoir une image chez PokeMiners ne suffit pas (Arceus, Manaphy… ont des images depuis des années).
 
 Une variante est marquée « pas encore sortie » quand elle existe dans les fichiers du jeu mais pas encore dans le game master. Le game master publié par PokeMiners a parfois des semaines de retard : un gérant corrige ça en deux taps depuis l'app, et `packages/data/src/overrides.json` garde les corrections permanentes.
 

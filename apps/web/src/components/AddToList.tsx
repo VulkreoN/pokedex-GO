@@ -54,7 +54,10 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
   const [picked, setPicked] = useState<Set<string>>(new Set());
   /** Traits are multi-select: picking "lucky" and "none" adds both a plain and a lucky entry per version. */
   const [tags, setTags] = useState<Set<EntryTag>>(new Set(['']));
+  /** Specific backgrounds picked under the "special background" trait; empty = any background. */
+  const [bgs, setBgs] = useState<Set<string>>(new Set());
   const options = group ? optionsOf(group) : [];
+  const availableBgs = [...new Set((group?.variants ?? []).flatMap((v) => v.backgrounds ?? []))].map((id) => idx.ds.backgrounds?.[id]).filter((b): b is NonNullable<typeof b> => !!b);
 
   useEffect(() => {
     if (!group) return;
@@ -62,7 +65,12 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
     const first = opts.find((o) => o.shiny === initialShiny) ?? opts[0];
     setPicked(new Set(first ? [first.id] : []));
     setTags(new Set(['']));
+    setBgs(new Set());
   }, [group, initialShiny]);
+
+  /** Effective tags: "background" expands to one tag per picked specific background. */
+  const effectiveTags = (): EntryTag[] =>
+    [...tags].flatMap((tg) => (tg === 'background' && bgs.size ? [...bgs].map((id) => `bg:${id}` as EntryTag) : [tg]));
 
   const toggleTag = (tg: EntryTag) =>
     setTags((prev) => {
@@ -90,7 +98,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
       const r = await create.mutateAsync({ name: newName.trim() });
       ids.push(r.list.id);
     }
-    const entries = chosen.flatMap((o) => [...tags].map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false })));
+    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false })));
     await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     setSelected(new Set());
@@ -100,7 +108,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
 
   const toSelection = () => {
     if (chosen.length === 0) return;
-    const entries = chosen.flatMap((o) => [...tags].map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag })));
+    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag })));
     selection.add(entries);
     toast(t.added_to_selection(entries.length));
     onClose();
@@ -158,10 +166,28 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
               </Chip>
             ))}
           </div>
+          {tags.has('background') && availableBgs.length > 0 && (
+            <>
+              <p className="mb-1.5 mt-3 text-xs font-medium text-ink-3">{t.which_backgrounds}</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+                <button type="button" onClick={() => setBgs(new Set())} className={`flex h-16 w-24 shrink-0 items-center justify-center rounded-xl border-2 text-xs font-semibold ${bgs.size === 0 ? 'border-go bg-go-soft' : 'border-line'}`}>{t.background_any}</button>
+                {availableBgs.map((b) => {
+                  const on = bgs.has(b.id);
+                  return (
+                    <button key={b.id} type="button" title={b.label} aria-pressed={on} onClick={() => setBgs((p) => { const n = new Set(p); on ? n.delete(b.id) : n.add(b.id); return n; })} className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 ${on ? 'border-go' : 'border-line'}`}>
+                      <img src={b.image} alt={b.label} loading="lazy" className="h-full w-full object-cover" />
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 text-[10px] text-white">{b.label}</span>
+                      {on && <span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-go text-[10px] text-white">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
       <Button tone="quiet" className="mb-4 w-full border border-line bg-card" disabled={chosen.length === 0} onClick={toSelection}>
-        {t.add_to_selection} · {t.selected_count(chosen.length * tags.size)}
+        {t.add_to_selection} · {t.selected_count(chosen.length * effectiveTags().length)}
       </Button>
       <p className="mb-1.5 text-xs font-medium text-ink-3">{t.or_directly}</p>
       {lists.data?.length === 0 && !newName && <p className="mb-3 text-sm text-ink-2">{t.no_lists_yet}</p>}
@@ -186,7 +212,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
       </ul>
       <TextField placeholder={t.new_list} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} />
       <Button tone="primary" className="mt-3 w-full" disabled={chosen.length === 0 || (selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
-        {t.add} · {t.selected_count(chosen.length * tags.size)}
+        {t.add} · {t.selected_count(chosen.length * effectiveTags().length)}
       </Button>
       {lists.isError && (
         <p className="mt-3 text-center text-sm">

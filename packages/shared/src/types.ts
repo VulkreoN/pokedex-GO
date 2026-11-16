@@ -59,6 +59,14 @@ export interface Variant {
   types?: PokemonType[];
   /** Evolving is blocked for this costume. */
   noEvolve?: boolean;
+  /** Ids of special backgrounds this picture can carry (see Dataset.backgrounds). */
+  backgrounds?: string[];
+}
+
+export interface BackgroundInfo {
+  id: string;
+  label: string;
+  image: string;
 }
 
 export interface Dataset {
@@ -69,6 +77,8 @@ export interface Dataset {
   sources: Record<string, string>;
   species: Species[];
   variants: Variant[];
+  /** Special backgrounds catalog (location cards, event backgrounds), keyed by id. */
+  backgrounds?: Record<string, BackgroundInfo>;
 }
 
 export interface DatasetManifest {
@@ -84,7 +94,10 @@ export type ListVisibility = 'private' | 'friends' | 'link';
 
 /** Optional extra trait of a hunted Pokémon. Empty string = none. */
 export const ENTRY_TAGS = ['', 'lucky', 'background', 'shadow', 'purified', 'xxl', 'xxs'] as const;
-export type EntryTag = (typeof ENTRY_TAGS)[number];
+/** One of ENTRY_TAGS, or "bg:<background id>" for one specific special background. */
+export type EntryTag = (typeof ENTRY_TAGS)[number] | `bg:${string}`;
+export const isEntryTag = (s: string): s is EntryTag => (ENTRY_TAGS as readonly string[]).includes(s) || /^bg:[A-Za-z0-9_.-]{1,80}$/.test(s);
+export const backgroundIdOf = (tag: EntryTag): string | null => (tag.startsWith('bg:') ? tag.slice(3) : null);
 
 export interface ListEntry {
   variantKey: string;

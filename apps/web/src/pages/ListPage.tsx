@@ -7,7 +7,7 @@ import { useToast } from '../components/toast.js';
 import { Badge, Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
-import { useDataset, type DatasetIndex } from '../lib/dataset.js';
+import { tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, type ListAccess } from '../lib/lists.js';
 import { useUpsertEntries } from '../lib/lists.js';
@@ -143,7 +143,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
                   {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
                   {(v.gender || e.tag) && (
                     <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">
-                      {[v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.tag ? t[`tag_${e.tag}`] : ''].filter(Boolean).join(' · ')}
+                      {[v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.tag ? tagLabel(idx, e.tag, t) : ''].filter(Boolean).join(' · ')}
                     </span>
                   )}
                 </button>

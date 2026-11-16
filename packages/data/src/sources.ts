@@ -8,6 +8,8 @@ export const SOURCES = {
   textsFr: 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Texts/Latest%20APK/JSON/i18n_french.json',
   costumes: 'https://raw.githubusercontent.com/WatWowMap/pogo-data-api/main/data/v1/costumes.json',
   shiny: 'https://pogoapi.net/api/v1/shiny_pokemon.json',
+  released: 'https://pogoapi.net/api/v1/released_pokemon.json',
+  backgrounds: 'https://trade.pokemongopro.com/assets/background.json',
 } as const;
 
 export const ASSET_BASE =
@@ -15,6 +17,7 @@ export const ASSET_BASE =
 export const ASSET_BASE_FULL =
   'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Images/Pokemon/Addressable%20Assets/';
 export const ASSET_BASE_LEGACY = 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Images/Pokemon/';
+export const BACKGROUND_IMAGE_BASE = 'https://trade.pokemongopro.com/assets/backgrounds/';
 export const POKEAPI_ARTWORK = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
 
 export interface FetchOptions {

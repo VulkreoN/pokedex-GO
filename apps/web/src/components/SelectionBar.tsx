@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router';
-import { useDataset } from '../lib/dataset.js';
+import { tagLabel, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCreateList, useLists, useUpsertEntries } from '../lib/lists.js';
 import { selection, useSelection } from '../lib/selection.js';
@@ -67,7 +67,7 @@ export function SelectionBar() {
                   <span className="flex flex-wrap items-center gap-1 text-xs text-ink-2">
                     {v?.label && <span className="truncate">{localized(v.label, lang)}</span>}
                     {i.shiny && <Badge tone="shiny"><Sparkle className="mr-0.5 inline" />{t.shiny}</Badge>}
-                    {i.tag && <Badge tone="muted">{t[`tag_${i.tag}`]}</Badge>}
+                    {i.tag && <Badge tone="muted">{tagLabel(idx ?? undefined, i.tag, t)}</Badge>}
                   </span>
                 </span>
                 <IconButton label={t.remove_entry} onClick={() => selection.remove(i.id)} className="h-9 w-9">

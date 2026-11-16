@@ -31,7 +31,8 @@ export interface DataStatus {
   sources: SourceFreshness[];
 }
 
-const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json' };
+const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json' };
+const SCRAPEDDUCK = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/';
 
 const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string }[] = [
   { name: 'gameMaster', label: 'Game master (PokeMiners)', repo: 'PokeMiners/game_masters' },
@@ -51,6 +52,8 @@ class DataService {
   };
   private timer: NodeJS.Timeout | null = null;
   private overridesCache: ManualOverrides | null = null;
+  /** Dex numbers ever seen on Leek Duck (raids, eggs, research, events): proof a species is in the game. */
+  private seenSpecies = new Set<number>();
 
   get ready() { return this.raw !== null; }
   /** Raw generated dataset (no manager overrides), for matching jobs. */
@@ -87,6 +90,9 @@ class DataService {
       this.eventsBody = JSON.stringify(this.events);
     } catch {}
     try {
+      this.seenSpecies = new Set(JSON.parse(await readFile(path.join(env.dataDir, FILES.seen), 'utf8')) as number[]);
+    } catch {}
+    try {
       const saved = JSON.parse(await readFile(path.join(env.dataDir, FILES.status), 'utf8')) as Partial<DataStatus>;
       this.status = { ...this.status, ...saved, running: false, refreshHours: env.dataRefreshHours };
     } catch {}
@@ -102,11 +108,14 @@ class DataService {
     console.log(`dataset refresh (${reason})`);
     try {
       if (env.githubToken) process.env.GITHUB_TOKEN = env.githubToken;
+      const liveEvents = await fetchLiveEvents().catch((e: Error) => (console.log(`  events unavailable: ${e.message}`), [] as Awaited<ReturnType<typeof fetchLiveEvents>>));
+      const merged = mergeEvents(this.events, liveEvents);
+      await this.collectSeenSpecies(merged.all);
       const { dataset, stats } = await buildDataset({
         fetch: { cacheDir: path.join(env.dataDir, 'cache'), maxAgeHours: 0, offline: false },
+        extraReleased: this.seenSpecies,
         log: (m) => console.log(`  ${m}`),
       });
-      const merged = mergeEvents(this.events, await fetchLiveEvents().catch((e: Error) => (console.log(`  events unavailable: ${e.message}`), [])));
       this.raw = dataset;
       this.served = null;
       this.events = merged.all;
@@ -131,6 +140,20 @@ class DataService {
       this.schedule(this.status.lastError ? Math.min(3600_000, env.dataRefreshHours * 3600_000) : env.dataRefreshHours * 3600_000);
       await writeFile(path.join(env.dataDir, FILES.status), JSON.stringify({ ...this.status, running: false })).catch(() => {});
     }
+  }
+
+  /** Every Pokémon picture Leek Duck references proves the species is catchable: remember its dex number for good. */
+  private async collectSeenSpecies(events: ArchivedEvent[]) {
+    const before = this.seenSpecies.size;
+    const texts: string[] = [JSON.stringify(events)];
+    for (const f of ['raids.json', 'research.json', 'eggs.json']) {
+      texts.push(await fetch(SCRAPEDDUCK + f).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
+    }
+    for (const t of texts) {
+      for (const m of t.matchAll(/\/(?:pm(\d{1,4})\.|pokemon_icon_(\d{3})_)/g)) this.seenSpecies.add(Number(m[1] ?? m[2]));
+    }
+    if (this.seenSpecies.size !== before) await writeFile(path.join(env.dataDir, FILES.seen), JSON.stringify([...this.seenSpecies].sort((a, b) => a - b))).catch(() => {});
+    console.log(`  species seen on Leek Duck: ${this.seenSpecies.size} (+${this.seenSpecies.size - before})`);
   }
 
   /** Asks GitHub when each upstream repo last changed; best effort, never blocks the dataset. */

@@ -50,6 +50,12 @@ export function imageUrl(idx: DatasetIndex, v: Variant, shiny = false): string |
   return variantImageUrl(idx.ds, v, shiny);
 }
 
+/** Human label for an entry tag; "bg:<id>" resolves to the background name. */
+export function tagLabel(idx: DatasetIndex | undefined, tag: string, t: { [k: string]: unknown }): string {
+  if (tag.startsWith('bg:')) return idx?.ds.backgrounds?.[tag.slice(3)]?.label ?? tag.slice(3);
+  return (t[`tag_${tag}`] as string | undefined) ?? tag;
+}
+
 export function matchesQuery(idx: DatasetIndex, dex: number, q: string): boolean {
   if (!q) return true;
   const text = idx.searchText.get(dex) ?? '';

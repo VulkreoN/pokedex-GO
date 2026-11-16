@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   makeVariantKey,
+  type BackgroundInfo,
   type Dataset,
   type LocalizedText,
   type PokemonType,
@@ -20,7 +21,7 @@ import {
   type Variant,
   type VariantKind,
 } from '@mydexpogo/shared';
-import { ASSET_BASE, ASSET_BASE_FULL, ASSET_BASE_LEGACY, POKEAPI_ARTWORK, SOURCES, fetchAssetsTree, fetchJson, type FetchOptions } from './sources.js';
+import { ASSET_BASE, ASSET_BASE_FULL, ASSET_BASE_LEGACY, BACKGROUND_IMAGE_BASE, POKEAPI_ARTWORK, SOURCES, fetchAssetsTree, fetchJson, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
 
@@ -28,6 +29,8 @@ export interface BuildOptions {
   fetch: FetchOptions;
   /** Manual overrides stored by the app (managers), applied after the file overrides. */
   manual?: ManualOverrides;
+  /** Species seen in the game by other means (Leek Duck raids, eggs, research, events), dex numbers. */
+  extraReleased?: Iterable<number>;
   log?: (msg: string) => void;
 }
 
@@ -100,7 +103,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const fetchOpts = options.fetch;
   const log = options.log ?? console.log;
   const manual = options.manual ?? {};
-  const [gm, tree, textsEn, textsFr, costumeEnum, shinyList] = await Promise.all([
+  const [gm, tree, textsEn, textsFr, costumeEnum, shinyList, releasedList, backgroundMap] = await Promise.all([
     fetchJson<GmTemplate[]>('gameMaster', fetchOpts),
     fetchAssetsTree<Tree>(fetchOpts),
     fetchJson<Texts>('textsEn', fetchOpts),
@@ -110,7 +113,16 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       log(`shiny list unavailable (${e.message}); shinyReleased will be null`);
       return null;
     }),
+    fetchJson<Record<string, { id: number; name: string }>>('released', fetchOpts).catch((e) => {
+      log(`released list unavailable (${e.message}); falling back to asset presence`);
+      return null;
+    }),
+    fetchJson<Record<string, string[]>>('backgrounds', fetchOpts).catch((e) => {
+      log(`backgrounds unavailable (${e.message})`);
+      return null;
+    }),
   ]);
+  const extraReleased = new Set(options.extraReleased ?? []);
   if (tree.truncated) throw new Error('GitHub tree listing was truncated; set GITHUB_TOKEN or fetch per folder');
 
   const texts = { en: textsToMap(textsEn), fr: textsToMap(textsFr) };
@@ -295,6 +307,27 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     const s = shinyList?.[String(sp.dex)];
     sp.shinyReleased = s ? Object.values(s).some((x) => x === true) : null;
   }
+  // Species release: PokeMiners ship pictures long before a Pokémon is in the game (Arceus...), so
+  // "has a picture" is only the fallback. Baseline = pogoapi released list, plus species seen live
+  // on Leek Duck (raids, eggs, research, events), plus file / manager overrides on the base key.
+  const releasedSet = releasedList ? new Set(Object.keys(releasedList).map(Number)) : null;
+  for (const sp of speciesByDex.values()) {
+    const hasPicture = sp.released;
+    let released = releasedSet ? releasedSet.has(sp.dex) || extraReleased.has(sp.dex) : hasPicture;
+    const fileStatus = statusOverrides[String(sp.dex)];
+    if (fileStatus) released = fileStatus === 'released';
+    const m = manual[String(sp.dex)];
+    if (m && m.released !== null && m.released !== undefined) released = m.released;
+    sp.released = released;
+  }
+  for (const v of variants) {
+    const sp = speciesByDex.get(v.dex)!;
+    if (!sp.released) {
+      const m = manual[v.key];
+      if (!(m && m.released === true) && statusOverrides[v.key] !== 'released') v.datamined = true;
+    }
+  }
+  log(`species released: ${[...speciesByDex.values()].filter((s) => s.released).length} (${releasedSet ? 'pogoapi list' : 'picture fallback'} + ${extraReleased.size} seen live)`);
 
   variants.sort((a, b) =>
     a.dex - b.dex ||
@@ -302,6 +335,32 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     (a.label?.en ?? '').localeCompare(b.label?.en ?? '') ||
     (GENDER_ORDER[a.gender ?? 'n'] ?? 0) - (GENDER_ORDER[b.gender ?? 'n'] ?? 0),
   );
+
+  // Special backgrounds (location cards, event backgrounds) per picture, from pokemongopro's trade tool.
+  const backgrounds: Record<string, BackgroundInfo> = {};
+  if (backgroundMap) {
+    const byKey = new Map(variants.map((v) => [v.key, v]));
+    for (const [file, pics] of Object.entries(backgroundMap)) {
+      const id = file.replace(/\.(webp|png|jpg)$/i, '');
+      backgrounds[id] = { id, label: humanizeBackground(id), image: BACKGROUND_IMAGE_BASE + file };
+      for (const pic of pics) {
+        const m = /^pm(\d+)((?:\.[A-Za-z0-9_]+)*)\.icon\.png$/.exec(pic);
+        if (!m) continue;
+        let form: string | null = null;
+        let costume: string | null = null;
+        let female = false;
+        for (const tok of (m[2] ?? '').split('.').filter(Boolean)) {
+          if (tok === 'g2') female = true;
+          else if (tok === 's') continue;
+          else if (tok.startsWith('f')) form = tok.slice(1);
+          else if (tok.startsWith('c')) costume = tok.slice(1).toUpperCase();
+        }
+        const v = byKey.get(makeVariantKey({ dex: Number(m[1]), form, costume, gender: female ? 'f' : null }));
+        if (v && !(v.backgrounds ?? []).includes(id)) (v.backgrounds ??= []).push(id);
+      }
+    }
+    log(`backgrounds: ${Object.keys(backgrounds).length}, on ${variants.filter((v) => v.backgrounds?.length).length} pictures`);
+  }
 
   const species: Species[] = [...speciesByDex.values()]
     .sort((a, b) => a.dex - b.dex)
@@ -318,6 +377,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     sources: { ...SOURCES },
     species,
     variants,
+    ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
   };
   const byKind = variants.reduce<Record<string, number>>((acc, v) => ((acc[v.kind] = (acc[v.kind] ?? 0) + 1), acc), {});
   const stats = {
@@ -331,12 +391,38 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   return { dataset, stats };
 }
 
+const BG_WORDS: Record<string, string> = { gf: 'GO Fest', gt: 'GO Tour', wc: 'Worlds', me: 'Mega', rt: 'Route', sr: 'Safari', sz: 'Safari Zone', cs: 'City Safari', mlb: 'MLB', nfl: 'NFL', wa: 'Wild Area', npb: 'NPB' };
+/** "gf25_paris" -> "GO Fest 25 Paris". Best effort, the picture is what players recognise. */
+function humanizeBackground(id: string): string {
+  return id
+    .split(/[_-]+/)
+    .map((p) => {
+      const m = /^([a-z]+)(\d{2,4})$/.exec(p);
+      if (m && BG_WORDS[m[1]!]) return `${BG_WORDS[m[1]!]} ${m[2]}`;
+      if (BG_WORDS[p]) return BG_WORDS[p]!;
+      return p.charAt(0).toUpperCase() + p.slice(1);
+    })
+    .join(' ');
+}
+
 /** Applies manager overrides to an already built dataset without refetching anything. */
 export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides): Dataset {
   if (!Object.keys(manual).length) return dataset;
+  const speciesReleased = new Map<number, boolean>();
+  const species = dataset.species.map((sp) => {
+    const m = manual[String(sp.dex)];
+    if (m && m.released !== null && m.released !== undefined && m.released !== sp.released) {
+      speciesReleased.set(sp.dex, m.released);
+      return { ...sp, released: m.released };
+    }
+    return sp;
+  });
   return {
     ...dataset,
+    species,
     variants: dataset.variants.map((v) => {
+      const spRel = speciesReleased.get(v.dex);
+      if (spRel === false && !manual[v.key]?.released) return { ...v, datamined: true };
       const m = manual[v.key];
       if (!m) return v;
       return {

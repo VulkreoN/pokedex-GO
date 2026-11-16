@@ -87,7 +87,7 @@ function modifiersOf(t: SearchTarget): string[] {
   if (t.gmax) mods.push('gigantamax');
   if (t.gender === 'f') mods.push('female'); // male is the default appearance, no filter needed
   if (t.shiny) mods.push('shiny');
-  if (t.tag) mods.push(t.tag); // lucky, background, shadow, purified, xxl, xxs are all in-game keywords
+  if (t.tag) mods.push(t.tag.startsWith('bg:') ? 'background' : t.tag); // lucky, background, shadow, purified, xxl, xxs are in-game keywords
   return mods;
 }
 
