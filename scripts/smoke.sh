@@ -64,4 +64,6 @@ curl -sf -b "$A" -c "$A" -X POST "$API/api/auth/logout" > /dev/null
 test "$(curl -sf -b "$A" "$API/api/auth/me" | j "['user']")" = None
 curl -sf -c "$B" -b "$B" -H 'content-type: application/json' -d "{\"username\":\"${U}b\",\"password\":\"password123\"}" "$API/api/auth/login" > /dev/null
 curl -sf -b "$B" -X DELETE -H 'content-type: application/json' -d '{"password":"password123"}' "$API/api/auth/me" > /dev/null
-echo "all good"
+curl -sf -c "$A" -b "$A" -H 'content-type: application/json' -d "{\"username\":\"${U}a\",\"password\":\"password123\"}" "$API/api/auth/login" > /dev/null
+curl -sf -b "$A" -X DELETE -H 'content-type: application/json' -d '{"password":"password123"}' "$API/api/auth/me" > /dev/null
+echo "all good (test accounts removed)"
