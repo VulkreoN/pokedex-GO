@@ -41,9 +41,9 @@ export function useRefreshData() {
   return useMutation({ mutationFn: () => api<{ started: boolean }>('/data/refresh', { method: 'POST' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['data-status'] }) });
 }
 
-export interface AdminUser { id: string; username: string; role: Role; createdAt: string }
-export const useUsers = (q: string, enabled: boolean) =>
-  useQuery({ queryKey: ['users', q], queryFn: () => api<{ users: AdminUser[] }>(`/users?q=${encodeURIComponent(q)}`).then((r) => r.users), enabled });
+export interface AdminUser { id: string; username: string; role: Role; friendCode: string; createdAt: string }
+export const useUsers = (q: string, offset: number, enabled: boolean) =>
+  useQuery({ queryKey: ['users', q, offset], queryFn: () => api<{ users: AdminUser[]; total: number; offset: number }>(`/users?q=${encodeURIComponent(q)}&offset=${offset}`), enabled, placeholderData: (prev) => prev });
 export function useSetRole() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (vars: { id: string; role: Role }) => api<{ ok: true }>(`/users/${vars.id}/role`, { method: 'PATCH', body: { role: vars.role } }), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) });

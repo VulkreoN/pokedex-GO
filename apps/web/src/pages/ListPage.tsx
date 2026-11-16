@@ -130,7 +130,7 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
                   className={`card flex w-full flex-col items-center px-1 pb-2 pt-1 transition ${e.done ? 'ring-2 ring-go' : ''} ${owner ? 'hover:brightness-95 active:scale-[0.97]' : 'cursor-default'}`}
                 >
                   <div className="relative">
-                    <Sprite idx={idx} variant={v} shiny={e.shiny} muted={!e.done} size={72} />
+                    <Sprite idx={idx} variant={v} shiny={e.shiny} dim={!e.done} size={72} />
                     {e.shiny && <Sparkle className={`absolute -right-1 top-0 ${e.done ? 'text-shiny' : 'text-ink-3'}`} />}
                     {e.done && (
                       <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">

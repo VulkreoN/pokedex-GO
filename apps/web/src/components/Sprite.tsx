@@ -6,7 +6,7 @@ import { imageUrl, type DatasetIndex } from '../lib/dataset.js';
  * A Pokémon picture. `muted` draws it as a dark silhouette (the in-game "seen but not caught" look).
  * `shiny` shows the shiny art when it exists.
  */
-export function Sprite({ idx, variant, shiny = false, muted = false, size = 64, className = '' }: { idx: DatasetIndex; variant: Variant; shiny?: boolean; muted?: boolean; size?: number; className?: string }) {
+export function Sprite({ idx, variant, shiny = false, muted = false, dim = false, size = 64, className = '' }: { idx: DatasetIndex; variant: Variant; shiny?: boolean; muted?: boolean; dim?: boolean; size?: number; className?: string }) {
   const [failed, setFailed] = useState(false);
   const url = imageUrl(idx, variant, shiny) ?? imageUrl(idx, variant, false);
   if (!url || failed) {
@@ -25,7 +25,7 @@ export function Sprite({ idx, variant, shiny = false, muted = false, size = 64, 
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}
-      className={`${muted ? 'silhouette' : ''} select-none object-contain ${className}`}
+      className={`${muted ? 'silhouette' : ''} ${dim ? 'opacity-50 saturate-[0.6]' : ''} select-none object-contain ${className}`}
       style={{ width: size, height: size }}
       draggable={false}
     />

@@ -29,7 +29,8 @@ export function MePage() {
   const refresh = useRefreshData();
   const [userQuery, setUserQuery] = useState('');
   const isAdmin = me.data?.role === 'admin';
-  const users = useUsers(userQuery, isAdmin);
+  const [userOffset, setUserOffset] = useState(0);
+  const users = useUsers(userQuery, userOffset, isAdmin);
   const setRole = useSetRole();
   const toast = useToast();
 
@@ -112,24 +113,29 @@ export function MePage() {
           <section className="card p-4">
             <h2 className="mb-1 text-base font-bold">{t.admin_title}</h2>
             <p className="mb-3 text-xs text-ink-3">{t.admin_hint}</p>
-            <TextField placeholder={t.admin_search} value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
-            <ul className="mt-2 space-y-1">
-              {users.data?.map((u) => (
-                <li key={u.id} className="flex items-center gap-2 rounded-lg px-1 py-1">
-                  <span className="min-w-0 flex-1 truncate font-semibold">{u.username}</span>
+            <TextField placeholder={t.admin_search} value={userQuery} onChange={(e) => { setUserQuery(e.target.value); setUserOffset(0); }} />
+            <p className="tnum mt-2 text-xs text-ink-3">{t.admin_count(users.data?.total ?? 0)}</p>
+            <ul className="mt-1 divide-y divide-line">
+              {users.data?.users.map((u) => (
+                <li key={u.id} className="flex items-center gap-2 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{u.username}</span>
+                    <span className="tnum block text-xs text-ink-3">{fmtCode(u.friendCode)} · {new Date(u.createdAt).toLocaleDateString(lang)}</span>
+                  </span>
                   {(['user', 'manager', 'admin'] as Role[]).map((r) => (
                     <Chip key={r} active={u.role === r} disabled={u.id === me.data?.id} className="min-h-8 px-2 text-xs disabled:opacity-40" onClick={() => setRole.mutate({ id: u.id, role: r })}>{t[`role_${r}`]}</Chip>
                   ))}
                 </li>
               ))}
-              {users.data?.length === 0 && <li className="text-sm text-ink-3">{t.nothing_here}</li>}
+              {users.data?.users.length === 0 && <li className="py-2 text-sm text-ink-3">{t.nothing_here}</li>}
             </ul>
-          </section>
-        )}
-
-        {me.data && (
-          <section>
-            <Button tone="danger" onClick={() => setDeleting(true)}>{t.delete_account}</Button>
+            {users.data && users.data.total > 50 && (
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <Button tone="ghost" className="min-h-9" disabled={userOffset === 0} onClick={() => setUserOffset(Math.max(0, userOffset - 50))}>‹</Button>
+                <span className="tnum text-ink-3">{userOffset + 1}–{Math.min(userOffset + 50, users.data.total)}</span>
+                <Button tone="ghost" className="min-h-9" disabled={userOffset + 50 >= users.data.total} onClick={() => setUserOffset(userOffset + 50)}>›</Button>
+              </div>
+            )}
           </section>
         )}
       </main>

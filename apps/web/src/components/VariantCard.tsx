@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { Species } from '@mydexpogo/shared';
+import type { Species, Variant } from '@mydexpogo/shared';
 import type { VariantGroup } from './AddToList.js';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
@@ -7,10 +7,18 @@ import { Sparkle, Sprite } from './Sprite.js';
 import { Badge } from './ui.js';
 
 /** One form/costume of a species (male and female merged), tap to add it to a list. */
-export function VariantCard({ idx, species, group, shiny, showSpecies = false, onAdd, onManage }: { idx: DatasetIndex; species: Species; group: VariantGroup; shiny: boolean; showSpecies?: boolean; onAdd: (g: VariantGroup) => void; onManage?: (g: VariantGroup) => void }) {
+export type GenderFilter = 'all' | 'm' | 'f';
+
+/** Picks which picture of a group to show for a gender filter (species without a female look keep their only picture). */
+export function variantForGender(group: VariantGroup, gender: GenderFilter): Variant {
+  if (gender === 'all') return group.variants[0]!;
+  return group.variants.find((v) => v.gender === gender) ?? group.variants[0]!;
+}
+
+export function VariantCard({ idx, species, group, shiny, gender = 'all', showSpecies = false, selectable = false, selected = false, onAdd, onManage }: { idx: DatasetIndex; species: Species; group: VariantGroup; shiny: boolean; gender?: GenderFilter; showSpecies?: boolean; selectable?: boolean; selected?: boolean; onAdd: (g: VariantGroup) => void; onManage?: (g: VariantGroup) => void }) {
   const t = useT();
   const { lang } = useLang();
-  const v = group.variants[0]!;
+  const v = variantForGender(group, gender);
   const shinyMissing = shiny && !v.hasShiny;
   const datamined = group.variants.some((x) => x.datamined);
   const label = localized(group.label, lang);
@@ -19,12 +27,16 @@ export function VariantCard({ idx, species, group, shiny, showSpecies = false, o
       <button
         type="button"
         onClick={() => onAdd(group)}
-        className="card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98]"
+        className={`card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98] ${selectable && selected ? 'ring-[3px] ring-go' : ''}`}
         aria-label={`${t.add} ${localized(species.name, lang)} ${label}`}
+        aria-pressed={selectable ? selected : undefined}
       >
         <div className="relative">
+          {selectable && (
+            <span className={`absolute -left-3 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] ${selected ? 'border-go bg-go text-white' : 'border-line bg-card text-transparent'}`}>✓</span>
+          )}
           <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
-          {group.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3">♂♀</span>}
+          {group.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3">{gender === 'm' ? '♂' : gender === 'f' ? '♀' : '♂♀'}</span>}
           {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
           {showSpecies && <span className="tnum absolute -left-2 -top-1 text-[10px] font-semibold text-ink-3">#{species.dex}</span>}
         </div>

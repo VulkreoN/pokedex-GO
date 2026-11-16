@@ -78,13 +78,17 @@ export const userRoutes = new Hono<AuthEnv>()
   .use(requireRole('admin'))
   .get('/', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
+    const offset = Math.max(0, Number(c.req.query('offset') ?? 0) || 0);
+    const where = q ? sql`lower(${schema.users.username}) like lower(${'%' + q + '%'})` : sql`true`;
+    const [count] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(schema.users).where(where);
     const rows = await db
-      .select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, createdAt: schema.users.createdAt })
+      .select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, friendCode: schema.users.friendCode, createdAt: schema.users.createdAt })
       .from(schema.users)
-      .where(q ? sql`lower(${schema.users.username}) like lower(${'%' + q + '%'})` : sql`${schema.users.role} <> 'user'`)
-      .orderBy(schema.users.username)
-      .limit(50);
-    return c.json({ users: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })) });
+      .where(where)
+      .orderBy(sql`case ${schema.users.role} when 'admin' then 0 when 'manager' then 1 else 2 end`, sql`${schema.users.createdAt} desc`)
+      .limit(50)
+      .offset(offset);
+    return c.json({ users: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })), total: count?.n ?? 0, offset });
   })
   .patch('/:id/role', zValidator('json', z.object({ role: z.enum(['user', 'manager', 'admin']) })), async (c) => {
     const me = c.get('user');
