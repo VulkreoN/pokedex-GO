@@ -29,6 +29,13 @@
       "when": 1794656164138,
       "tag": "0003_jittery_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794859930177,
+      "tag": "0004_volatile_frightful_four",
+      "breakpoints": true
     }
   ]
 }

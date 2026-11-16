@@ -88,7 +88,10 @@ Une variante est marquée « pas encore sortie » quand elle existe dans les fic
 
 Les images sont servies depuis pokemongopro (Méga depuis GitHub PokeMiners) et mises en cache par le service worker.
 
-L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain, œufs) lit en direct les JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
+L'onglet « Jeu » :
+
+- Raids, Raids Dynamax (Max Mondays, Dynamax Trails, Gigantamax…), études de terrain, œufs : JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures.
+- Événements : codes promo actifs (page promo de Leek Duck, liens « Utiliser » directs vers la boutique), puis les infographies : des posts X ajoutés par les gérants en collant le lien du tweet (lu via l'oEmbed officiel de X, texte et liens cliquables, codes de réduction extraits en boutons, image via le widget officiel), et le flux officiel intégré du compte `@g47ix`. Aucun scraping de X, donc aucune clé ni compte. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
 
 Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial précis ou non, obscur, purifié, Dynamax, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
 

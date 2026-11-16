@@ -12,6 +12,7 @@ import { listRoutes, sharedRoutes } from './routes/lists.js';
 import { dataRoutes, overrideRoutes, userRoutes } from './routes/data.js';
 import { dataService } from './data/service.js';
 import { feedRoutes } from './routes/feed.js';
+import { gameRoutes } from './routes/game.js';
 import { feedService } from './feed/service.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
@@ -29,6 +30,7 @@ app.route('/data', dataRoutes);
 app.route('/overrides', overrideRoutes);
 app.route('/users', userRoutes);
 app.route('/feed', feedRoutes);
+app.route('/game', gameRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

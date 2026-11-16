@@ -101,3 +101,37 @@ export function formatRange(start: string | null, end: string | null, lang: stri
   const sameDay = s.toDateString() === e.toDateString();
   return sameDay ? `${day.format(s)} · ${time.format(s)} – ${time.format(e)}` : `${day.format(s)} ${time.format(s)} → ${day.format(e)} ${time.format(e)}`;
 }
+
+export interface CuratedPost {
+  id: string;
+  url: string;
+  author: string;
+  authorUrl: string | null;
+  text: string;
+  html: string;
+  links: string[];
+  codes: string[];
+  postedAt: string | null;
+  createdAt: string;
+}
+export interface PromoCode { code: string; title: string; description: string; rewards: string[]; redeemUrl: string }
+
+export const usePosts = () => useQuery({ queryKey: ['game', 'posts'], queryFn: () => getJson<{ posts: CuratedPost[] }>('/api/game/posts').then((r) => r.posts), staleTime: 60_000 });
+export const usePromoCodes = () => useQuery({ queryKey: ['game', 'promo'], queryFn: () => getJson<{ codes: PromoCode[] }>('/api/game/promo-codes').then((r) => r.codes), ...live });
+
+/** Events about Max Battles: Max Mondays, Dynamax / Gigantamax days, Max Battle days. */
+export const isMaxEvent = (e: GameEvent) => /max-|dynamax|gigantamax/i.test(`${e.eventType} ${e.name}`);
+
+/** Splits text into plain parts and URLs so links can be rendered clickable. */
+export function linkify(text: string): { text: string; url?: string }[] {
+  const out: { text: string; url?: string }[] = [];
+  const re = /https?:\/\/[^\s<>")]+/g;
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index! > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ text: m[0], url: m[0] });
+    last = m.index! + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out;
+}

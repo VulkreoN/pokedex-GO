@@ -137,3 +137,25 @@ export const feedCursors = pgTable('feed_cursors', {
   cursor: text('cursor').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Curated posts (X/Twitter infographics) added by managers through the official oEmbed endpoint. */
+export const posts = pgTable(
+  'posts',
+  {
+    id: text('id').primaryKey(), // tweet id
+    url: text('url').notNull(),
+    author: text('author').notNull(),
+    authorUrl: text('author_url'),
+    /** Plain text of the post, links expanded. */
+    text: text('text').notNull(),
+    /** oEmbed HTML (blockquote), rendered with X's widget script to show the pictures. */
+    html: text('html').notNull(),
+    links: jsonb('links').$type<string[]>().notNull().default([]),
+    /** Redeem codes found in links (store.pokemongo.com/offer-redemption?passcode=...). */
+    codes: jsonb('codes').$type<string[]>().notNull().default([]),
+    postedAt: timestamp('posted_at', { withTimezone: true }),
+    addedBy: text('added_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('posts_posted_idx').on(t.postedAt)],
+);
