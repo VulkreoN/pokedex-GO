@@ -33,7 +33,7 @@ export interface DataStatus {
   pipelineVersion?: number;
 }
 
-const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json' };
+const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json', firstSeen: 'first-seen.json' };
 const SCRAPEDDUCK = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/';
 
 const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string }[] = [
@@ -56,6 +56,8 @@ class DataService {
   private overridesCache: ManualOverrides | null = null;
   /** Dex numbers ever seen on Leek Duck (raids, eggs, research, events): proof a species is in the game. */
   private seenSpecies = new Set<number>();
+  /** Variant key -> first date it appeared in a build (estimated on the baseline run). */
+  private firstSeen: Record<string, string> | null = null;
 
   get ready() { return this.raw !== null; }
   /** Raw generated dataset (no manager overrides), for matching jobs. */
@@ -96,6 +98,9 @@ class DataService {
       this.seenSpecies = new Set(JSON.parse(await readFile(path.join(env.dataDir, FILES.seen), 'utf8')) as number[]);
     } catch {}
     try {
+      this.firstSeen = JSON.parse(await readFile(path.join(env.dataDir, FILES.firstSeen), 'utf8')) as Record<string, string>;
+    } catch {}
+    try {
       const saved = JSON.parse(await readFile(path.join(env.dataDir, FILES.status), 'utf8')) as Partial<DataStatus>;
       this.status = { ...this.status, ...saved, running: false, refreshHours: env.dataRefreshHours };
     } catch {}
@@ -117,8 +122,16 @@ class DataService {
       const { dataset, stats } = await buildDataset({
         fetch: { cacheDir: path.join(env.dataDir, 'cache'), maxAgeHours: 0, offline: false },
         extraReleased: this.seenSpecies,
+        knownSince: this.firstSeen ?? {},
+        baseline: this.firstSeen === null,
         log: (m) => console.log(`  ${m}`),
       });
+      const next: Record<string, string> = { ...(this.firstSeen ?? {}) };
+      let added = 0;
+      for (const v of dataset.variants) if (v.firstSeen && !next[v.key]) { next[v.key] = v.firstSeen; added++; }
+      this.firstSeen = next;
+      await writeFile(path.join(env.dataDir, FILES.firstSeen), JSON.stringify(next)).catch(() => {});
+      console.log(`  first-seen: ${Object.keys(next).length} keys (+${added})`);
       this.raw = dataset;
       this.served = null;
       this.events = merged.all;

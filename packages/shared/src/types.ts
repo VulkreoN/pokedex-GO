@@ -61,6 +61,8 @@ export interface Variant {
   noEvolve?: boolean;
   /** Ids of special backgrounds this picture can carry (see Dataset.backgrounds). */
   backgrounds?: string[];
+  /** When this variant first appeared (ISO date). Estimated from the costume name for the initial baseline, exact afterwards. */
+  firstSeen?: string;
 }
 
 export interface BackgroundInfo {

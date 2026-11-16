@@ -31,6 +31,10 @@ export interface BuildOptions {
   manual?: ManualOverrides;
   /** Species seen in the game by other means (Leek Duck raids, eggs, research, events), dex numbers. */
   extraReleased?: Iterable<number>;
+  /** First-seen dates recorded by previous runs, by variant key. Keys absent here are new (or estimated on the first run). */
+  knownSince?: Record<string, string>;
+  /** True on the very first run: unknown keys get an estimate instead of "today". */
+  baseline?: boolean;
   log?: (msg: string) => void;
 }
 
@@ -338,6 +342,19 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     (GENDER_ORDER[a.gender ?? 'n'] ?? 0) - (GENDER_ORDER[b.gender ?? 'n'] ?? 0),
   );
 
+  // First appearance: recorded dates win; otherwise an estimate from the costume / form name (year + season),
+  // or "now" for keys that appear after the baseline run.
+  const known = options.knownSince ?? {};
+  const today = new Date().toISOString().slice(0, 10);
+  for (const v of variants) {
+    const rec = known[v.key];
+    if (rec) v.firstSeen = rec;
+    else if (options.baseline || !options.knownSince) {
+      const est = estimateFirstSeen(v.form ?? v.costume);
+      if (est) v.firstSeen = est;
+    } else v.firstSeen = today;
+  }
+
   // Special backgrounds (location cards, event backgrounds) per picture, from pokemongopro's trade tool.
   const backgrounds: Record<string, BackgroundInfo> = {};
   if (backgroundMap) {
@@ -391,6 +408,19 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   };
   log(`dataset v${dataset.version}: ${stats.species} species, ${stats.variants} variants (${stats.datamined} datamined)`);
   return { dataset, stats };
+}
+
+const SEASON_MONTH: [RegExp, string][] = [
+  [/GOTOUR|FEB|VALENTINE/, '02'], [/SPRING|APRIL|MAR|EASTER/, '04'], [/MAY/, '05'], [/GOFEST|JUNE/, '06'], [/ANNIVERSARY|JULY|SUMMER|WCS/, '07'],
+  [/AUG/, '08'], [/FALL|FASHION|SEPT/, '09'], [/HALLOWEEN|OCT/, '10'], [/NOV|WILDAREA|GOWA/, '11'], [/HOLIDAY|WINTER|DEC|XMAS/, '12'], [/JAN|NEW_YEAR/, '01'],
+];
+/** "HALLOWEEN_2026_01" -> "2026-10-01"; tokens without a year give nothing. */
+export function estimateFirstSeen(token: string | null): string | null {
+  if (!token) return null;
+  const y = /(?:^|_)(20\d\d)(?:_|$)/.exec(token)?.[1];
+  if (!y) return null;
+  const month = SEASON_MONTH.find(([re]) => re.test(token))?.[1] ?? '06';
+  return `${y}-${month}-01`;
 }
 
 const BG_WORDS: Record<string, string> = { gf: 'GO Fest', gt: 'GO Tour', wc: 'Worlds', me: 'Mega', rt: 'Route', sr: 'Safari', sz: 'Safari Zone', cs: 'City Safari', mlb: 'MLB', nfl: 'NFL', wa: 'Wild Area', npb: 'NPB' };

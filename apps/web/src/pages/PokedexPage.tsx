@@ -10,6 +10,9 @@ import { matchesQuery, normalize, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 type Filter = 'all' | 'costume' | 'form' | 'regional' | 'mega' | 'datamined';
+/** Appeared in the last 45 days. */
+export const isRecent = (iso: string | undefined) => !!iso && Date.now() - new Date(iso).getTime() < 45 * 86_400_000;
+
 const FILTER_KINDS: Record<Exclude<Filter, 'all' | 'datamined'>, VariantKind[]> = { costume: ['costume'], form: ['form'], regional: ['regional'], mega: ['mega', 'gmax'] };
 
 export function PokedexPage() {
@@ -22,6 +25,7 @@ export function PokedexPage() {
   const [shiny, setShiny] = useState(false);
   const [gender, setGender] = useState<GenderFilter>('all');
   const [forceExploded, setForceExploded] = useState(false);
+  const [sort, setSort] = useState<'dex' | 'new'>('dex');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
@@ -30,7 +34,7 @@ export function PokedexPage() {
   const q = useDeferredValue(normalize(query));
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
   const exploded = forceExploded || filter !== 'all' || q !== '' || multi;
-  const activeCount = (filter !== 'all' ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0);
+  const activeCount = (filter !== 'all' ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0);
 
   const rows = useMemo(() => {
     const idx = dataset.data;
@@ -44,6 +48,10 @@ export function PokedexPage() {
       return vs.some((v) => FILTER_KINDS[filter].includes(v.kind));
     });
   }, [dataset.data, q, filter, gen]);
+
+  /** Newest first: a species ranks by the most recent of its variants. */
+  const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
+  const sortedRows = useMemo(() => (sort === 'new' ? [...rows].sort((a, b) => newest(b.dex).localeCompare(newest(a.dex)) || a.dex - b.dex) : rows), [rows, sort, dataset.data]);
 
   const cards = useMemo(() => {
     const idx = dataset.data;
@@ -63,8 +71,9 @@ export function PokedexPage() {
         out.push({ species: s, group: g, id: `${s.dex}-${g.id}` });
       }
     }
+    if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
     return out;
-  }, [dataset.data, exploded, rows, filter, q, gender]);
+  }, [dataset.data, exploded, rows, filter, q, gender, sort]);
 
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
@@ -78,6 +87,7 @@ export function PokedexPage() {
     setShiny(false);
     setGender('all');
     setForceExploded(false);
+    setSort('dex');
   };
 
   const filters: [Filter, string][] = [
@@ -116,6 +126,7 @@ export function PokedexPage() {
             {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
             {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
             {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
+            {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
             <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }} className="ml-auto">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" /><path d="m8 12 3 3 5-6" /></svg>
               {t.multi_select}
@@ -161,7 +172,7 @@ export function PokedexPage() {
             )}
             {!exploded && (
               <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                {rows.map((s) => {
+                {sortedRows.map((s) => {
                   const idx = dataset.data;
                   const cover = idx.coverOf.get(s.dex)!;
                   const shown = gender === 'all' ? cover : variantForGender(groupVariants((idx.variantsByDex.get(s.dex) ?? []).filter((v) => v.kind === 'base'))[0] ?? { id: '', label: null, variants: [cover] }, gender);
@@ -176,6 +187,7 @@ export function PokedexPage() {
                           <Sprite idx={idx} variant={shown} shiny={shiny && shown.hasShiny} muted={!s.released} size={72} />
                           {extra > 0 && <span className="tnum absolute -right-1 bottom-0 rounded-md bg-ink px-1 text-[10px] font-bold text-card">+{extra}</span>}
                           {hasDatamined && <span className="absolute -right-1 top-0 h-2 w-2 rounded-full bg-sky" aria-label={t.filter_datamined} />}
+                          {isRecent(newest(s.dex)) && <span className="absolute -left-2 bottom-0 rounded-md bg-go px-1 text-[9px] font-bold text-white">{t.new_badge}</span>}
                         </div>
                         <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(s.name, lang)}</span>
                       </Link>
@@ -216,6 +228,13 @@ export function PokedexPage() {
               <Chip active={gender === 'all'} onClick={() => setGender('all')}>{t.gender_both}</Chip>
               <Chip active={gender === 'm'} onClick={() => setGender('m')}>♂ {t.male}</Chip>
               <Chip active={gender === 'f'} onClick={() => setGender('f')}>♀ {t.female}</Chip>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.sort}</p>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={sort === 'dex'} onClick={() => setSort('dex')}>{t.sort_dex}</Chip>
+              <Chip active={sort === 'new'} onClick={() => setSort('new')}>{t.sort_new}</Chip>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">

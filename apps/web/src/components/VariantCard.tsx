@@ -5,6 +5,7 @@ import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { Badge } from './ui.js';
+import { isRecent } from '../pages/PokedexPage.js';
 
 /** One form/costume of a species (male and female merged), tap to add it to a list. */
 export type GenderFilter = 'all' | 'm' | 'f';
@@ -43,6 +44,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
         {showSpecies && <span className="mt-1 w-full truncate text-[12px] font-bold leading-tight">{localized(species.name, lang)}</span>}
         <span className={`line-clamp-2 w-full text-[12px] leading-tight ${showSpecies ? 'text-ink-2' : 'mt-1 font-semibold'}`}>{label || (showSpecies ? t.normal : localized(species.name, lang))}</span>
         <span className="mt-1 flex flex-wrap justify-center gap-1">
+          {isRecent(v.firstSeen) && <Badge tone="grass">{t.new_badge}</Badge>}
           {datamined && <Badge tone="datamined">{t.datamined}</Badge>}
           {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
           {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
