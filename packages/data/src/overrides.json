@@ -1,5 +1,5 @@
 {
-  "$comment": "Manual fixes applied last. labels: by variant key or by form/costume token. status: force 'released' or 'datamined' by variant key. Dated notes say why.",
+  "$comment": "Manual fixes applied last. labels: by variant key or by form/costume token. status: force 'released' or 'datamined' by variant key. Dated notes say why. megas: variant keys of Mega forms newer than the game master snapshot (PokeMiners has the picture).",
   "labels": {
     "FALL_2019": {
       "en": "Witch hat",
@@ -121,6 +121,11 @@
     "2026-11-14 (2)": "Vérifié: Salamèche/Reptincel/Dracaufeu lunettes de Friede (Horizons, 16 sept. 2026); Mucuscule/Muplodocus de Hisui (Wild Area Sendai/Mexico, 6 nov. 2026, pas encore mondial); Méga-Étouraptor (19 sept.) et Méga-Lugulabre (31 oct.) en Super Méga Raids; Météno forme Météore (Minior Showers: Leonids, 14 nov.); Pikachu bandana/chapeau GO Tour Hoenn 2023; Kyurem/Genesect NORMAL = forme de base. Restent inconnus: Pikachu casque de verre 2026, K 2026, anniversaire Thaïlande, Xerneas neutre, Shifours bread dough, Météno météore coloré.",
     "2026-11-14 (3)": "Pikachu astronaute (GLASS_HELMET_2026) : World Space Week, 4-10 oct. 2026, raids 1* et étude ponctuelle, shiny possible (news officielle du 18 sept.).",
     "2026-11-16": "Flag espèce = liste pogoapi (jan. 2026) + espèces vues sur Leek Duck + overrides. Confirmés sortis depuis : Mimiqui (A Shockingly Good Time, 31 mars 2026), Tapatoès (Flying Taxi, 23 juin 2026), Théffroi (costume Halloween 2026), Ferdeter (raids 3* nov. 2026), Météno (Minior Showers, 14 nov. 2026).",
-    "2026-11-16 (2)": "Espèces confirmées sorties (pogoapi en retard) : 848 Toxel (Wild Area Fukuoka 16 nov. 2024, mondial 23 nov. 2024); 849 Toxtricity (idem); 973 Flamigo (Carnival of Flamigo, 3 fév. 2026); 824 Blipbug (Bug Out, 17 mars 2026); 825 Dottler (idem); 826 Orbeetle (idem); 843 Silicobra (Sustainability Week, 14 avr. 2026); 844 Sandaconda (idem); 955 Flittle (Spring Marathon, 12 mai 2026); 956 Espathra (idem); 807 Zeraora (GO Fest 2026, 29 mai 2026); 846 Arrokuda (Water Festival, 18 août 2026); 847 Barraskewda (idem); 942 Maschiff (Mega Squads, 8 sept. 2026); 943 Mabosstiff (idem); 946 Bramblin (Fall Marathon: Buddy Trek 2026); 947 Brambleghast (idem); 855 Polteageist (évolution de Théffroi). Confirmées NON sorties (Bulbapedia, liste par disponibilité) : Arceus, Phione, Manaphy, Wishiwashi, Pyukumuku, Magearna."
-  }
+    "2026-11-16 (2)": "Espèces confirmées sorties (pogoapi en retard) : 848 Toxel (Wild Area Fukuoka 16 nov. 2024, mondial 23 nov. 2024); 849 Toxtricity (idem); 973 Flamigo (Carnival of Flamigo, 3 fév. 2026); 824 Blipbug (Bug Out, 17 mars 2026); 825 Dottler (idem); 826 Orbeetle (idem); 843 Silicobra (Sustainability Week, 14 avr. 2026); 844 Sandaconda (idem); 955 Flittle (Spring Marathon, 12 mai 2026); 956 Espathra (idem); 807 Zeraora (GO Fest 2026, 29 mai 2026); 846 Arrokuda (Water Festival, 18 août 2026); 847 Barraskewda (idem); 942 Maschiff (Mega Squads, 8 sept. 2026); 943 Mabosstiff (idem); 946 Bramblin (Fall Marathon: Buddy Trek 2026); 947 Brambleghast (idem); 855 Polteageist (évolution de Théffroi). Confirmées NON sorties (Bulbapedia, liste par disponibilité) : Arceus, Phione, Manaphy, Wishiwashi, Pyukumuku, Magearna.",
+    "2026-11-16 (3)": "megas: Méga-Étouraptor et Méga-Lugulabre absents du game master d'août 2026, ajoutés à la main."
+  },
+  "megas": [
+    "398.fMEGA",
+    "609.fMEGA"
+  ]
 }

@@ -38,7 +38,7 @@ const SCRAPEDDUCK = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data
 
 const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string }[] = [
   { name: 'gameMaster', label: 'Game master (PokeMiners)', repo: 'PokeMiners/game_masters' },
-  { name: 'assets', label: 'Images & textes (PokeMiners)', repo: 'PokeMiners/pogo_assets' },
+  { name: 'assets', label: 'Textes & images Méga (PokeMiners)', repo: 'PokeMiners/pogo_assets' },
   { name: 'costumes', label: 'Noms de costumes (WatWowMap)', repo: 'WatWowMap/pogo-data-api' },
   { name: 'leekduck', label: 'Raids, événements, études (Leek Duck via ScrapedDuck)', repo: 'bigfoott/ScrapedDuck', branch: 'data' },
 ];
@@ -77,7 +77,7 @@ class DataService {
   private schedule(delayMs: number) {
     if (this.timer) clearTimeout(this.timer);
     this.status.nextRunAt = new Date(Date.now() + delayMs).toISOString();
-    this.timer = setTimeout(() => void this.refresh('scheduled'), delayMs);
+    this.timer = setTimeout(() => void this.refresh('scheduled').catch((e) => console.error('refresh failed', e)), delayMs);
     this.timer.unref();
   }
 
@@ -173,6 +173,10 @@ class DataService {
         .catch(() => null);
       out.push({ name: s.name, label: s.label, updatedAt, url: `https://github.com/${s.repo}` });
     }
+    const pictures = await fetch('https://trade.pokemongopro.com/assets/pokemon_images.txt', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
+      .then((r) => r.headers.get('last-modified'))
+      .catch(() => null);
+    out.push({ name: 'pictures', label: 'Images (pokemongopro, miroir PokeMiners)', updatedAt: pictures ? new Date(pictures).toISOString() : null, url: 'https://trade.pokemongopro.com' });
     const shiny = await fetch('https://pogoapi.net/api/v1/shiny_pokemon.json', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
       .then((r) => r.headers.get('last-modified'))
       .catch(() => null);

@@ -76,8 +76,8 @@ L'API reconstruit le dataset toutes les `DATA_REFRESH_HOURS` heures (6 par défa
 Sources :
 
 - PokeMiners `game_masters` (espèces, formes, types, flag costume),
-- PokeMiners `pogo_assets` (toutes les images, y compris les costumes dataminés pas encore sortis),
-- PokeMiners textes du jeu (noms FR/EN, libellés de formes),
+- trade.pokemongopro.com (liste et images des Pokémon : miroir des icônes PokeMiners, costumes dataminés inclus, servi par Cloudflare ; un seul fichier texte à lire, pas d'API GitHub),
+- PokeMiners `pogo_assets` (textes du jeu pour les noms FR/EN et libellés de formes, et images des Méga que le miroir n'a pas),
 - WatWowMap `pogo-data-api` (noms des costumes historiques),
 - pogoapi.net (liste des espèces sorties, shinies sortis par espèce ; en retard de plusieurs mois, complétée par les espèces vues sur Leek Duck et les overrides),
 - trade.pokemongopro.com (fonds spéciaux : quel Pokémon peut porter quel fond d'évènement ou de lieu).
@@ -86,7 +86,7 @@ Une espèce est « sortie » si elle est dans la liste pogoapi, ou vue sur Leek 
 
 Une variante est marquée « pas encore sortie » quand elle existe dans les fichiers du jeu mais pas encore dans le game master. Le game master publié par PokeMiners a parfois des semaines de retard : un gérant corrige ça en deux taps depuis l'app, et `packages/data/src/overrides.json` garde les corrections permanentes.
 
-Les images sont servies depuis GitHub (PokeMiners) et mises en cache par le service worker.
+Les images sont servies depuis pokemongopro (Méga depuis GitHub PokeMiners) et mises en cache par le service worker.
 
 L'onglet « Jeu » (raids en cours et à venir, événements, études de terrain, œufs) lit en direct les JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
 
@@ -97,13 +97,7 @@ Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × 
 Le statut « sorti » automatique dépend du game master publié sur GitHub par PokeMiners, qui a souvent des semaines de retard. Pour aller plus vite, l'API relève des signaux et les met dans une file « À confirmer » (« Moi » → « À confirmer », rôle gérant) :
 
 - **News officielles** (`NEWS_LOCALES=fr`) : chaque article de pokemongo.com/news est lu ; s'il cite un Pokémon avec un mot de costume, ses variantes non sorties sont proposées. Un gérant coche et valide.
-- **Discord PokeMiners** : leurs salons d'annonces (`gm-realtime-updates`, `asset-realtime-updates`, `new-event-info`) publient les changements en direct, des semaines avant leur GitHub. Ce sont des salons d'annonces, donc tu peux les suivre dans ton propre serveur :
-  1. Crée un serveur Discord à toi (ou utilise le tien) avec un salon par flux, par exemple `#pm-gm`, `#pm-assets`, `#pm-events`.
-  2. Sur le serveur PokeMiners, bouton « Suivre » de chaque salon d'annonces → choisis ton serveur et le salon cible. Les messages y sont recopiés automatiquement.
-  3. Sur discord.com/developers, crée une application, onglet Bot → « Reset Token » (c'est `DISCORD_BOT_TOKEN`), active « Message Content Intent ». Onglet OAuth2 → URL Generator, scope `bot`, permissions « View Channels » et « Read Message History », ouvre l'URL pour inviter le bot dans ton serveur.
-  4. Active le mode développeur Discord, clic droit sur chaque salon → « Copier l'identifiant », et renseigne `DISCORD_CHANNELS=gm=123…,assets=456…,events=789…`.
-
-  Les messages `gm` dont la pièce jointe contient un template de forme (`V0025_POKEMON_PIKACHU_…`, `form: "…"`) sont appliqués automatiquement : présent dans le game master = utilisable en jeu. Les messages `assets` et les news attendent un gérant. Les pièces jointes sont stockées dans le volume `appdata` (les liens Discord expirent).
+- C'est volontairement la seule source de signaux : légère, officielle, sans bot ni compte tiers.
 
 ## Recherche dans le jeu
 

@@ -21,7 +21,7 @@ import {
   type Variant,
   type VariantKind,
 } from '@mydexpogo/shared';
-import { ASSET_BASE, ASSET_BASE_FULL, ASSET_BASE_LEGACY, BACKGROUND_IMAGE_BASE, POKEAPI_ARTWORK, SOURCES, fetchAssetsTree, fetchJson, type FetchOptions } from './sources.js';
+import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, SOURCES, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
 
@@ -59,7 +59,6 @@ interface GmTemplate {
     formSettings?: { pokemon: string; forms?: { form: string; isCostume?: boolean }[] };
   };
 }
-interface Tree { tree: { path: string; type: string }[]; truncated: boolean }
 interface Texts { data: string[] }
 interface CostumeEnum { id: number; name: string; proto: string; noEvolve: boolean }
 type ShinyList = Record<string, { found_wild?: boolean; found_egg?: boolean; found_raid?: boolean; found_research?: boolean; found_evolution?: boolean; found_photobomb?: boolean }>;
@@ -103,9 +102,9 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const fetchOpts = options.fetch;
   const log = options.log ?? console.log;
   const manual = options.manual ?? {};
-  const [gm, tree, textsEn, textsFr, costumeEnum, shinyList, releasedList, backgroundMap] = await Promise.all([
+  const [gm, pictures, textsEn, textsFr, costumeEnum, shinyList, releasedList, backgroundMap] = await Promise.all([
     fetchJson<GmTemplate[]>('gameMaster', fetchOpts),
-    fetchAssetsTree<Tree>(fetchOpts),
+    fetchPictureList(fetchOpts),
     fetchJson<Texts>('textsEn', fetchOpts),
     fetchJson<Texts>('textsFr', fetchOpts),
     fetchJson<CostumeEnum[]>('costumes', fetchOpts),
@@ -123,7 +122,6 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     }),
   ]);
   const extraReleased = new Set(options.extraReleased ?? []);
-  if (tree.truncated) throw new Error('GitHub tree listing was truncated; set GITHUB_TOKEN or fetch per folder');
 
   const texts = { en: textsToMap(textsEn), fr: textsToMap(textsFr) };
   const costumeByProto = new Map(costumeEnum.map((c) => [c.proto, c]));
@@ -178,12 +176,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   }
   log(`game master: ${speciesByDex.size} species, ${[...speciesByDex.values()].reduce((n, s) => n + s.gmForms.size, 0)} forms`);
 
-  /* Assets: parse addressable filenames from the 256px folder, then the full-size folder, then legacy icons */
+  const overridesFile = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { megas?: string[] };
+
+  /* Pictures: the mirror's list (PokeMiners file names), Dynamax duplicates skipped (a trait, not a look) */
   const groups = new Map<string, AssetGroup>();
-  const legacy = new Map<number, { normal: string; shiny?: string }>();
-  const FOLDER_256 = 'Images/Pokemon - 256x256/Addressable Assets/';
-  const FOLDER_FULL = 'Images/Pokemon/Addressable Assets/';
-  const FOLDER_LEGACY = 'Images/Pokemon/';
   const addressable = (file: string, absoluteBase: string | null) => {
     const m = /^pm(\d+)((?:\.[A-Za-z0-9_]+)*)\.icon\.png$/.exec(file);
     if (!m) return;
@@ -199,6 +195,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       else if (tok.startsWith('c')) costume = tok.slice(1).toUpperCase(); // one stray lowercase file upstream (cMay_2023)
       else return; // unknown token: skip file
     }
+    if (form && /DYNAMAX/.test(form)) return;
     const key = makeVariantKey({ dex, form, costume, gender: female ? 'f' : null });
     const g = groups.get(key) ?? { dex, form, costume, female };
     const ref = absoluteBase ? absoluteBase + file : file;
@@ -206,25 +203,33 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     else g.normal ??= ref;
     groups.set(key, g);
   };
-  const blobs = tree.tree.filter((e) => e.type === 'blob');
-  for (const e of blobs) if (e.path.startsWith(FOLDER_256)) addressable(e.path.slice(FOLDER_256.length), null);
-  for (const e of blobs) if (e.path.startsWith(FOLDER_FULL)) addressable(e.path.slice(FOLDER_FULL.length), ASSET_BASE_FULL);
-  for (const e of blobs) {
-    const m = /^pokemon_icon_(\d{3})_00(_shiny)?\.png$/.exec(e.path.startsWith(FOLDER_LEGACY) ? e.path.slice(FOLDER_LEGACY.length) : '');
-    if (!m) continue;
-    const dex = Number(m[1]);
-    const cur = legacy.get(dex) ?? { normal: '' };
-    if (m[2]) cur.shiny = ASSET_BASE_LEGACY + e.path.slice(FOLDER_LEGACY.length);
-    else cur.normal = ASSET_BASE_LEGACY + e.path.slice(FOLDER_LEGACY.length);
-    legacy.set(dex, cur);
+  for (const file of pictures) addressable(file.trim(), null);
+  // Mega / Primal looks come from the game master's temporary evolutions; PokeMiners has a picture for each.
+  let megaCount = 0;
+  for (const sp of speciesByDex.values()) {
+    for (const evo of sp.tempEvos) {
+      const form = evo === 'MEGA' || evo === 'MEGA_X' || evo === 'MEGA_Y' || evo === 'PRIMAL' ? evo : null;
+      if (!form) continue;
+      addressable(`pm${sp.dex}.f${form}.icon.png`, MEGA_BASE);
+      addressable(`pm${sp.dex}.f${form}.s.icon.png`, MEGA_BASE);
+      megaCount++;
+    }
   }
-  log(`assets: ${groups.size} variant pictures, ${legacy.size} legacy icons`);
+  // Megas newer than the game master snapshot, listed by hand in overrides.json
+  for (const key of overridesFile.megas ?? []) {
+    const m = /^(\d+)\.f(MEGA(?:_X|_Y)?|PRIMAL)$/.exec(key);
+    if (!m) continue;
+    addressable(`pm${m[1]}.f${m[2]}.icon.png`, MEGA_BASE);
+    addressable(`pm${m[1]}.f${m[2]}.s.icon.png`, MEGA_BASE);
+    megaCount++;
+  }
+  log(`pictures: ${groups.size} variant pictures (${megaCount} mega/primal from the game master + overrides)`);
 
   /* Variants */
   const variants: Variant[] = [];
   const femaleKeys = new Set([...groups.values()].filter((g) => g.female).map((g) => makeVariantKey({ dex: g.dex, form: g.form, costume: g.costume, gender: null })));
   // Read at build time (not a static import) so a long-running job picks up edits without restarting.
-  const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { labels: Record<string, LocalizedText>; status: Record<string, 'released' | 'datamined'> };
+  const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { labels: Record<string, LocalizedText>; status: Record<string, 'released' | 'datamined'>; megas?: string[] };
   const labelOverrides = overrides.labels;
   const statusOverrides = overrides.status;
 
@@ -293,15 +298,12 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       if (!variants.some((v) => v.key === key)) push(sp, null, token, null, null);
     }
   }
-  // Species with no picture at all: legacy icon, else official artwork
+  // Species with no picture at all: official artwork placeholder
   for (const sp of speciesByDex.values()) {
     if (variants.some((v) => v.dex === sp.dex && v.img)) continue;
-    const leg = legacy.get(sp.dex);
-    if (leg?.normal) sp.released = true;
-    const g: AssetGroup = { dex: sp.dex, form: null, costume: null, female: false, normal: leg?.normal ?? `${POKEAPI_ARTWORK}${sp.dex}.png`, shiny: leg?.shiny };
+    const g: AssetGroup = { dex: sp.dex, form: null, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${sp.dex}.png` };
     push(sp, g, null, null, null);
-    const v = variants[variants.length - 1]!;
-    v.datamined = !leg?.normal;
+    variants[variants.length - 1]!.datamined = true;
   }
   for (const sp of speciesByDex.values()) {
     const s = shinyList?.[String(sp.dex)];
@@ -312,7 +314,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   // on Leek Duck (raids, eggs, research, events), plus file / manager overrides on the base key.
   const releasedSet = releasedList ? new Set(Object.keys(releasedList).map(Number)) : null;
   for (const sp of speciesByDex.values()) {
-    const hasPicture = sp.released;
+    const hasPicture = variants.some((v) => v.dex === sp.dex && v.img && !v.img.startsWith(POKEAPI_ARTWORK));
     let released = releasedSet ? releasedSet.has(sp.dex) || extraReleased.has(sp.dex) : hasPicture;
     const fileStatus = statusOverrides[String(sp.dex)];
     if (fileStatus) released = fileStatus === 'released';

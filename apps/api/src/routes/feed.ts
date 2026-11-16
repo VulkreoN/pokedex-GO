@@ -1,21 +1,13 @@
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { requireRole, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
-import { env } from '../env.js';
 import { feedService } from '../feed/service.js';
-import path from 'node:path';
-import { mkdirSync } from 'node:fs';
-
-const FEED_DIR = path.join(env.dataDir, 'feed');
-mkdirSync(FEED_DIR, { recursive: true });
 
 /** Manager review queue of release signals. */
 export const feedRoutes = new Hono<AuthEnv>()
-  .get('/files/*', serveStatic({ root: path.relative(process.cwd(), FEED_DIR) || '.', rewriteRequestPath: (p) => p.replace(/^\/api\/feed\/files/, '') }))
   .use(requireRole('manager'))
   .get('/', async (c) => {
     const status = (c.req.query('status') ?? 'new') as 'new' | 'done' | 'ignored' | 'all';

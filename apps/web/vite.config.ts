@@ -45,7 +45,7 @@ export default defineConfig({
             options: { cacheName: 'dataset', expiration: { maxEntries: 4 } },
           },
           {
-            urlPattern: ({ url }) => url.hostname === 'raw.githubusercontent.com',
+            urlPattern: ({ url }) => url.hostname === 'raw.githubusercontent.com' || (url.hostname === 'trade.pokemongopro.com' && url.pathname.startsWith('/assets/')),
             handler: 'CacheFirst',
             options: { cacheName: 'sprites', expiration: { maxEntries: 3000, maxAgeSeconds: 60 * 86400 }, cacheableResponse: { statuses: [0, 200] } },
           },

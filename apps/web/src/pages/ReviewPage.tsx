@@ -21,7 +21,7 @@ interface FeedItem {
   auto: boolean;
   postedAt: string;
 }
-interface FeedStatus { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number }
+interface FeedStatus { enabled: { news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number }
 
 type Status = 'new' | 'done' | 'ignored';
 
@@ -56,7 +56,7 @@ export function ReviewPage() {
       return { ...p, [item.id]: cur };
     });
 
-  const sourceLabel = (s: string) => (s.startsWith('news') ? t.src_news : s === 'discord:gm' ? t.src_gm : s === 'discord:assets' ? t.src_assets : s.replace('discord:', 'Discord · '));
+  const sourceLabel = (s: string) => (s.startsWith('news') ? t.src_news : s);
 
   return (
     <>
@@ -70,7 +70,7 @@ export function ReviewPage() {
       <main className="mx-auto max-w-3xl space-y-3 px-3 pb-24">
         {q.data && (
           <p className="text-xs text-ink-3">
-            {q.data.status.enabled.discord.length === 0 && q.data.status.enabled.news.length === 0 ? t.feed_disabled : t.feed_sources(q.data.status.enabled.discord.length, q.data.status.enabled.news.length)}
+            {q.data.status.enabled.news.length === 0 ? t.feed_disabled : t.feed_sources(q.data.status.enabled.news.length)}
             {q.data.status.lastError && <span className="block text-berry">{q.data.status.lastError}</span>}
             {isAdmin && <button type="button" className="ml-2 font-semibold text-sky" disabled={poll.isPending} onClick={() => poll.mutate()}>{t.feed_poll_now}</button>}
           </p>
@@ -79,12 +79,12 @@ export function ReviewPage() {
         {q.data?.items.length === 0 && <Empty>{t.nothing_here}</Empty>}
         {q.data?.items.map((item) => {
           const image = item.attachments.find((a) => a.contentType?.startsWith('image/'));
-          const imageUrl = image ? (image.file ? `/api/feed/files/${image.file}` : image.text) : null;
+          const imageUrl = image?.text ?? null;
           const sel = pickedFor(item);
           return (
             <article key={item.id} className="card p-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
-                <Badge tone={item.source.startsWith('news') ? 'grass' : 'datamined'}>{sourceLabel(item.source)}</Badge>
+                <Badge tone="grass">{sourceLabel(item.source)}</Badge>
                 <span>{new Date(item.postedAt).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' })}</span>
                 {item.auto && <Badge tone="muted">{t.review_auto}</Badge>}
                 {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-sky">{t.review_open}</a>}
