@@ -21,7 +21,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
     return buildSearchStrings(targets);
   }, [entries, idx, onlyMissing]);
 
-  const names: Record<string, string> = { shiny: t.shiny, costume: t.filter_costumes, female: t.female, gigantamax: 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background, shadow: t.tag_shadow, purified: t.tag_purified, xxl: t.tag_xxl, xxs: t.tag_xxs };
+  const names: Record<string, string> = { shiny: t.shiny, costume: t.filter_costumes, female: t.female, gigantamax: 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background, shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs };
   const label = (mods: string[]) => (mods.length ? mods.map((m) => names[m] ?? m).join(' + ') : t.filter_all);
 
   return (

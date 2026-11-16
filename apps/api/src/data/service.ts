@@ -4,7 +4,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { applyManualOverrides, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
+import { PIPELINE_VERSION, applyManualOverrides, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
 import type { Dataset } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
@@ -29,6 +29,8 @@ export interface DataStatus {
   stats: Record<string, unknown> | null;
   eventsArchived: number;
   sources: SourceFreshness[];
+  /** Pipeline version that produced the dataset on disk. */
+  pipelineVersion?: number;
 }
 
 const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json' };
@@ -66,8 +68,9 @@ class DataService {
     await this.loadFromDisk();
     const ageMs = this.status.generatedAt ? Date.now() - new Date(this.status.generatedAt).getTime() : Infinity;
     const refreshMs = env.dataRefreshHours * 3600_000;
-    const delay = Math.max(0, refreshMs - ageMs);
-    if (delay === 0) void this.refresh('startup');
+    const outdated = this.status.pipelineVersion !== PIPELINE_VERSION;
+    const delay = outdated ? 0 : Math.max(0, refreshMs - ageMs);
+    if (delay === 0) void this.refresh(outdated ? `pipeline v${this.status.pipelineVersion ?? '?'} -> v${PIPELINE_VERSION}` : 'startup');
     this.schedule(delay);
   }
 
@@ -123,6 +126,7 @@ class DataService {
       this.status.generatedAt = dataset.generatedAt;
       this.status.version = dataset.version;
       this.status.stats = stats;
+      this.status.pipelineVersion = PIPELINE_VERSION;
       this.status.lastError = null;
       this.status.sources = await this.probeSources();
       await writeFile(path.join(env.dataDir, FILES.dataset), JSON.stringify(dataset));

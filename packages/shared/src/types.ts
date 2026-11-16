@@ -93,7 +93,7 @@ export interface DatasetManifest {
 export type ListVisibility = 'private' | 'friends' | 'link';
 
 /** Optional extra trait of a hunted Pokémon. Empty string = none. */
-export const ENTRY_TAGS = ['', 'lucky', 'background', 'shadow', 'purified', 'xxl', 'xxs'] as const;
+export const ENTRY_TAGS = ['', 'lucky', 'background', 'shadow', 'purified', 'dynamax', 'xxl', 'xxs'] as const;
 /** One of ENTRY_TAGS, or "bg:<background id>" for one specific special background. */
 export type EntryTag = (typeof ENTRY_TAGS)[number] | `bg:${string}`;
 export const isEntryTag = (s: string): s is EntryTag => (ENTRY_TAGS as readonly string[]).includes(s) || /^bg:[A-Za-z0-9_.-]{1,80}$/.test(s);
