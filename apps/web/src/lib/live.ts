@@ -24,6 +24,8 @@ export interface GameEvent {
   image: string;
   start: string | null;
   end: string | null;
+  /** Only known from our archive: Leek Duck no longer lists it. */
+  archived?: boolean;
   extraData?: {
     generic?: { hasSpawns?: boolean; hasFieldResearchTasks?: boolean };
     raidbattles?: { bosses: LivePokemon[]; shinies?: LivePokemon[] };
@@ -66,7 +68,7 @@ export const useEvents = () =>
         getJson<GameEvent[]>('/api/data/events-archive.json').catch(() => [] as GameEvent[]),
       ]);
       const byId = new Map<string, GameEvent>();
-      for (const e of archive) byId.set(e.eventID, e);
+      for (const e of archive) byId.set(e.eventID, { ...e, archived: true });
       for (const e of liveEvents) byId.set(e.eventID, e);
       return [...byId.values()];
     },
@@ -76,7 +78,9 @@ export const useEvents = () =>
 export type EventStatus = 'current' | 'upcoming' | 'past';
 
 /** Leek Duck times carry no timezone: they are the player's local time, which is what Date parsing gives us. */
-export function eventStatus(e: Pick<GameEvent, 'start' | 'end'>, now = Date.now()): EventStatus {
+export function eventStatus(e: Pick<GameEvent, 'start' | 'end' | 'archived'>, now = Date.now()): EventStatus {
+  // An undated event that dropped off Leek Duck is over, not "current forever".
+  if (e.archived && !e.start && !e.end) return 'past';
   const start = e.start ? new Date(e.start).getTime() : null;
   const end = e.end ? new Date(e.end).getTime() : null;
   if (start !== null && start > now) return 'upcoming';
@@ -89,6 +93,32 @@ export function dexFromImage(url: string): number | null {
   const m = /\/(?:pm(\d+)\.|pokemon_icon_(\d{3})_)/.exec(url);
   if (!m) return null;
   return Number(m[1] ?? m[2]);
+}
+
+/**
+ * The current raid-battle event announcing this boss, which carries the end date Leek Duck's boss list lacks.
+ * Matches on the boss name (without Shadow prefix and form) and on Shadow / Mega consistency.
+ */
+export function raidEventFor(bossName: string, events: GameEvent[], now = Date.now()): GameEvent | undefined {
+  const shadow = /^shadow /i.test(bossName);
+  const mega = /^mega /i.test(bossName);
+  const base = bossName.replace(/^shadow /i, '').replace(/\s*\(.*\)$/, '').toLowerCase();
+  return events
+    .filter((e) => e.eventType === 'raid-battles' && eventStatus(e, now) === 'current' && e.end)
+    .filter((e) => {
+      const name = e.name.toLowerCase();
+      const bosses = (e.extraData?.raidbattles?.bosses ?? []).map((b) => b.name.toLowerCase());
+      const named = name.includes(base) || bosses.some((b) => b.startsWith(base));
+      return named && /shadow/.test(name) === shadow && /\bmega\b/.test(name) === mega;
+    })
+    .sort((a, b) => a.end!.localeCompare(b.end!))[0];
+}
+
+export function formatUntil(end: string, lang: string): string {
+  const d = new Date(end);
+  const day = new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+  const time = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' }).format(d);
+  return lang === 'fr' ? `jusqu'au ${day} ${time}` : `until ${day} ${time}`;
 }
 
 export function formatRange(start: string | null, end: string | null, lang: string): string {

@@ -11,7 +11,7 @@ import { Link } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { dexFromImage, eventStatus, formatRange, isMaxEvent, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon } from '../lib/live.js';
+import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
@@ -93,17 +93,47 @@ function Raids() {
     for (const b of raids.data ?? []) (m.get(b.tier) ?? m.set(b.tier, []).get(b.tier)!).push(b);
     return [...m.entries()].sort((a, b) => tierRank(a[0]) - tierRank(b[0]));
   }, [raids.data]);
-  const upcoming = useMemo(
-    () =>
-      (events.data ?? [])
-        .filter((e) => /raid/.test(e.eventType) && !isMaxEvent(e) && eventStatus(e) !== 'past')
-        .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')),
-    [events.data],
+  // Each current boss gets the end date of the event announcing it; those events then need no card of their own.
+  const { endOf, now, upcoming } = useMemo(() => {
+    const all = events.data ?? [];
+    const endOf = new Map<string, string>();
+    const used = new Set<string>();
+    for (const b of raids.data ?? []) {
+      const e = raidEventFor(b.name, all);
+      if (e) {
+        endOf.set(b.name, e.end!);
+        used.add(e.eventID);
+      }
+    }
+    const raidEvents = all
+      .filter((e) => /raid/.test(e.eventType) && !isMaxEvent(e) && !used.has(e.eventID))
+      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    return {
+      endOf,
+      now: raidEvents.filter((e) => eventStatus(e) === 'current'),
+      upcoming: raidEvents.filter((e) => eventStatus(e) === 'upcoming'),
+    };
+  }, [raids.data, events.data]);
+  const eventCard = (e: GameEvent) => (
+    <li key={e.eventID} className="card p-3">
+      <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
+      <div className="mt-1 font-semibold">{e.name}</div>
+      {e.extraData?.raidbattles?.bosses && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {e.extraData.raidbattles.bosses.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}
+        </div>
+      )}
+    </li>
   );
   if (raids.isPending) return <Spinner />;
   if (raids.isError) return <Empty>{t.live_error}</Empty>;
   return (
     <>
+      {now.length > 0 && (
+        <Section title={t.raids_now} count={now.length}>
+          <ul className="space-y-2">{now.map(eventCard)}</ul>
+        </Section>
+      )}
       {tiers.map(([tier, bosses]) => (
         <Section key={tier} title={tierLabel(tier, lang)} count={bosses.length}>
           <ul className="space-y-2">
@@ -119,6 +149,7 @@ function Raids() {
                     PC {b.combatPower.normal.min}–{b.combatPower.normal.max}
                     <span className="text-ink-3"> · {t.boosted} {b.combatPower.boosted.min}–{b.combatPower.boosted.max}</span>
                   </div>
+                  {endOf.has(b.name) && <div className="text-xs font-medium text-grass">{formatUntil(endOf.get(b.name)!, lang)}</div>}
                 </div>
                 <div className="flex shrink-0 gap-1">
                   {b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />)}
@@ -131,22 +162,7 @@ function Raids() {
       ))}
       <Section title={t.raids_upcoming} count={upcoming.length}>
         {upcoming.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-        <ul className="space-y-2">
-          {upcoming.map((e) => (
-            <li key={e.eventID} className="card p-3">
-              <div className="flex items-center gap-2">
-                <Badge tone={eventStatus(e) === 'current' ? 'grass' : 'muted'}>{eventStatus(e) === 'current' ? t.status_current : t.status_upcoming}</Badge>
-                <span className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</span>
-              </div>
-              <div className="mt-1 font-semibold">{e.name}</div>
-              {e.extraData?.raidbattles?.bosses && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {e.extraData.raidbattles.bosses.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+        <ul className="space-y-2">{upcoming.map(eventCard)}</ul>
       </Section>
     </>
   );
