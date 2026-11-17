@@ -10,6 +10,9 @@ export const users = pgTable(
     friendCode: text('friend_code').notNull(),
     /** user | manager (can mark variants released) | admin (can promote, refresh data) */
     role: text('role', { enum: ['user', 'manager', 'admin'] }).notNull().default('user'),
+    /** One-time password reset code issued by an admin (sha256), valid until resetExpiresAt. */
+    resetHash: text('reset_hash'),
+    resetExpiresAt: timestamp('reset_expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

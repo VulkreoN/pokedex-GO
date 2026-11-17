@@ -18,7 +18,7 @@ Trois conteneurs : `db` (Postgres 17), `api` (Hono + Drizzle, applique les migra
 
 Dans `.env` : `DOMAIN=dex.example.com`, `WEB_PORT=80`, `WEB_HTTPS_PORT=443`, `COOKIE_SECURE=true`. Pointe le DNS vers le serveur, `docker compose up -d --build`, Caddy obtient et renouvelle le certificat tout seul. Rien d'autre à planifier : le job de données tourne dans l'API.
 
-Le premier compte créé est administrateur. Depuis « Moi », il peut promouvoir des gérants (qui marquent une variante « sortie » ou la renomment depuis la fiche Pokémon) et forcer un rafraîchissement des données.
+Le premier compte créé est administrateur. Mot de passe oublié : un admin génère un code à usage unique (24 h) depuis « Moi » → Administration et le transmet ; la personne le saisit via « Mot de passe oublié ? » sur l'écran de connexion. Connecté, chacun change son mot de passe depuis « Moi ». Depuis « Moi », il peut promouvoir des gérants (qui marquent une variante « sortie » ou la renomment depuis la fiche Pokémon) et forcer un rafraîchissement des données.
 
 ## Exploitation
 

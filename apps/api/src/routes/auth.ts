@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createSession, destroySession, hashPassword, publicUser, requireAuth, userFromRequest, verifyPassword, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
-import { newFriendCode, newId } from '../lib/ids.js';
+import { hashToken, newFriendCode, newId } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
 import { env } from '../env.js';
 
@@ -51,6 +51,27 @@ export const authRoutes = new Hono<AuthEnv>()
   .get('/me', async (c) => {
     const user = await userFromRequest(c);
     return c.json({ user: user ? publicUser(user) : null });
+  })
+  /** Logged-in: change the password, every other session is closed. */
+  .post('/password', requireAuth, zValidator('json', z.object({ current: z.string(), password: z.string().min(8).max(200) })), async (c) => {
+    const me = c.get('user');
+    const [user] = await db.select().from(schema.users).where(sql`${schema.users.id} = ${me.id}`).limit(1);
+    if (!user || !(await verifyPassword(user.passwordHash, c.req.valid('json').current))) return c.json({ error: 'invalid_credentials' }, 401);
+    await db.update(schema.users).set({ passwordHash: await hashPassword(c.req.valid('json').password) }).where(sql`${schema.users.id} = ${me.id}`);
+    await db.delete(schema.sessions).where(sql`${schema.sessions.userId} = ${me.id}`);
+    await createSession(c, me.id);
+    return c.json({ ok: true });
+  })
+  /** Logged-out: username + one-time code handed over by an admin + new password. */
+  .post('/reset', rateLimit({ windowMs: 60_000, max: 10 }), zValidator('json', z.object({ username: z.string().trim().min(3).max(20), code: z.string().trim().min(6).max(40), password: z.string().min(8).max(200) })), async (c) => {
+    const { username, code, password } = c.req.valid('json');
+    const [user] = await db.select().from(schema.users).where(sql`lower(${schema.users.username}) = lower(${username})`).limit(1);
+    const valid = user?.resetHash && user.resetExpiresAt && user.resetExpiresAt.getTime() > Date.now() && user.resetHash === hashToken(code.toUpperCase().replace(/-/g, ''));
+    if (!user || !valid) return c.json({ error: 'invalid_code' }, 401);
+    await db.update(schema.users).set({ passwordHash: await hashPassword(password), resetHash: null, resetExpiresAt: null }).where(sql`${schema.users.id} = ${user.id}`);
+    await db.delete(schema.sessions).where(sql`${schema.sessions.userId} = ${user.id}`);
+    await createSession(c, user.id);
+    return c.json({ user: publicUser({ ...user, role: user.role }) });
   })
   .delete('/me', requireAuth, zValidator('json', z.object({ password: z.string() })), async (c) => {
     const me = c.get('user');

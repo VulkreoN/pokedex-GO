@@ -24,6 +24,10 @@ export function MePage() {
   const qc = useQueryClient();
   const [theme, setTheme] = useState<Theme>(getTheme());
   const [deleting, setDeleting] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [curPw, setCurPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [issued, setIssued] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const status = useDataStatus();
   const refresh = useRefreshData();
@@ -45,7 +49,10 @@ export function MePage() {
           <section className="rounded-card border border-line p-4">
             <div className="flex items-center gap-2 text-[22px] font-bold">{me.data.username} {me.data.role !== 'user' && <Badge tone="grass">{t[`role_${me.data.role}`]}</Badge>}</div>
             <div className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</div>
-            <Button className="mt-3" onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
+              <Button tone="ghost" onClick={() => setChanging(true)}>{t.change_password}</Button>
+            </div>
           </section>
         ) : (
           <section className="rounded-card sky-header rounded-card p-4">
@@ -114,6 +121,7 @@ export function MePage() {
             <h2 className="mb-1 text-base font-bold">{t.admin_title}</h2>
             <p className="mb-3 text-xs text-ink-3">{t.admin_hint}</p>
             <TextField placeholder={t.admin_search} value={userQuery} onChange={(e) => { setUserQuery(e.target.value); setUserOffset(0); }} />
+            {issued && <p className="mt-2 rounded-lg bg-go-soft p-2 text-sm font-semibold text-go-ink"><code>{issued}</code></p>}
             <p className="tnum mt-2 text-xs text-ink-3">{t.admin_count(users.data?.total ?? 0)}</p>
             <ul className="mt-1 divide-y divide-line">
               {users.data?.users.map((u) => (
@@ -125,6 +133,7 @@ export function MePage() {
                   {(['user', 'manager', 'admin'] as Role[]).map((r) => (
                     <Chip key={r} active={u.role === r} disabled={u.id === me.data?.id} className="min-h-8 px-2 text-xs disabled:opacity-40" onClick={() => setRole.mutate({ id: u.id, role: r })}>{t[`role_${r}`]}</Chip>
                   ))}
+                  <Chip className="min-h-8 px-2 text-xs" onClick={async () => { const r = await api<{ username: string; code: string }>(`/users/${u.id}/reset-code`, { method: 'POST' }); setIssued(t.reset_issued(r.username, r.code)); }}>{t.issue_reset}</Chip>
                 </li>
               ))}
               {users.data?.users.length === 0 && <li className="py-2 text-sm text-ink-3">{t.nothing_here}</li>}
@@ -139,6 +148,18 @@ export function MePage() {
           </section>
         )}
       </main>
+      <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>
+        <div className="space-y-3">
+          <TextField type="password" label={t.current_password} value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
+          <TextField type="password" label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
+          <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8} onClick={async () => {
+            try {
+              await api('/auth/password', { body: { current: curPw, password: newPw } });
+              toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw('');
+            } catch { alert(t.err_invalid_credentials); }
+          }}>{t.save}</Button>
+        </div>
+      </Sheet>
       <Sheet open={deleting} onClose={() => setDeleting(false)} title={t.delete_account}>
         <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
         <TextField type="password" label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />

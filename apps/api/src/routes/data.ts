@@ -7,6 +7,8 @@ import { requireRole, type AuthEnv } from '../auth.js';
 import { dataService } from '../data/service.js';
 import { feedService } from '../feed/service.js';
 import { db, schema } from '../db/index.js';
+import { hashToken } from '../lib/ids.js';
+import { randomBytes } from 'node:crypto';
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
 export const dataRoutes = new Hono<AuthEnv>()
@@ -89,6 +91,14 @@ export const userRoutes = new Hono<AuthEnv>()
       .limit(50)
       .offset(offset);
     return c.json({ users: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })), total: count?.n ?? 0, offset });
+  })
+  /** Issues a one-time reset code (shown once to the admin, valid 24h). */
+  .post('/:id/reset-code', async (c) => {
+    const id = c.req.param('id');
+    const code = randomBytes(6).toString('hex').toUpperCase().match(/.{1,4}/g)!.join('-'); // XXXX-XXXX-XXXX
+    const [u] = await db.update(schema.users).set({ resetHash: hashToken(code.replace(/-/g, '')), resetExpiresAt: new Date(Date.now() + 24 * 3600_000) }).where(eq(schema.users.id, id)).returning({ username: schema.users.username });
+    if (!u) return c.json({ error: 'not_found' }, 404);
+    return c.json({ username: u.username, code, expiresInHours: 24 });
   })
   .patch('/:id/role', zValidator('json', z.object({ role: z.enum(['user', 'manager', 'admin']) })), async (c) => {
     const me = c.get('user');
