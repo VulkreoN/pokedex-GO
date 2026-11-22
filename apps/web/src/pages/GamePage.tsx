@@ -1,0 +1,353 @@
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { XEmbed } from '../components/XEmbed.js';
+import { useToast } from '../components/toast.js';
+import { api, copyText } from '../lib/api.js';
+import { useMe } from '../lib/auth.js';
+import { useDataset } from '../lib/dataset.js';
+import { useTheme } from '../lib/theme.js';
+import { Button, TextField } from '../components/ui.js';
+import { Link } from 'react-router';
+import { Sparkle, Sprite } from '../components/Sprite.js';
+import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { localized, useLang, useT } from '../lib/i18n.js';
+import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon } from '../lib/live.js';
+
+const X_HANDLE = 'g47ix';
+
+type Tab = 'raids' | 'max' | 'events' | 'research' | 'eggs';
+
+export function GamePage() {
+  const t = useT();
+  const [tab, setTab] = useState<Tab>('raids');
+  const tabs: [Tab, string][] = [['raids', t.tab_raids], ['max', t.tab_max], ['events', t.tab_events], ['research', t.tab_research], ['eggs', t.tab_eggs]];
+  return (
+    <>
+      <TopBar title={t.nav_game}>
+        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
+          {tabs.map(([id, label]) => (
+            <Chip key={id} active={tab === id} onClick={() => setTab(id)}>{label}</Chip>
+          ))}
+        </div>
+      </TopBar>
+      <main className="mx-auto max-w-3xl px-3 pb-24">
+        {tab === 'raids' && <Raids />}
+        {tab === 'max' && <MaxBattles />}
+        {tab === 'events' && <Events />}
+        {tab === 'research' && <Research />}
+        {tab === 'eggs' && <Eggs />}
+        <p className="mt-8 text-center text-xs text-ink-3">{t.live_source}</p>
+      </main>
+    </>
+  );
+}
+
+/** Small Pokémon picture from Leek Duck, linked to our Pokédex entry when the file name tells us the species. */
+function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; caption?: boolean }) {
+  const dex = dexFromImage(p.image);
+  const body = (
+    <span className="flex flex-col items-center text-center">
+      <span className="relative">
+        <img src={p.image} alt="" width={size} height={size} loading="lazy" className="object-contain" style={{ width: size, height: size }} />
+        {p.canBeShiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
+      </span>
+      {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{p.name}</span>}
+    </span>
+  );
+  return dex ? <Link to={`/dex/${dex}`} className="rounded-lg hover:bg-paper-2">{body}</Link> : body;
+}
+
+function Section({ title, count, children }: { title: ReactNode; count?: number; children: ReactNode }) {
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 text-base font-bold">
+        {title} {count !== undefined && <span className="tnum font-normal text-ink-3">{count}</span>}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+const TIER_ORDER = ['5', 'mega', '4', '3', '1', 'shadow'];
+/** "5-Star Raids" -> "Raids 5 étoiles" in French; other tier names are kept as Leek Duck writes them. */
+const tierLabel = (tier: string, lang: string) => {
+  const m = /^(\d)-Star Raids$/.exec(tier);
+  if (lang === 'fr' && m) return `Raids ${m[1]} étoiles`;
+  if (lang === 'fr' && /^Mega Raids$/i.test(tier)) return 'Raids Méga';
+  if (lang === 'fr' && /^Shadow Raids$/i.test(tier)) return 'Raids Obscurs';
+  return tier;
+};
+const tierRank = (tier: string) => {
+  const key = tier.toLowerCase();
+  const i = TIER_ORDER.findIndex((k) => key.startsWith(k) || key.includes(k));
+  return i === -1 ? 99 : i;
+};
+
+function Raids() {
+  const t = useT();
+  const { lang } = useLang();
+  const raids = useRaids();
+  const events = useEvents();
+  const tiers = useMemo(() => {
+    const m = new Map<string, NonNullable<typeof raids.data>>();
+    for (const b of raids.data ?? []) (m.get(b.tier) ?? m.set(b.tier, []).get(b.tier)!).push(b);
+    return [...m.entries()].sort((a, b) => tierRank(a[0]) - tierRank(b[0]));
+  }, [raids.data]);
+  // Each current boss gets the end date of the event announcing it; those events then need no card of their own.
+  const { endOf, now, upcoming } = useMemo(() => {
+    const all = events.data ?? [];
+    const endOf = new Map<string, string>();
+    const used = new Set<string>();
+    for (const b of raids.data ?? []) {
+      const e = raidEventFor(b.name, all);
+      if (e) {
+        endOf.set(b.name, e.end!);
+        used.add(e.eventID);
+      }
+    }
+    const raidEvents = all
+      .filter((e) => /raid/.test(e.eventType) && !isMaxEvent(e) && !used.has(e.eventID))
+      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    return {
+      endOf,
+      now: raidEvents.filter((e) => eventStatus(e) === 'current'),
+      upcoming: raidEvents.filter((e) => eventStatus(e) === 'upcoming'),
+    };
+  }, [raids.data, events.data]);
+  const eventCard = (e: GameEvent) => (
+    <li key={e.eventID} className="card p-3">
+      <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
+      <div className="mt-1 font-semibold">{e.name}</div>
+      {e.extraData?.raidbattles?.bosses && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {e.extraData.raidbattles.bosses.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}
+        </div>
+      )}
+    </li>
+  );
+  if (raids.isPending) return <Spinner />;
+  if (raids.isError) return <Empty>{t.live_error}</Empty>;
+  return (
+    <>
+      {now.length > 0 && (
+        <Section title={t.raids_now} count={now.length}>
+          <ul className="space-y-2">{now.map(eventCard)}</ul>
+        </Section>
+      )}
+      {tiers.map(([tier, bosses]) => (
+        <Section key={tier} title={tierLabel(tier, lang)} count={bosses.length}>
+          <ul className="space-y-2">
+            {bosses.map((b) => (
+              <li key={b.name} className="card flex items-center gap-3 p-2">
+                <Mon p={b} size={56} caption={false} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <span className="truncate">{b.name}</span>
+                    {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
+                  </div>
+                  <div className="tnum text-xs text-ink-2">
+                    PC {b.combatPower.normal.min}–{b.combatPower.normal.max}
+                    <span className="text-ink-3"> · {t.boosted} {b.combatPower.boosted.min}–{b.combatPower.boosted.max}</span>
+                  </div>
+                  {endOf.has(b.name) && <div className="text-xs font-medium text-grass">{formatUntil(endOf.get(b.name)!, lang)}</div>}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />)}
+                  {b.boostedWeather.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ))}
+      <Section title={t.raids_upcoming} count={upcoming.length}>
+        {upcoming.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
+        <ul className="space-y-2">{upcoming.map(eventCard)}</ul>
+      </Section>
+    </>
+  );
+}
+
+function Events() {
+  const t = useT();
+  const { lang } = useLang();
+  const { dark } = useTheme();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const me = useMe();
+  const posts = usePosts();
+  const promo = usePromoCodes();
+  const [url, setUrl] = useState('');
+  const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
+  const add = useMutation({ mutationFn: (u: string) => api<{ post: unknown }>('/game/posts', { body: { url: u } }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['game', 'posts'] }); toast(t.posts_added); setUrl(''); } });
+  const remove = useMutation({ mutationFn: (id: string) => api<{ ok: true }>(`/game/posts/${id}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['game', 'posts'] }) });
+  const submit = (e: FormEvent) => { e.preventDefault(); if (url.trim()) add.mutate(url.trim()); };
+
+  return (
+    <>
+      {promo.data && promo.data.length > 0 && (
+        <Section title={t.promo_title} count={promo.data.length}>
+          <ul className="space-y-2">
+            {promo.data.map((c) => (
+              <li key={c.code} className="card p-3">
+                <div className="font-semibold">{c.title}</div>
+                {c.rewards.length > 0 && <div className="mt-0.5 text-xs text-ink-2">{c.rewards.join(' · ')}</div>}
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-lg bg-paper-2 px-2 py-1.5 text-sm">{c.code}</code>
+                  <Button className="min-h-9 px-3 text-sm" onClick={async () => { if (await copyText(c.code)) toast(t.copied); }}>{t.copy}</Button>
+                  <a href={c.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-xl bg-go px-3 text-sm font-semibold text-white">{t.redeem}</a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      <Section title={t.posts_title} count={posts.data?.length}>
+        {isManager && (
+          <form onSubmit={submit} className="mb-3 flex gap-2">
+            <TextField placeholder={t.posts_add_placeholder} value={url} onChange={(e) => setUrl(e.target.value)} className="flex-1" inputMode="url" />
+            <Button tone="primary" type="submit" disabled={add.isPending || !url.trim()}>{t.add}</Button>
+          </form>
+        )}
+        {add.isError && <p className="mb-2 text-sm text-berry">{t.err_generic}</p>}
+        {posts.isPending && <Spinner />}
+        {posts.data?.length === 0 && <p className="text-sm text-ink-3">{t.posts_empty}</p>}
+        <ul className="space-y-3">
+          {posts.data?.map((p) => (
+            <li key={p.id} className="card p-3">
+              <div className="flex items-center gap-2 text-xs text-ink-2">
+                <Badge tone="muted">@{p.authorUrl?.split('/').pop() ?? p.author}</Badge>
+                {p.postedAt && <span>{new Date(p.postedAt).toLocaleDateString(lang, { dateStyle: 'medium' })}</span>}
+                <a href={p.url} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-sky">{t.open_on_x}</a>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-sm">
+                {linkify(p.text).map((part, i) => part.url ? <a key={i} href={part.url} target="_blank" rel="noreferrer" className="break-all font-semibold text-sky underline">{part.text}</a> : <span key={i}>{part.text}</span>)}
+              </p>
+              {p.codes.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {p.codes.map((code) => (
+                    <a key={code} href={`https://store.pokemongo.com/offer-redemption?passcode=${code}`} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-go px-3 text-sm font-semibold text-white">🎁 {code}</a>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2"><XEmbed html={p.html} dark={dark} /></div>
+              {isManager && <button type="button" className="mt-1 text-xs text-berry" onClick={() => remove.mutate(p.id)}>{t.posts_remove}</button>}
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      <Section title={t.timeline_title(X_HANDLE)}>
+        <p className="mb-2 text-xs text-ink-3">{t.timeline_hint} <a href={`https://x.com/${X_HANDLE}/media`} target="_blank" rel="noreferrer" className="font-semibold text-sky">@{X_HANDLE}</a></p>
+        <div className="card overflow-hidden p-1">
+          <XEmbed html={`<a class="twitter-timeline" href="https://x.com/${X_HANDLE}?ref_src=twsrc%5Etfw">Posts by ${X_HANDLE}</a>`} dark={dark} />
+        </div>
+      </Section>
+    </>
+  );
+}
+
+/** Max Battles: current and upcoming Dynamax / Gigantamax events, with the Pokémon named in them. */
+function MaxBattles() {
+  const t = useT();
+  const { lang } = useLang();
+  const events = useEvents();
+  const dataset = useDataset();
+  const list = useMemo(() => (events.data ?? []).filter((e) => isMaxEvent(e) && eventStatus(e) !== 'past').sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')), [events.data]);
+  if (events.isPending) return <Spinner />;
+  const idx = dataset.data;
+  /** Species named in an event title, matched on English names (Leek Duck writes English). */
+  const named = (name: string) => {
+    if (!idx) return [];
+    const hay = ` ${name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+    return idx.ds.species.filter((s) => s.name.en.length >= 4 && hay.includes(` ${s.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `));
+  };
+  const now = list.filter((e) => eventStatus(e) === 'current');
+  const upcoming = list.filter((e) => eventStatus(e) === 'upcoming');
+  const block = (title: string, items: GameEvent[]) => (
+    <Section title={title} count={items.length}>
+      {items.length === 0 && <p className="text-sm text-ink-3">{t.max_empty}</p>}
+      <ul className="space-y-2">
+        {items.map((e) => {
+          const species = named(e.name);
+          const gmax = /gigantamax/i.test(e.name);
+          return (
+            <li key={e.eventID} className="card p-3">
+              <div className="flex items-center gap-2 text-xs text-ink-2">
+                <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? 'Gigantamax' : 'Dynamax'}</Badge>
+                <span>{formatRange(e.start, e.end, lang)}</span>
+              </div>
+              <div className="mt-1 font-semibold">{e.name}</div>
+              {species.length > 0 && idx && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {species.map((sp) => {
+                    const cover = idx.coverOf.get(sp.dex);
+                    const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') ?? cover : cover;
+                    return v ? <Link key={sp.dex} to={`/dex/${sp.dex}`} className="flex flex-col items-center text-center"><Sprite idx={idx} variant={v} size={56} /><span className="w-[4.5rem] truncate text-[11px] font-semibold">{localized(sp.name, lang)}</span></Link> : null;
+                  })}
+                </div>
+              )}
+              <a href={e.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-sky">{t.open_leekduck}</a>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
+  );
+  return (
+    <>
+      {block(t.max_now, now)}
+      {block(t.max_upcoming, upcoming)}
+    </>
+  );
+}
+
+function Research() {
+  const t = useT();
+  const q = useResearch();
+  if (q.isPending) return <Spinner />;
+  if (q.isError) return <Empty>{t.live_error}</Empty>;
+  const groups = new Map<string, NonNullable<typeof q.data>>();
+  for (const task of q.data) {
+    const k = task.type ?? 'other';
+    (groups.get(k) ?? groups.set(k, []).get(k)!).push(task);
+  }
+  return (
+    <>
+      {[...groups.entries()].map(([type, tasks]) => (
+        <Section key={type} title={t.research_types[type] ?? type} count={tasks.length}>
+          <ul className="space-y-2">
+            {tasks.map((task) => (
+              <li key={task.text} className="card p-3">
+                <div className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: task.text }} />
+                <div className="mt-2 flex flex-wrap gap-2">{task.rewards.map((r, i) => <Mon key={`${r.name}-${i}`} p={r} size={48} />)}</div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ))}
+    </>
+  );
+}
+
+function Eggs() {
+  const t = useT();
+  const q = useEggs();
+  if (q.isPending) return <Spinner />;
+  if (q.isError) return <Empty>{t.live_error}</Empty>;
+  const groups = new Map<string, NonNullable<typeof q.data>>();
+  for (const e of q.data) {
+    const k = e.eggType + (e.isAdventureSync ? ` · ${t.adventure_sync}` : '') + (e.isGiftExchange ? ` · ${t.gift_egg}` : '');
+    (groups.get(k) ?? groups.set(k, []).get(k)!).push(e);
+  }
+  return (
+    <>
+      {[...groups.entries()].map(([type, mons]) => (
+        <Section key={type} title={type} count={mons.length}>
+          <div className="flex flex-wrap gap-2">{mons.map((m, i) => <Mon key={`${m.name}-${i}`} p={m} />)}</div>
+        </Section>
+      ))}
+    </>
+  );
+}

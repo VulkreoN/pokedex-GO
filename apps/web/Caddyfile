@@ -1,0 +1,19 @@
+{
+	admin off
+}
+
+# SITE_ADDRESS is ":80" when DOMAIN is empty (local / behind your own proxy), or the domain itself:
+# Caddy then provisions and renews the HTTPS certificate automatically (ports 80/443 must be reachable).
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	root * /srv
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
