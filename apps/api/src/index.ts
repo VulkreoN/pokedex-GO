@@ -14,6 +14,8 @@ import { dataService } from './data/service.js';
 import { feedRoutes } from './routes/feed.js';
 import { gameRoutes } from './routes/game.js';
 import { feedService } from './feed/service.js';
+import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js';
+import { pruneNotifications } from './notify/service.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
 
@@ -31,6 +33,9 @@ app.route('/overrides', overrideRoutes);
 app.route('/users', userRoutes);
 app.route('/feed', feedRoutes);
 app.route('/game', gameRoutes);
+app.route('/notifications', notificationRoutes);
+app.route('/push', pushRoutes);
+app.route('/stream', streamRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -45,3 +50,4 @@ serve({ fetch: app.fetch, port: env.port }, (info) => {
   console.log(`API listening on http://localhost:${info.port}/api`);
 });
 void dataService.start().then(() => feedService.start());
+setInterval(() => void pruneNotifications().catch(() => {}), 24 * 3600_000).unref();

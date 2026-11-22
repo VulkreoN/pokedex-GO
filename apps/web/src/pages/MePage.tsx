@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Chip, Sheet, TextField, TopBar } from '../components/ui.js';
+import { PushSettings } from '../components/PushSettings.js';
 import { Badge } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
@@ -55,7 +56,9 @@ export function MePage() {
               <Button tone="danger" onClick={() => setDeleting(true)}>{t.delete_account}</Button>
             </div>
           </section>
-        ) : (
+        ) : null}
+        {me.data && <PushSettings />}
+        {me.data ? null : (
           <section className="rounded-card sky-header rounded-card p-4">
             <h2 className="text-[22px] font-bold leading-tight">{t.welcome_title}</h2>
             <p className="mt-1 text-sm opacity-80">{t.welcome_text}</p>

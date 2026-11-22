@@ -11,6 +11,8 @@ import { applyTheme, getTheme } from './lib/theme.js';
 import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
 import { GamePage } from './pages/GamePage.js';
 import { PvpPage } from './pages/PvpPage.js';
+import { NotificationsPage } from './pages/NotificationsPage.js';
+import { useRealtime } from './lib/social.js';
 import { ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -63,6 +65,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+/** One live connection while logged in: friends' edits, friend requests and notifications show up without reloading. */
+function Realtime() {
+  const me = useMe();
+  useRealtime(!!me.data);
+  return null;
+}
+
 export function App() {
   const [lang, setLangState] = useState<Lang>(detectLang);
   const setLang = (l: Lang) => {
@@ -99,6 +108,7 @@ export function App() {
               <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
               <Route path="/friends/:id" element={<RequireAuth><FriendListsPage /></RequireAuth>} />
               <Route path="/me" element={<MePage />} />
+              <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
               <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
@@ -106,6 +116,7 @@ export function App() {
             </ErrorBoundary>
             <SelectionBar />
             <BottomNav />
+            <Realtime />
           </BrowserRouter>
         </ToastProvider>
       </LangContext.Provider>

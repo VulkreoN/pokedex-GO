@@ -154,9 +154,41 @@ export interface ListSummary {
   shareToken: string | null;
 }
 
-export interface ListDetail extends ListSummary {
-  entries: ListEntry[];
+/** A friend saying "I have this one" on a list entry. */
+export interface ListOffer {
+  userId: string;
+  username: string;
 }
+
+export interface ListDetailEntry extends ListEntry {
+  /** Owner view: every friend who has it. Friend view: absent. */
+  offers?: ListOffer[];
+  /** Friend view: whether I said I have it. */
+  offeredByMe?: boolean;
+}
+
+export interface ListDetail extends ListSummary {
+  entries: ListDetailEntry[];
+}
+
+export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  actor: { id: string; username: string } | null;
+  list: { id: string; name: string } | null;
+  /** offer: { count, variantKeys } (offers from one friend on one list are grouped) */
+  data: Record<string, unknown>;
+  createdAt: string;
+  readAt: string | null;
+}
+
+/** Live events pushed to the open app (Server-Sent Events). */
+export type LiveEvent =
+  | { type: 'list'; listId: string; ownerId: string; deleted?: boolean }
+  | { type: 'friends' }
+  | { type: 'notification' };
 
 export type Role = 'user' | 'manager' | 'admin';
 

@@ -43,6 +43,13 @@
       "when": 1794863049325,
       "tag": "0005_rapid_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795369009575,
+      "tag": "0006_brief_jetstream",
+      "breakpoints": true
     }
   ]
 }

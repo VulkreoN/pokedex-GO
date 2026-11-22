@@ -29,7 +29,16 @@ export const authRoutes = new Hono<AuthEnv>()
     const [countRow] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(schema.users);
     const existing = countRow?.n ?? 0;
     const role = existing === 0 || env.adminUsernames.includes(username.toLowerCase()) ? 'admin' : 'user'; // the first account owns the instance
-    const [user] = await db.insert(schema.users).values({ id, username, passwordHash, friendCode, role }).returning();
+    let user: typeof schema.users.$inferSelect | undefined;
+    try {
+      [user] = await db.insert(schema.users).values({ id, username, passwordHash, friendCode, role }).returning();
+    } catch (e) {
+      // Two sign-ups racing for the same name both pass the check above; the unique index settles it.
+      if ((e as { code?: string; cause?: { code?: string } }).code === '23505' || (e as { cause?: { code?: string } }).cause?.code === '23505') {
+        return c.json({ error: 'username_taken' }, 409);
+      }
+      throw e;
+    }
     await createSession(c, id);
     return c.json({ user: publicUser(user!) }, 201);
   })

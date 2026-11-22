@@ -1,0 +1,120 @@
+/** Friends' lists, "I have it" marks, notifications, push and the live connection. */
+import { useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { AppNotification, ListDetail, ListSummary, LiveEvent, NotificationType } from '@mydexpogo/shared';
+import { api } from './api.js';
+
+export const useAllFriendLists = (enabled = true) =>
+  useQuery({ queryKey: ['friends-lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists/friends').then((r) => r.lists), enabled });
+
+export function useOffer(listId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { variantKey: string; shiny: boolean; tag: string; on: boolean }) => api<{ list: ListDetail }>(`/lists/${listId}/offers`, { body: b }),
+    onSuccess: (r) => qc.setQueryData(['list', listId], (old: { list: ListDetail; access: string } | undefined) => (old ? { ...old, list: r.list } : old)),
+  });
+}
+
+export const useNotifications = (enabled = true) =>
+  useQuery({ queryKey: ['notifications'], queryFn: () => api<{ items: AppNotification[]; unread: number }>('/notifications'), enabled, refetchInterval: 5 * 60_000 });
+
+export function useMarkRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids?: string[]) => api('/notifications/read', { body: ids ? { ids } : {} }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export type NotifyPrefs = Record<NotificationType, boolean>;
+export const useNotifyPrefs = () => useQuery({ queryKey: ['notify-prefs'], queryFn: () => api<{ prefs: NotifyPrefs }>('/notifications/prefs').then((r) => r.prefs) });
+export function useSetNotifyPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: Partial<NotifyPrefs>) => api<{ prefs: NotifyPrefs }>('/notifications/prefs', { method: 'PUT', body: p }).then((r) => r.prefs),
+    // Optimistic: the switch moves at once, and goes back if the server refuses.
+    onMutate: (p) => {
+      const before = qc.getQueryData<NotifyPrefs>(['notify-prefs']);
+      if (before) qc.setQueryData(['notify-prefs'], { ...before, ...p });
+      return { before };
+    },
+    onError: (_e, _p, ctx) => ctx?.before && qc.setQueryData(['notify-prefs'], ctx.before),
+    onSuccess: (prefs) => qc.setQueryData(['notify-prefs'], prefs),
+  });
+}
+
+/**
+ * Keeps one live connection while logged in and refreshes exactly what changed.
+ * EventSource reconnects by itself; on reconnect everything social is refetched in case events were missed.
+ */
+export function useRealtime(loggedIn: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!loggedIn || typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/stream', { withCredentials: true });
+    let opened = false;
+    es.addEventListener('ready', () => {
+      if (opened) for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+      opened = true;
+    });
+    es.addEventListener('live', (msg) => {
+      const e = JSON.parse((msg as MessageEvent<string>).data) as LiveEvent;
+      if (e.type === 'list') {
+        void qc.invalidateQueries({ queryKey: ['list', e.listId] });
+        void qc.invalidateQueries({ queryKey: ['lists'] });
+        void qc.invalidateQueries({ queryKey: ['friends-lists'] });
+        void qc.invalidateQueries({ queryKey: ['friend-lists', e.ownerId] });
+      } else if (e.type === 'friends') {
+        for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+      } else if (e.type === 'notification') {
+        void qc.invalidateQueries({ queryKey: ['notifications'] });
+      }
+    });
+    return () => es.close();
+  }, [loggedIn, qc]);
+}
+
+/* ---------- Push ---------- */
+
+export type PushState = 'unsupported' | 'needs-install' | 'denied' | 'off' | 'on';
+
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+export async function pushState(): Promise<PushState> {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return 'unsupported';
+  if (!('PushManager' in window)) return isIos() && !isStandalone() ? 'needs-install' : 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  const reg = await navigator.serviceWorker.getRegistration();
+  const subscription = await reg?.pushManager.getSubscription();
+  return subscription ? 'on' : 'off';
+}
+
+function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
+  const pad = '='.repeat((4 - (base64url.length % 4)) % 4);
+  const raw = atob((base64url + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/** Must run from a tap (browsers only show the permission prompt on a user gesture). */
+export async function enablePush(): Promise<PushState> {
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
+  const reg = await navigator.serviceWorker.ready;
+  const { publicKey } = await api<{ publicKey: string }>('/push/key');
+  const subscription = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
+  await api('/push/subscribe', { body: subscription.toJSON() });
+  return 'on';
+}
+
+export async function disablePush(): Promise<PushState> {
+  const reg = await navigator.serviceWorker.getRegistration();
+  const subscription = await reg?.pushManager.getSubscription();
+  if (subscription) {
+    await api('/push/unsubscribe', { body: { endpoint: subscription.endpoint } }).catch(() => {});
+    await subscription.unsubscribe();
+  }
+  return 'off';
+}

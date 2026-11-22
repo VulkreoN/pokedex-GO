@@ -99,6 +99,13 @@ describe('accounts', () => {
     expect(r.status).toBe(409);
   });
 
+  it('settles simultaneous sign-ups with the same name: one account, the rest told it is taken', async () => {
+    const username = name('race');
+    const statuses = await Promise.all(Array.from({ length: 5 }, () => new Client().post('/auth/register', { username, password: PASSWORD }).then((r) => r.status)));
+    expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+    expect(statuses.filter((s) => s === 409)).toHaveLength(4);
+  });
+
   it('sets an HttpOnly, SameSite session cookie', async () => {
     const c = new Client();
     const r = await c.post('/auth/login', { username: alice.user.username, password: PASSWORD });

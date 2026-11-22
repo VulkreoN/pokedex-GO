@@ -7,6 +7,16 @@ import { db, schema } from '../db/index.js';
 import { newId, normalizeFriendCode } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
 import { listSummaries } from './lists.js';
+import { hub } from '../notify/hub.js';
+import { notify } from '../notify/service.js';
+
+const notifyAccepted = (requesterId: string, accepter: { id: string; username: string }) =>
+  notify({
+    userId: requesterId,
+    type: 'friend_accepted',
+    actorId: accepter.id,
+    push: () => ({ title: `${accepter.username} a accepté ta demande`, body: 'Vous pouvez voir vos listes.', url: `/friends/${accepter.id}`, tag: `friend-${accepter.id}` }),
+  });
 
 const pub = (u: typeof schema.users.$inferSelect) => ({ id: u.id, username: u.username, friendCode: u.friendCode, createdAt: u.createdAt.toISOString() });
 
@@ -57,6 +67,8 @@ export const friendRoutes = new Hono<AuthEnv>()
       .limit(1);
     if (reverse) {
       await acceptRequest(reverse.id, target.id, me.id);
+      await notifyAccepted(target.id, me);
+      hub.emit([me.id, target.id], { type: 'friends' });
       return c.json({ accepted: true, friend: pub(target) });
     }
     const [existing] = await db
@@ -66,6 +78,13 @@ export const friendRoutes = new Hono<AuthEnv>()
       .limit(1);
     if (existing) return c.json({ error: 'already_requested' }, 409);
     await db.insert(schema.friendRequests).values({ id: newId(), fromId: me.id, toId: target.id });
+    await notify({
+      userId: target.id,
+      type: 'friend_request',
+      actorId: me.id,
+      push: () => ({ title: `${me.username} veut être ton ami`, body: 'Accepte pour voir vos listes.', url: '/friends', tag: `friend-request-${me.id}` }),
+    });
+    hub.emit([me.id, target.id], { type: 'friends' });
     return c.json({ accepted: false, to: pub(target) }, 201);
   })
   .post('/requests/:id/accept', async (c) => {
@@ -73,6 +92,8 @@ export const friendRoutes = new Hono<AuthEnv>()
     const [req] = await db.select().from(schema.friendRequests).where(eq(schema.friendRequests.id, c.req.param('id'))).limit(1);
     if (!req || req.toId !== me.id || req.status !== 'pending') return c.json({ error: 'not_found' }, 404);
     await acceptRequest(req.id, req.fromId, req.toId);
+    await notifyAccepted(req.fromId, me);
+    hub.emit([req.fromId, req.toId], { type: 'friends' });
     return c.json({ ok: true });
   })
   .post('/requests/:id/decline', async (c) => {
@@ -80,6 +101,7 @@ export const friendRoutes = new Hono<AuthEnv>()
     const [req] = await db.select().from(schema.friendRequests).where(eq(schema.friendRequests.id, c.req.param('id'))).limit(1);
     if (!req || (req.toId !== me.id && req.fromId !== me.id) || req.status !== 'pending') return c.json({ error: 'not_found' }, 404);
     await db.update(schema.friendRequests).set({ status: 'declined', respondedAt: new Date() }).where(eq(schema.friendRequests.id, req.id));
+    hub.emit([req.fromId, req.toId], { type: 'friends' });
     return c.json({ ok: true });
   })
   .delete('/:id', async (c) => {
@@ -88,6 +110,13 @@ export const friendRoutes = new Hono<AuthEnv>()
     await db.delete(schema.friendships).where(
       or(and(eq(schema.friendships.userId, me.id), eq(schema.friendships.friendId, other)), and(eq(schema.friendships.userId, other), eq(schema.friendships.friendId, me.id))),
     );
+    // Their "I have it" marks on each other's lists go too.
+    for (const [owner, offerer] of [[me.id, other], [other, me.id]] as const) {
+      await db.delete(schema.listOffers).where(
+        and(eq(schema.listOffers.userId, offerer), inArray(schema.listOffers.listId, db.select({ id: schema.lists.id }).from(schema.lists).where(eq(schema.lists.ownerId, owner)))),
+      );
+    }
+    hub.emit([me.id, other], { type: 'friends' });
     return c.json({ ok: true });
   })
   .get('/:id/lists', async (c) => {

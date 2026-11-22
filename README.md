@@ -105,6 +105,15 @@ Le statut « sorti » automatique dépend du game master publié sur GitHub par 
 - **News officielles** (`NEWS_LOCALES=fr`) : chaque article de pokemongo.com/news est lu ; s'il cite un Pokémon avec un mot de costume, ses variantes non sorties sont proposées. Un gérant coche et valide.
 - C'est volontairement la seule source de signaux : légère, officielle, sans bot ni compte tiers.
 
+## Listes, amis et notifications
+
+- L'onglet Listes sépare « Mes listes » et « Listes de mes amis » (toutes les listes non privées de ses amis, en lecture seule, groupées par ami).
+- Temps réel : l'app garde une connexion Server-Sent Events (`/api/stream`) tant qu'on est connecté. Quand un ami modifie une liste, ou qu'une demande d'ami arrive, l'écran se met à jour sans recharger.
+- « Je l'ai » : sur la liste d'un ami, toucher un Pokémon qu'il cherche le lui signale. Le propriétaire voit qui l'a sous l'entrée, les autres amis ne voient que leur propre marque. Les marques disparaissent avec l'entrée ou l'amitié.
+- Export PDF : bouton « PDF » sur une liste, grille A4 avec images, attrapés estompés et barrés (seulement les manquants si l'onglet « Manquants » est ouvert).
+- Notifications : une boîte dans l'app (cloche) et des notifications push (Web Push, clés VAPID générées dans le volume de données). Types : demande d'ami, demande acceptée, « un ami a un Pokémon de ta liste ». Anti-spam : les « je l'ai » d'un même ami sur une même liste dans l'heure sont regroupés en une notification, chaque type se coupe dans « Moi », et 15 push par jour au maximum.
+- Le push exige HTTPS : il marche une fois `DOMAIN` configuré (ou sur `localhost`), pas sur l'adresse IP locale en http. Sur iPhone, il faut ajouter l'app à l'écran d'accueil (iOS 16.4+).
+
 ## Tests
 
 ```

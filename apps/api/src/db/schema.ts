@@ -1,5 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer'] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(
   'users',
@@ -13,6 +16,8 @@ export const users = pgTable(
     /** One-time password reset code issued by an admin (sha256), valid until resetExpiresAt. */
     resetHash: text('reset_hash'),
     resetExpiresAt: timestamp('reset_expires_at', { withTimezone: true }),
+    /** Push notification switches per kind; a missing key means on. */
+    notifyPrefs: jsonb('notify_prefs').$type<Partial<Record<NotificationType, boolean>>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -161,4 +166,50 @@ export const posts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('posts_posted_idx').on(t.postedAt)],
+);
+
+/** "I have this one": a friend tells the list owner they own an entry they are hunting. */
+export const listOffers = pgTable(
+  'list_offers',
+  {
+    listId: text('list_id').notNull(),
+    variantKey: text('variant_key').notNull(),
+    shiny: boolean('shiny').notNull(),
+    tag: text('tag').notNull(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.userId] }),
+    foreignKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag], foreignColumns: [listEntries.listId, listEntries.variantKey, listEntries.shiny, listEntries.tag] }).onDelete('cascade'),
+  ],
+);
+
+/** In-app inbox; the same events may also go out as push notifications. */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: NOTIFICATION_TYPES }).notNull(),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'cascade' }),
+    listId: text('list_id').references(() => lists.id, { onDelete: 'cascade' }),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => [index('notifications_user_idx').on(t.userId, t.createdAt)],
+);
+
+/** One Web Push subscription per device. */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    endpoint: text('endpoint').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
 );

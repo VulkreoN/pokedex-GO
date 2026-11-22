@@ -1,4 +1,4 @@
-import { PASSWORD, apiCreateList, apiRegister, clipboard, expect, test, uiLogin, uniq } from '../fixtures.js';
+import { PASSWORD, adminLogin, apiCreateList, apiRegister, clipboard, expect, test, uiLogin, uniq } from '../fixtures.js';
 
 test('a new player signs up, builds a list, copies it for the game and shares it', async ({ page, browser }) => {
   const username = uniq('player');
@@ -124,8 +124,7 @@ test('an admin issues a reset code that lets a player choose a new password', as
   const admin = await adminCtx.newPage();
   const player = await playerCtx.newPage();
   // ADMIN_USERNAMES=e2eadmin on the test API makes this account admin.
-  const reg = await admin.request.post('/api/auth/register', { data: { username: 'e2eadmin', password: PASSWORD } });
-  if (reg.status() === 409) await admin.request.post('/api/auth/login', { data: { username: 'e2eadmin', password: PASSWORD } });
+  await adminLogin(admin.request);
   const target = await apiRegister(player.request, uniq('forgetful'));
   await player.request.post('/api/auth/logout');
 
@@ -165,8 +164,7 @@ test('a manager marks a datamined variant released from its card, for everyone',
   const mgrCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.3.2' } });
   const admin = await adminCtx.newPage();
   const mgr = await mgrCtx.newPage();
-  const reg = await admin.request.post('/api/auth/register', { data: { username: 'e2eadmin', password: PASSWORD } });
-  if (reg.status() === 409) expect((await admin.request.post('/api/auth/login', { data: { username: 'e2eadmin', password: PASSWORD } })).status()).toBe(200);
+  await adminLogin(admin.request);
   const m = await apiRegister(mgr.request, uniq('mgr'));
   expect((await admin.request.patch(`/api/users/${m.id}/role`, { data: { role: 'manager' } })).status()).toBe(200);
 

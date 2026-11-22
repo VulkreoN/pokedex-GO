@@ -1,5 +1,7 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router';
+import { useMe } from '../lib/auth.js';
+import { useNotifications } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
 import { useTheme } from '../lib/theme.js';
 
@@ -82,10 +84,26 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
         )}
         <h1 className="min-w-0 flex-1 truncate text-[22px] font-bold">{title}</h1>
         {actions}
+        {!back && <NotificationsBell />}
         {!back && <ThemeToggle />}
       </div>
       {children}
     </header>
+  );
+}
+
+/** Bell with the unread count, only for logged-in users. */
+export function NotificationsBell() {
+  const me = useMe();
+  const t = useT();
+  const q = useNotifications(!!me.data);
+  if (!me.data) return null;
+  const n = q.data?.unread ?? 0;
+  return (
+    <Link to="/notifications" aria-label={n ? `${t.notifications} (${n})` : t.notifications} title={t.notifications} className="icon-btn relative inline-flex h-11 w-11 items-center justify-center rounded-full text-ink-2 hover:bg-paper-2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" /></svg>
+      {n > 0 && <span className="tnum absolute right-1 top-1 min-w-4 rounded-full bg-berry px-1 text-center text-[10px] font-bold leading-4 text-white">{n > 9 ? '9+' : n}</span>}
+    </Link>
   );
 }
 

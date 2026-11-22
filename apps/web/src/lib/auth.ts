@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@mydexpogo/shared';
+import { disablePush } from './social.js';
 import { api } from './api.js';
 
 export function useMe() {
@@ -24,7 +25,11 @@ export function useAuthMutation(kind: 'login' | 'register') {
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api<{ ok: true }>('/auth/logout', { method: 'POST' }),
+    // This device stops receiving the account's push notifications before the session ends.
+    mutationFn: async () => {
+      await disablePush().catch(() => {});
+      return api<{ ok: true }>('/auth/logout', { method: 'POST' });
+    },
     onSuccess: () => {
       qc.setQueryData(['me'], null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'dataset' && q.queryKey[0] !== 'me' });

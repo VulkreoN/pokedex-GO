@@ -12,5 +12,11 @@ export const env = {
   /** Official news locales to follow, e.g. "fr,en". Empty disables news polling. */
   newsLocales: (process.env.NEWS_LOCALES ?? 'fr').split(',').map((s) => s.trim()).filter(Boolean),
   /** Usernames that are admins no matter what (comma separated). Useful to bootstrap or recover an instance. */
+  /** Web Push: VAPID keys (generated into DATA_DIR/vapid.json when absent) and contact (mailto: or https:). */
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
+  vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@example.com',
+  /** Tests: record pushes in memory instead of sending them. */
+  pushDryRun: process.env.PUSH_DRY_RUN === '1',
   adminUsernames: (process.env.ADMIN_USERNAMES ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
 };

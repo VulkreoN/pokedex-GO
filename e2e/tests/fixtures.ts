@@ -56,3 +56,14 @@ export async function uiLogin(page: Page, username: string, password = PASSWORD)
 export async function clipboard(page: Page): Promise<string> {
   return page.evaluate(() => navigator.clipboard.readText());
 }
+
+/** Logs this context in as the test admin (ADMIN_USERNAMES=e2eadmin on the test API), creating it if needed. */
+export async function adminLogin(request: APIRequestContext) {
+  for (let i = 0; i < 3; i++) {
+    const reg = await request.post('/api/auth/register', { data: { username: 'e2eadmin', password: PASSWORD } });
+    if (reg.status() === 201) return;
+    const login = await request.post('/api/auth/login', { data: { username: 'e2eadmin', password: PASSWORD } });
+    if (login.status() === 200) return;
+  }
+  throw new Error('could not log in as e2eadmin');
+}

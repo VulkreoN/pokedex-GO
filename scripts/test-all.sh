@@ -65,7 +65,7 @@ pnpm --filter @mydexpogo/api db:migrate >/dev/null
 # Reuse the dev source cache so the dataset builds in seconds instead of downloading everything.
 mkdir -p "$WORK/data"
 [ -d apps/api/.data/cache ] && cp -R apps/api/.data/cache "$WORK/data/cache"
-(cd apps/api && PORT=$API_PORT DATA_DIR="$WORK/data" NEWS_LOCALES= DATA_REFRESH_HOURS=1000 ADMIN_USERNAMES=e2eadmin exec node --import tsx src/index.ts) >"$WORK/api.log" 2>&1 &
+(cd apps/api && PORT=$API_PORT DATA_DIR="$WORK/data" NEWS_LOCALES= DATA_REFRESH_HOURS=1000 ADMIN_USERNAMES=e2eadmin PUSH_DRY_RUN=1 exec node --import tsx src/index.ts) >"$WORK/api.log" 2>&1 &
 API_PID=$!
 for _ in $(seq 1 60); do curl -sf "$API_URL/api/health" >/dev/null && break; sleep 1; done
 curl -sf "$API_URL/api/health" >/dev/null || { echo "API did not start"; exit 1; }
