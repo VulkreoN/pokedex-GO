@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import type { Species, VariantKind } from '@mydexpogo/shared';
+import type { Species, Variant, VariantKind } from '@mydexpogo/shared';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
 import { BulkAddSheet } from '../components/BulkAddSheet.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
@@ -26,6 +26,9 @@ export function PokedexPage() {
   const [gender, setGender] = useState<GenderFilter>('all');
   const [forceExploded, setForceExploded] = useState(false);
   const [sort, setSort] = useState<'dex' | 'new'>('dex');
+  /** Hide costumes and / or forms (regional, Mega, Gigantamax, other forms): both on = base Pokémon only. */
+  const [noCostume, setNoCostume] = useState(false);
+  const [noForms, setNoForms] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
@@ -33,8 +36,9 @@ export function PokedexPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const q = useDeferredValue(normalize(query));
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
-  const exploded = forceExploded || filter !== 'all' || q !== '' || multi;
-  const activeCount = (filter !== 'all' ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0);
+  const exploded = forceExploded || filter !== 'all' || q !== '' || multi || noCostume || noForms;
+  const activeCount = (filter !== 'all' ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0) + (noCostume ? 1 : 0) + (noForms ? 1 : 0);
+  const hidden = (v: Variant) => (noCostume && v.kind === 'costume') || (noForms && v.kind !== 'base' && v.kind !== 'costume');
 
   const rows = useMemo(() => {
     const idx = dataset.data;
@@ -62,6 +66,7 @@ export function PokedexPage() {
       let vs = idx.variantsByDex.get(s.dex) ?? [];
       if (filter === 'datamined') vs = vs.filter((v) => v.datamined);
       else if (filter !== 'all') vs = vs.filter((v) => FILTER_KINDS[filter].includes(v.kind));
+      if (noCostume || noForms) vs = vs.filter((v) => !hidden(v));
       for (const g of groupVariants(vs)) {
         // A gender filter keeps what exists in that gender (game master): no female-only costume under ♂, no genderless.
         if (gender !== 'all' && !((g.variants.find((v) => v.gender !== 'f') ?? g.variants[0]!).genders ?? ['m', 'f']).includes(gender)) continue;
@@ -74,7 +79,7 @@ export function PokedexPage() {
     }
     if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
     return out;
-  }, [dataset.data, exploded, rows, filter, q, gender, sort]);
+  }, [dataset.data, exploded, rows, filter, q, gender, sort, noCostume, noForms]);
 
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
@@ -89,6 +94,8 @@ export function PokedexPage() {
     setGender('all');
     setForceExploded(false);
     setSort('dex');
+    setNoCostume(false);
+    setNoForms(false);
   };
 
   const filters: [Filter, string][] = [
@@ -128,6 +135,9 @@ export function PokedexPage() {
             {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
             {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
             {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
+            {/* Always at hand while ticking cards; otherwise shown once switched on. */}
+            {(multi || noCostume) && <Chip active={noCostume} onClick={() => setNoCostume((v) => !v)}>{t.filter_no_costume}{noCostume && !multi ? ' ✕' : ''}</Chip>}
+            {(multi || noForms) && <Chip active={noForms} onClick={() => setNoForms((v) => !v)}>{t.filter_no_forms}{noForms && !multi ? ' ✕' : ''}</Chip>}
             <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }} className="ml-auto">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" /><path d="m8 12 3 3 5-6" /></svg>
               {t.multi_select}
@@ -215,6 +225,13 @@ export function PokedexPage() {
           <div>
             <p className="mb-1.5 text-xs font-medium text-ink-3">{t.filter_kind}</p>
             <div className="flex flex-wrap gap-1.5">{filters.map(([f, label]) => <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{label}</Chip>)}</div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.filter_hide}</p>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={noCostume} onClick={() => setNoCostume((v) => !v)}>{t.filter_no_costume}</Chip>
+              <Chip active={noForms} onClick={() => setNoForms((v) => !v)}>{t.filter_no_forms}</Chip>
+            </div>
           </div>
           <div>
             <p className="mb-1.5 text-xs font-medium text-ink-3">{t.filter_gen}</p>

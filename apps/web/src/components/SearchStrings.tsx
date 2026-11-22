@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
-import { buildSearchStrings, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import { ALWAYS_EXCLUDED, buildSearchStrings, plainTargets, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
 
-/** Left out of the whole search when looking for trades to get luckies (costumes aside). */
+/** Left out of the whole search when looking for trades to get luckies. Shiny and costume are not a choice: always out. */
 const TRADE_EXCLUSIONS = ['traded', '4*', 'shiny', 'costume', 'shadow', 'purified', 'lucky'];
+const FIXED: readonly string[] = ALWAYS_EXCLUDED;
 
 export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
   const t = useT();
@@ -47,14 +48,17 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
   // What each species can be (regional forms, costumes, genders): a plain entry leaves the others out
   // (plain Growlithe, not Hisuian), and numbers that cannot break a clause are not listed in it.
   const species = useMemo(() => speciesSearchInfo(idx.ds.variants), [idx]);
-  const strings = useMemo(() => {
-    const targets = entries
+  const { strings, dropped } = useMemo(() => {
+    const all = entries
       .filter((e) => !onlyMissing || !e.done)
       .flatMap((e) => {
         const v = idx.variantByKey.get(e.variantKey);
         return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, species.get(v.dex)?.regions ?? [])] : [];
       });
-    return buildSearchStrings(targets, { lang: gameLang, species, exclude });
+    // Shiny and costumed entries never go in the string.
+    const { targets, dropped } = plainTargets(all);
+    const out = TRADE_EXCLUSIONS.filter((d) => FIXED.includes(d) || exclude.includes(d));
+    return { strings: buildSearchStrings(targets, { lang: gameLang, species, exclude: out }), dropped };
   }, [entries, idx, onlyMissing, gameLang, species, exclude]);
 
   const names: Record<string, string> = {
@@ -78,13 +82,14 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       <div>
         <p className="mb-1 text-xs font-medium text-ink-3">{t.exclude_title}</p>
         <div className="flex flex-wrap gap-1.5">
-          {TRADE_EXCLUSIONS.map((d) => (
+          {TRADE_EXCLUSIONS.filter((d) => !FIXED.includes(d)).map((d) => (
             <Chip key={d} active={exclude.includes(d)} onClick={() => toggleExclude(d)} className="min-h-8 px-2.5 text-xs">
               {t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']}
             </Chip>
           ))}
         </div>
       </div>
+      <p className="text-xs text-ink-3">{t.exclude_fixed}{dropped > 0 ? ` ${t.exclude_dropped(dropped)}` : ''}</p>
       {strings.length === 0 && <p className="py-6 text-center text-sm text-ink-3">{t.nothing_here}</p>}
       <ul className="space-y-2">
         {strings.map((s) => (

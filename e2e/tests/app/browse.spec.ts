@@ -132,3 +132,27 @@ test.describe('installable app', () => {
     expect((await request.get('/sw.js')).status()).toBe(200);
   });
 });
+
+test('multi-select can hide costumes and / or forms', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill('raichu');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  const costume = page.getByRole('button', { name: /^Ajouter Raichu (Chapeau de fête|Party Hat)/ });
+  const alola = page.getByRole('button', { name: /^Ajouter Raichu Alola/ });
+  const base = page.getByRole('button', { name: 'Ajouter Raichu', exact: true });
+  await expect(costume.first()).toBeVisible();
+  await expect(alola).toBeVisible();
+
+  await page.getByRole('button', { name: 'Sans costumes' }).click();
+  await expect(costume).toHaveCount(0);
+  await expect(alola).toBeVisible();
+
+  await page.getByRole('button', { name: 'Sans formes' }).click();
+  await expect(alola).toHaveCount(0);
+  await expect(base).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ajouter Raichu/ })).toHaveCount(1); // base only
+
+  await page.getByRole('button', { name: 'Sans costumes' }).click();
+  await expect(costume.first()).toBeVisible();
+  await expect(alola).toHaveCount(0);
+});

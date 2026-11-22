@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchStrings, compressDexNumbers, dexRanges } from './search.js';
+import { buildSearchStrings, compressDexNumbers, dexRanges, plainTargets } from './search.js';
 import { makeVariantKey, parseVariantKey } from './keys.js';
 
 describe('dex ranges', () => {
@@ -86,5 +86,21 @@ describe('whole-search exclusions for trades', () => {
     expect(s!.text.startsWith('!échangé&!4*&!costume&!obscur&!purifié&')).toBe(true);
     expect(s!.text).not.toContain('!chromatique');
     expect(s!.skippedExclusions).toEqual(['shiny']);
+  });
+});
+
+describe('strings never show shinies or costumes', () => {
+  it('leaves shiny and costumed entries out, and starts with both exclusions', () => {
+    const { targets, dropped } = plainTargets([
+      { dex: 25, gender: 'm', shiny: false, costume: false },
+      { dex: 25, gender: 'f', shiny: true, costume: false },
+      { dex: 25, gender: 'f', shiny: false, costume: true },
+      { dex: 4, gender: 'f', shiny: false, costume: false },
+    ]);
+    expect(dropped).toBe(2);
+    const [s] = buildSearchStrings(targets, { lang: 'fr', exclude: ['shiny', 'costume'] });
+    expect(s!.text).toBe('!chromatique&!costume&4,25&femelle,25&mâle,4');
+    expect(s!.skippedExclusions).toBeUndefined();
+    expect(s!.looser).toBeUndefined();
   });
 });
