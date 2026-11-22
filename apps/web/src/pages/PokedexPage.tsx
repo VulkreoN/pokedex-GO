@@ -6,7 +6,7 @@ import { BulkAddSheet } from '../components/BulkAddSheet.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { VariantCard, variantForGender, type GenderFilter } from '../components/VariantCard.js';
 import { Button, Chip, Empty, IconButton, Sheet, Spinner, TopBar } from '../components/ui.js';
-import { matchesQuery, normalize, useDataset } from '../lib/dataset.js';
+import { familyOrder, matchesQuery, normalize, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 type Filter = 'all' | 'costume' | 'form' | 'regional' | 'mega' | 'datamined';
@@ -25,7 +25,7 @@ export function PokedexPage() {
   const [shiny, setShiny] = useState(false);
   const [gender, setGender] = useState<GenderFilter>('all');
   const [forceExploded, setForceExploded] = useState(false);
-  const [sort, setSort] = useState<'dex' | 'new'>('dex');
+  const [sort, setSort] = useState<'dex' | 'new' | 'family'>('dex');
   /** Hide costumes, forms (regional and others), Megas, Gigantamax: all on = base Pokémon only. */
   const [noCostume, setNoCostume] = useState(false);
   const [noForms, setNoForms] = useState(false);
@@ -58,14 +58,18 @@ export function PokedexPage() {
 
   /** Newest first: a species ranks by the most recent of its variants. */
   const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
-  const sortedRows = useMemo(() => (sort === 'new' ? [...rows].sort((a, b) => newest(b.dex).localeCompare(newest(a.dex)) || a.dex - b.dex) : rows), [rows, sort, dataset.data]);
+  const sortedRows = useMemo(() => {
+    if (sort === 'new') return [...rows].sort((a, b) => newest(b.dex).localeCompare(newest(a.dex)) || a.dex - b.dex);
+    if (sort === 'family' && dataset.data) return familyOrder(dataset.data, rows);
+    return rows;
+  }, [rows, sort, dataset.data]);
 
   const cards = useMemo(() => {
     const idx = dataset.data;
     if (!idx || !exploded) return [];
     const words = q.split(/\s+/).filter(Boolean);
     const out: { species: Species; group: VariantGroup; id: string }[] = [];
-    for (const s of rows) {
+    for (const s of sort === 'family' ? sortedRows : rows) {
       let vs = idx.variantsByDex.get(s.dex) ?? [];
       if (filter === 'datamined') vs = vs.filter((v) => v.datamined);
       else if (filter !== 'all') vs = vs.filter((v) => FILTER_KINDS[filter].includes(v.kind));
@@ -82,7 +86,7 @@ export function PokedexPage() {
     }
     if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
     return out;
-  }, [dataset.data, exploded, rows, filter, q, gender, sort, noCostume, noForms, noMega, noGmax]);
+  }, [dataset.data, exploded, rows, sortedRows, filter, q, gender, sort, noCostume, noForms, noMega, noGmax]);
 
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
@@ -140,6 +144,7 @@ export function PokedexPage() {
             {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
             {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
             {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
+            {sort === 'family' && <Chip active onClick={() => setSort('dex')}>{t.sort_family} ✕</Chip>}
             {/* Always at hand while ticking cards; otherwise shown once switched on. */}
             {(multi || noCostume) && <Chip active={noCostume} onClick={() => setNoCostume((v) => !v)}>{t.filter_no_costume}{noCostume && !multi ? ' ✕' : ''}</Chip>}
             {(multi || noForms) && <Chip active={noForms} onClick={() => setNoForms((v) => !v)}>{t.filter_no_forms}{noForms && !multi ? ' ✕' : ''}</Chip>}
@@ -262,6 +267,7 @@ export function PokedexPage() {
             <div className="flex flex-wrap gap-1.5">
               <Chip active={sort === 'dex'} onClick={() => setSort('dex')}>{t.sort_dex}</Chip>
               <Chip active={sort === 'new'} onClick={() => setSort('new')}>{t.sort_new}</Chip>
+              <Chip active={sort === 'family'} onClick={() => setSort('family')}>{t.sort_family}</Chip>
             </div>
           </div>
           <div className="flex flex-wrap gap-1.5">

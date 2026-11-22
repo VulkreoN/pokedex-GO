@@ -61,6 +61,7 @@ interface GmTemplate {
       type2?: string;
       familyId?: string;
       pokemonClass?: string;
+      parentPokemonId?: string;
       tempEvoOverrides?: { tempEvoId?: string }[];
     };
     formSettings?: { pokemon: string; forms?: { form: string; isCostume?: boolean }[] };
@@ -169,6 +170,15 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     }
   }
   const speciesById = new Map([...speciesByDex.values()].map((s) => [s.id, s]));
+  // Evolution parents, for the family order in the Pokédex (Pichu, Pikachu, Raichu).
+  for (const t of gm) {
+    const m = /^V(\d{4})_POKEMON_(.+)$/.exec(t.templateId);
+    const ps = t.data.pokemonSettings;
+    if (!m || !ps || ps.form || !ps.parentPokemonId) continue;
+    const sp = speciesByDex.get(Number(m[1]));
+    const parent = speciesById.get(ps.parentPokemonId);
+    if (sp && parent && parent.dex !== sp.dex) sp.parent = parent.dex;
+  }
   for (const t of gm) {
     const fs = t.data.formSettings;
     if (!t.templateId.startsWith('FORMS_V') || !fs) continue;

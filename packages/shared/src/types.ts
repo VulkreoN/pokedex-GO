@@ -28,6 +28,8 @@ export interface Species {
   rarity: Rarity;
   /** Game master family id, e.g. "FAMILY_PIKACHU" */
   family: string;
+  /** Dex number of the species it evolves from (Pikachu: 172, Pichu). */
+  parent?: number;
   /** True when male and female look different in game. */
   genderDiff: boolean;
   /** Species-level shiny availability (null = unknown for this source). */

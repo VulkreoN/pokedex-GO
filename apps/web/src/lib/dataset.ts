@@ -77,3 +77,27 @@ export function entryVariant(idx: DatasetIndex, key: string, gender: EntryGender
 }
 
 export const genderSymbol = (g: EntryGender | null | undefined) => (g === 'm' ? '♂' : g === 'f' ? '♀' : '');
+
+/**
+ * Family order: each evolution family sits at its lowest dex number, members by evolution stage then dex
+ * (Pichu, Pikachu, Raichu at #25; Eevee then every Eeveelution at #133).
+ */
+export function familyOrder(idx: DatasetIndex, species: Species[]): Species[] {
+  const familyMin = new Map<string, number>();
+  for (const s of idx.ds.species) familyMin.set(s.family, Math.min(familyMin.get(s.family) ?? Infinity, s.dex));
+  const stage = (s: Species): number => {
+    let n = 0;
+    let cur: Species | undefined = s;
+    const seen = new Set<number>();
+    while (cur?.parent && !seen.has(cur.dex) && n < 10) {
+      seen.add(cur.dex);
+      cur = idx.speciesByDex.get(cur.parent);
+      n++;
+    }
+    return n;
+  };
+  return [...species].sort(
+    (a, b) =>
+      (familyMin.get(a.family) ?? a.dex) - (familyMin.get(b.family) ?? b.dex) || a.family.localeCompare(b.family) || stage(a) - stage(b) || a.dex - b.dex,
+  );
+}

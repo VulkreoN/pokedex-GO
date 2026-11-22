@@ -173,3 +173,17 @@ test('multi-select can hide Megas and Gigantamax apart from forms', async ({ pag
   await expect(gmax).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ajouter Dracaufeu', exact: true })).toBeVisible();
 });
+
+test('family order puts Pichu before Pikachu and Raichu, at #25', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByRole('button', { name: 'Filtres' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Famille', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /Famille ✕/ })).toBeVisible();
+  const names = await page.locator('main ul > li').evaluateAll((lis) => lis.slice(0, 40).map((li) => li.textContent ?? ''));
+  const at = (n: string) => names.findIndex((x) => x.includes(n));
+  expect(at('Pichu')).toBeGreaterThan(-1);
+  expect(at('Pichu')).toBeLessThan(at('Pikachu'));
+  expect(at('Pikachu')).toBeLessThan(at('Raichu'));
+  expect(at('Arbok')).toBeLessThan(at('Pichu')); // the family sits at #25, after Ekans' family
+});
