@@ -40,6 +40,8 @@ export interface SearchTarget {
 export interface SearchString {
   /** Filters this list needs but the game's language has no keyword for: left out, so the string shows extra Pokémon. */
   unsupported?: string[];
+  /** Exclusions asked for the whole search (traded, 4*...) left out because the list wants that very version. */
+  skippedExclusions?: string[];
   /** Exclusions that could not stay in one string (another Pokémon of the list wants that version): also shown. */
   looser?: { dim: string; dex: number[] }[];
   /** Kept for single-filter strings; see parts. */
@@ -131,6 +133,8 @@ export type GameLang = 'en' | 'fr';
 const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
   en: {},
   fr: {
+    traded: 'échangé',
+    '4*': '4*',
     shiny: 'chromatique',
     male: 'mâle',
     female: 'femelle',
@@ -236,7 +240,14 @@ function cnfOf(cubes: Lit[][], info?: SpeciesSearchInfo): Lit[][] {
 
 export function buildSearchStrings(
   targets: SearchTarget[],
-  options: { maxLength?: number; lang?: GameLang; species?: Map<number, SpeciesSearchInfo>; regionsByDex?: Map<number, Region[]> } = {},
+  options: {
+    maxLength?: number;
+    lang?: GameLang;
+    species?: Map<number, SpeciesSearchInfo>;
+    regionsByDex?: Map<number, Region[]>;
+    /** Put at the start of the string, e.g. ['traded', '4*', 'shiny', 'costume', 'shadow', 'purified'] for trades. */
+    exclude?: string[];
+  } = {},
 ): SearchString[] {
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
   const lang = options.lang ?? 'en';
@@ -246,7 +257,20 @@ export function buildSearchStrings(
   if (!targets.length) return [];
 
   const dexes = [...new Set(targets.map((t) => t.dex))].sort((a, b) => a - b);
-  const render = (subset: number[]) => renderString(targets.filter((t) => subset.includes(t.dex)), lang, species);
+  // Whole-search exclusions, unless the list wants that very thing (a shiny entry with "not shiny" would vanish).
+  const wants = (dim: string) =>
+    targets.some((t) => (dim === 'shiny' && t.shiny) || (dim === 'costume' && t.costume) || (['shadow', 'purified', 'lucky'].includes(dim) && t.tag === dim));
+  const askedOut = (options.exclude ?? []).filter((d) => keyword(d, lang) !== null);
+  const prefix = askedOut.filter((d) => !wants(d));
+  const skipped = askedOut.filter((d) => wants(d));
+  const render = (subset: number[]) => {
+    const r = renderString(targets.filter((t) => subset.includes(t.dex)), lang, species);
+    if (!prefix.length && !skipped.length) return r;
+    const blocks = r.text.split('&');
+    const pre = prefix.map((d) => `!${keyword(d, lang)!}`);
+    const text = [...pre, ...blocks.filter((b) => !pre.includes(b))].join('&');
+    return { ...r, text, ...(skipped.length ? { skippedExclusions: skipped } : {}) };
+  };
   const whole = render(dexes);
   if (whole.text.length <= maxLength) return [whole];
 

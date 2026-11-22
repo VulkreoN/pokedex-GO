@@ -73,3 +73,18 @@ describe('variant keys', () => {
     expect(parseVariantKey('abc')).toBeNull();
   });
 });
+
+describe('whole-search exclusions for trades', () => {
+  const exclude = ['traded', '4*', 'shiny', 'costume', 'shadow', 'purified'];
+  it('go first, in the game language, without repeating a block', () => {
+    const [s] = buildSearchStrings([{ dex: 25, shiny: false, costume: false }, { dex: 1, shiny: false, costume: false }], { lang: 'fr', exclude });
+    expect(s!.text).toBe('!échangé&!4*&!chromatique&!costume&!obscur&!purifié&1,25');
+    expect(buildSearchStrings([{ dex: 25 }], { exclude: ['traded', '4*'] })[0]!.text).toBe('!traded&!4*&25');
+  });
+  it('skip what the list wants: a shiny entry keeps shinies', () => {
+    const [s] = buildSearchStrings([{ dex: 25, shiny: true }, { dex: 1, shiny: false }], { lang: 'fr', exclude });
+    expect(s!.text.startsWith('!échangé&!4*&!costume&!obscur&!purifié&')).toBe(true);
+    expect(s!.text).not.toContain('!chromatique');
+    expect(s!.skippedExclusions).toEqual(['shiny']);
+  });
+});
