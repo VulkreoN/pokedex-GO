@@ -56,6 +56,26 @@
     "GLASS_HELMET_2026": {
       "en": "Astronaut",
       "fr": "Astronaute"
+    },
+    "MEGA": {
+      "en": "Mega",
+      "fr": "Méga"
+    },
+    "MEGA_X": {
+      "en": "Mega X",
+      "fr": "Méga X"
+    },
+    "MEGA_Y": {
+      "en": "Mega Y",
+      "fr": "Méga Y"
+    },
+    "PRIMAL": {
+      "en": "Primal",
+      "fr": "Primo"
+    },
+    "GIGANTAMAX": {
+      "en": "Gigantamax",
+      "fr": "Gigamax"
     }
   },
   "status": {

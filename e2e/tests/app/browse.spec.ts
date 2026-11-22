@@ -150,9 +150,26 @@ test('multi-select can hide costumes and / or forms', async ({ page }) => {
   await page.getByRole('button', { name: 'Sans formes' }).click();
   await expect(alola).toHaveCount(0);
   await expect(base).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Ajouter Raichu/ })).toHaveCount(1); // base only
 
   await page.getByRole('button', { name: 'Sans costumes' }).click();
   await expect(costume.first()).toBeVisible();
   await expect(alola).toHaveCount(0);
+});
+
+test('multi-select can hide Megas and Gigantamax apart from forms', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill('dracaufeu');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  const mega = page.getByRole('button', { name: /^Ajouter Dracaufeu Méga/ });
+  const gmax = page.getByRole('button', { name: /^Ajouter Dracaufeu Giga/ });
+  await expect(mega.first()).toBeVisible();
+  await expect(gmax.first()).toBeVisible();
+  await page.getByRole('button', { name: 'Sans formes' }).click();
+  await expect(mega.first()).toBeVisible(); // forms only: Megas and Gigantamax have their own switches
+  await page.getByRole('button', { name: 'Sans Méga' }).click();
+  await expect(mega).toHaveCount(0);
+  await expect(gmax.first()).toBeVisible();
+  await page.getByRole('button', { name: 'Sans Gigamax' }).click();
+  await expect(gmax).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ajouter Dracaufeu', exact: true })).toBeVisible();
 });
