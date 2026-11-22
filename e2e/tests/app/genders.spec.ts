@@ -148,3 +148,21 @@ test('a manager pins the genders of a form the game master does not describe yet
   await mgrCtx.close();
   void PASSWORD;
 });
+
+test('search strings use the game language: mâle / femelle in a French game', async ({ page }) => {
+  await apiRegister(page.request);
+  // The reported list: Growlithe ♂ and Galarian Farfetch'd ♀ were missing from the in-game results.
+  const id = await apiCreateList(page.request, 'Recherche', ['1', '58:m', '72', '83.fGALARIAN:f', '100.fHISUIAN']);
+  await page.goto(`/lists/${id}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('button', { name: 'Français' })).toHaveAttribute('aria-pressed', 'true');
+  const code = sheet.locator('code').first();
+  await expect(code).toContainText('mâle');
+  await expect(code).toContainText('femelle');
+  await expect(code).not.toContainText('female');
+  await expect(sheet.getByText('Tous (2) · Hisui (1) · ♂ (1) · Galar ♀ (1)')).toBeVisible();
+  await sheet.getByRole('button', { name: 'English' }).click();
+  await expect(code).toContainText('female');
+  await sheet.getByRole('button', { name: 'Français' }).click();
+});

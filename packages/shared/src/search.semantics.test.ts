@@ -5,7 +5,7 @@
  * For random lists, every string must only catch wanted Pokémon, and all strings together must catch all of them.
  */
 import { describe, expect, it } from 'vitest';
-import { buildSearchStrings, type Region, type SearchTarget } from './search.js';
+import { buildSearchStrings, type GameLang, type Region, type SearchTarget } from './search.js';
 import type { EntryTag } from './types.js';
 
 interface Mon {
@@ -25,10 +25,13 @@ function termMatches(term: string, p: Mon): boolean {
   const range = /^(\d+)-(\d+)$/.exec(t);
   if (range) ok = p.dex >= Number(range[1]) && p.dex <= Number(range[2]);
   else if (/^\d+$/.test(t)) ok = p.dex === Number(t);
-  else if (t === 'shiny') ok = p.shiny;
+  else if (t === 'shiny' || t === 'chromatique') ok = p.shiny;
   else if (t === 'costume') ok = p.costume;
-  else if (t === 'male') ok = p.gender === 'm';
-  else if (t === 'female') ok = p.gender === 'f';
+  else if (t === 'male' || t === 'mâle') ok = p.gender === 'm';
+  else if (t === 'female' || t === 'femelle') ok = p.gender === 'f';
+  else if (t === 'chanceux') ok = p.tag === 'lucky';
+  else if (t === 'obscur') ok = p.tag === 'shadow';
+  else if (t === 'purifié') ok = p.tag === 'purified';
   else if (t === 'gigantamax') ok = p.gmax;
   else if (t === 'alola' || t === 'galar' || t === 'hisui' || t === 'paldea') ok = p.region === t;
   else if (t === 'background') ok = p.tag === 'background' || p.tag.startsWith('bg:');
@@ -61,25 +64,33 @@ function rng(seed: number) {
 const TAGS: EntryTag[] = ['', 'lucky', 'shadow', 'background', 'xxl'];
 const REGIONS: (Region | null)[] = [null, null, 'alola', 'galar'];
 
+/** Like in the game, a species either has genders or has none (Voltorb, Magnemite...). */
+const GENDERLESS = new Set([5, 10, 100]);
+
 /** Every combination of attributes for a few dex numbers: the "storage" the strings are run against. */
 function storage(dexes: number[]): Mon[] {
   const out: Mon[] = [];
   for (const dex of dexes)
     for (const shiny of [false, true])
       for (const costume of [false, true])
-        for (const gender of ['m', 'f', null] as const)
+        for (const gender of GENDERLESS.has(dex) ? [null] : (['m', 'f'] as const))
           for (const region of REGIONS.slice(1).concat([null]))
             for (const tag of TAGS) out.push({ dex, shiny, costume, gender, region, gmax: false, tag });
   return out;
 }
 
-function check(targets: SearchTarget[], maxLength?: number) {
+/** A French game has no keyword for these: strings leave them out, so they may show extra Pokémon there, never fewer. */
+const loosened = (t: SearchTarget, lang: GameLang): SearchTarget =>
+  lang === 'fr' ? { ...t, gmax: false, tag: t.tag === 'dynamax' || t.tag === 'background' || t.tag?.startsWith('bg:') ? '' : t.tag } : t;
+
+function check(targets: SearchTarget[], maxLength?: number, lang: GameLang = 'en') {
   const dexes = [...new Set(targets.map((t) => t.dex)).add(999)]; // 999: a Pokémon nobody hunts
   const mons = storage(dexes);
-  const strings = buildSearchStrings(targets, maxLength ? { maxLength } : {});
+  const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang });
   for (const s of strings) {
-    if (maxLength) expect(s.text.length, s.text).toBeLessThanOrEqual(maxLength);
-    for (const p of mons) if (gameSearch(s.text, p)) expect(targets.some((t) => wanted(t, p)), `"${s.text}" catches unwanted ${JSON.stringify(p)}`).toBe(true);
+    // A single Pokémon with all its filters cannot be split further; everything else must fit.
+    if (maxLength && s.count > 1) expect(s.text.length, s.text).toBeLessThanOrEqual(maxLength);
+    for (const p of mons) if (gameSearch(s.text, p)) expect(targets.some((t) => wanted(loosened(t, lang), p)), `"${s.text}" catches unwanted ${JSON.stringify(p)}`).toBe(true);
   }
   for (const p of mons) if (targets.some((t) => wanted(t, p))) expect(strings.some((s) => gameSearch(s.text, p)), `nothing catches ${JSON.stringify(p)}`).toBe(true);
   return strings;
@@ -113,6 +124,45 @@ describe('search strings behave like the in-game search', () => {
     ]);
   });
 
+  it('speaks the game language: a French game gets mâle / femelle / chromatique', () => {
+    // The list from the report: Bulbasaur and Tentacool (both genders), Growlithe ♂, Galarian Farfetch'd ♀, Hisuian Voltorb.
+    const targets: SearchTarget[] = [
+      { dex: 1, gender: 'm' }, { dex: 1, gender: 'f' },
+      { dex: 58, gender: 'm' },
+      { dex: 72, gender: 'm' }, { dex: 72, gender: 'f' },
+      { dex: 83, region: 'galar', gender: 'f' },
+      { dex: 100, region: 'hisui' },
+    ];
+    const [s] = check(targets, undefined, 'fr');
+    expect(s!.text).toContain('mâle');
+    expect(s!.text).toContain('femelle');
+    expect(s!.text).not.toMatch(/\bmale\b|\bfemale\b/);
+    expect(buildSearchStrings([{ dex: 25, shiny: true }], { lang: 'fr' })[0]!.text).toBe('25&chromatique');
+  });
+
+  it('leaves out filters a French game has no keyword for, and says so', () => {
+    const [s] = buildSearchStrings([{ dex: 6, gmax: true, shiny: true }], { lang: 'fr' });
+    expect(s!.text).toBe('6&chromatique');
+    expect(s!.unsupported).toEqual(['gigantamax']);
+  });
+
+  it('holds on 300 random lists in French too', () => {
+    const r = rng(7);
+    const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)]!;
+    for (let n = 0; n < 300; n++) {
+      const targets: SearchTarget[] = Array.from({ length: 1 + Math.floor(r() * 8) }, () => ({
+        dex: 1 + Math.floor(r() * 12),
+        shiny: r() < 0.3,
+        costume: r() < 0.2,
+        gender: null as 'm' | 'f' | null,
+        region: pick(REGIONS),
+        tag: pick([...TAGS, 'purified' as EntryTag]),
+      }));
+      for (const t of targets) if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
+      check(targets, n % 3 === 0 ? 40 : undefined, 'fr');
+    }
+  });
+
   it('holds on 300 random lists, including long ones split under the length limit', () => {
     const r = rng(42);
     const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)]!;
@@ -122,10 +172,11 @@ describe('search strings behave like the in-game search', () => {
         dex: 1 + Math.floor(r() * 12),
         shiny: r() < 0.3,
         costume: r() < 0.2,
-        gender: pick([null, null, 'm', 'f'] as const),
+        gender: null as 'm' | 'f' | null,
         region: pick(REGIONS),
         tag: pick(TAGS),
       }));
+      for (const t of targets) if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
       check(targets, n % 3 === 0 ? 40 : undefined);
     }
   });

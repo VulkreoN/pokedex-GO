@@ -26,6 +26,8 @@ export interface SearchTarget {
 }
 
 export interface SearchString {
+  /** Filters this list needs but the game's language has no keyword for: left out, so the string shows extra Pokémon. */
+  unsupported?: string[];
   /** Modifiers applied with "&", in display order. Empty for plain dex lists and for combined strings (see parts). */
   modifiers: string[];
   /** Combined string: the modifier groups it covers, each with its dex count. */
@@ -88,6 +90,35 @@ export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGende
   };
 }
 
+/**
+ * The search bar only understands keywords in the game's own language. French ones come from French guides
+ * (Pokébip, Pokékalos, Breakflip); null = no known keyword in that language: the filter is left out, so the string
+ * shows a bit more than wanted instead of nothing.
+ */
+export type GameLang = 'en' | 'fr';
+const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
+  en: {},
+  fr: {
+    shiny: 'chromatique',
+    male: 'mâle',
+    female: 'femelle',
+    lucky: 'chanceux',
+    shadow: 'obscur',
+    purified: 'purifié',
+    costume: 'costume',
+    xxl: 'xxl',
+    xxs: 'xxs',
+    alola: 'alola',
+    galar: 'galar',
+    hisui: 'hisui',
+    paldea: 'paldea',
+    background: null,
+    dynamax: null,
+    gigantamax: null,
+  },
+};
+export const keyword = (id: string, lang: GameLang = 'en'): string | null => (lang === 'en' ? id : KEYWORDS[lang][id] === undefined ? id : KEYWORDS[lang][id]!);
+
 function modifiersOf(t: SearchTarget): string[] {
   const mods: string[] = [];
   if (t.region) mods.push(t.region);
@@ -102,9 +133,11 @@ function modifiersOf(t: SearchTarget): string[] {
 
 export function buildSearchStrings(
   targets: SearchTarget[],
-  options: { maxLength?: number } = {},
+  options: { maxLength?: number; lang?: GameLang } = {},
 ): SearchString[] {
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
+  const lang = options.lang ?? 'en';
+  const kw = (m: string) => keyword(m, lang)!;
   // Hunting both the male and the female of the same thing: one string without a gender filter covers both.
   const genderless = (t: SearchTarget) => JSON.stringify({ ...t, gender: null });
   const genders = new Map<string, Set<Gender | null | undefined>>();
@@ -114,16 +147,19 @@ export function buildSearchStrings(
     return t.gender && g.has('m') && g.has('f') ? { ...t, gender: null } : t;
   });
 
-  const groups = new Map<string, { modifiers: string[]; dex: Set<number> }>();
+  const groups = new Map<string, Group>();
   for (const t of targets) {
-    const modifiers = modifiersOf(t);
+    const all = modifiersOf(t);
+    const modifiers = all.filter((m) => keyword(m, lang) !== null);
+    const dropped = all.filter((m) => keyword(m, lang) === null);
     const id = modifiers.join('&');
     let g = groups.get(id);
     if (!g) {
-      g = { modifiers, dex: new Set() };
+      g = { modifiers, dex: new Set(), unsupported: new Set() };
       groups.set(id, g);
     }
     g.dex.add(t.dex);
+    for (const m of dropped) g.unsupported.add(m);
   }
 
   const result: SearchString[] = [];
@@ -132,7 +168,7 @@ export function buildSearchStrings(
   // Pack groups whose dex numbers do not overlap into one string, while it fits.
   const bundles: Group[][] = [];
   for (const g of ordered) {
-    const fit = bundles.find((b) => b.every((x) => disjoint(x.dex, g.dex)) && renderBundle([...b, g]).length <= maxLength);
+    const fit = bundles.find((b) => b.every((x) => disjoint(x.dex, g.dex)) && renderBundle([...b, g], kw).length <= maxLength);
     if (fit) fit.push(g);
     else bundles.push([g]);
   }
@@ -142,15 +178,16 @@ export function buildSearchStrings(
       result.push({
         modifiers: [],
         parts: bundle.map((g) => ({ modifiers: g.modifiers, count: g.dex.size })),
-        text: renderBundle(bundle),
+        text: renderBundle(bundle, kw),
         count: bundle.reduce((n, g) => n + g.dex.size, 0),
         batch: 1,
         batches: 1,
+        ...unsupportedOf(bundle),
       });
       continue;
     }
     const g = bundle[0]!;
-    const suffix = g.modifiers.map((m) => `&${m}`).join('');
+    const suffix = g.modifiers.map((m) => `&${kw(m)}`).join('');
     const tokens = dexRanges([...g.dex]);
     const batches: string[][] = [];
     let current: string[] = [];
@@ -173,13 +210,19 @@ export function buildSearchStrings(
         count: countDex(b),
         batch: i + 1,
         batches: batches.length,
+        ...unsupportedOf([g]),
       });
     });
   }
   return result;
 }
 
-type Group = { modifiers: string[]; dex: Set<number> };
+type Group = { modifiers: string[]; dex: Set<number>; unsupported: Set<string> };
+
+function unsupportedOf(groups: Group[]): { unsupported?: string[] } {
+  const u = [...new Set(groups.flatMap((g) => [...g.unsupported]))];
+  return u.length ? { unsupported: u } : {};
+}
 
 function disjoint(a: Set<number>, b: Set<number>): boolean {
   for (const x of a) if (b.has(x)) return false;
@@ -191,14 +234,14 @@ function disjoint(a: Set<number>, b: Set<number>): boolean {
  * that do not need m>". A Pokémon of group G passes the clause of a modifier G needs only by having it, and passes
  * the clauses of modifiers G does not need through its own dex number.
  */
-function renderBundle(groups: Group[]): string {
+function renderBundle(groups: Group[], kw: (m: string) => string): string {
   const all = groups.flatMap((g) => [...g.dex]);
   const mods: string[] = [];
   for (const g of groups) for (const m of g.modifiers) if (!mods.includes(m)) mods.push(m);
   const clauses = [dexRanges(all).join(',')];
   for (const m of mods) {
     const without = groups.filter((g) => !g.modifiers.includes(m)).flatMap((g) => [...g.dex]);
-    clauses.push(without.length ? `${m},${dexRanges(without).join(',')}` : m);
+    clauses.push(without.length ? `${kw(m)},${dexRanges(without).join(',')}` : kw(m));
   }
   return clauses.join('&');
 }
