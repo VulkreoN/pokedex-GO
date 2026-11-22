@@ -1,5 +1,5 @@
 /** PvP data from the game master: base stats per battle-relevant form, level multipliers, power-up costs, evolutions. */
-import { makeVariantKey, type LocalizedText, type PokemonType, type PvpData, type PvpPokemon } from '@mydexpogo/shared';
+import { LEAGUES, makeVariantKey, rankTable, type LocalizedText, type PokemonType, type PvpData, type PvpPokemon, type PvpTop } from '@mydexpogo/shared';
 
 interface GmEntry {
   templateId: string;
@@ -76,8 +76,16 @@ export function extractPvp(gm: GmEntry[], ctx: PvpContext): PvpData | undefined 
       .filter((k): k is string => !!k && k !== p.key);
     if (evos.length) p.evolutions = [...new Set(evos)];
   }
+  // Rank 1 per league, shown on the Pokédex cards (same settings as the PvP page by default: level 50, no buddy).
+  const cpm = level.cpMultiplier.slice(0, maxLevel + 1);
+  const top = (p: PvpPokemon, cap: number): PvpTop => {
+    const r = rankTable({ cpm }, p, cap, maxLevel)[0]!;
+    return [r.ivs.atk, r.ivs.def, r.ivs.sta, r.level, r.cp];
+  };
+  for (const p of pokemon) p.top = { great: top(p, LEAGUES.great), ultra: top(p, LEAGUES.ultra) };
+
   return {
-    cpm: level.cpMultiplier.slice(0, maxLevel + 1),
+    cpm,
     stardust: up.stardustCost,
     candy: up.candyCost,
     xlCandy: up.xlCandyCost,

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { neutralKey, variantImageUrl, type Dataset, type EntryGender, type Species, type Variant } from '@mydexpogo/shared';
+import { neutralKey, variantImageUrl, type Dataset, type EntryGender, type PvpPokemon, type Species, type Variant } from '@mydexpogo/shared';
 
 export interface DatasetIndex {
   ds: Dataset;
@@ -9,6 +9,8 @@ export interface DatasetIndex {
   /** The variant used as the species picture: base male if any, else the first one. */
   coverOf: Map<number, Variant>;
   searchText: Map<number, string>;
+  /** PvP forms by key (base stats, rank 1 IVs). */
+  pvpByKey: Map<string, PvpPokemon>;
 }
 
 export function buildIndex(ds: Dataset): DatasetIndex {
@@ -26,7 +28,8 @@ export function buildIndex(ds: Dataset): DatasetIndex {
     coverOf.set(dex, vs.find((v) => v.kind === 'base' && v.gender !== 'f') ?? vs[0]!);
   }
   const searchText = new Map(ds.species.map((s) => [s.dex, normalize(`${s.dex} ${s.name.en} ${s.name.fr ?? ''}`)]));
-  return { ds, speciesByDex, variantsByDex, variantByKey, coverOf, searchText };
+  const pvpByKey = new Map((ds.pvp?.pokemon ?? []).map((p) => [p.key, p]));
+  return { ds, speciesByDex, variantsByDex, variantByKey, coverOf, searchText, pvpByKey };
 }
 
 export function normalize(s: string): string {
@@ -100,4 +103,10 @@ export function familyOrder(idx: DatasetIndex, species: Species[]): Species[] {
     (a, b) =>
       (familyMin.get(a.family) ?? a.dex) - (familyMin.get(b.family) ?? b.dex) || a.family.localeCompare(b.family) || stage(a) - stage(b) || a.dex - b.dex,
   );
+}
+
+/** PvP form of a variant: its own form, else the species' (costumes and Gigantamax share the base stats). Megas: none. */
+export function pvpOf(idx: DatasetIndex, v: Variant): PvpPokemon | undefined {
+  if (v.kind === 'mega') return undefined;
+  return idx.pvpByKey.get(neutralKey(v.key)) ?? idx.pvpByKey.get(String(v.dex));
 }

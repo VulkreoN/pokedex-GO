@@ -1,7 +1,8 @@
 import { Link } from 'react-router';
 import type { Species, Variant } from '@mydexpogo/shared';
 import type { VariantGroup } from './AddToList.js';
-import type { DatasetIndex } from '../lib/dataset.js';
+import { pvpOf, type DatasetIndex } from '../lib/dataset.js';
+import { PvpTops } from './PvpTops.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { Badge } from './ui.js';
@@ -16,7 +17,7 @@ export function variantForGender(group: VariantGroup, gender: GenderFilter): Var
   return group.variants.find((v) => v.gender === gender) ?? group.variants[0]!;
 }
 
-export function VariantCard({ idx, species, group, shiny, gender = 'all', showSpecies = false, selectable = false, selected = false, onAdd, onManage }: { idx: DatasetIndex; species: Species; group: VariantGroup; shiny: boolean; gender?: GenderFilter; showSpecies?: boolean; selectable?: boolean; selected?: boolean; onAdd: (g: VariantGroup) => void; onManage?: (g: VariantGroup) => void }) {
+export function VariantCard({ idx, species, group, shiny, gender = 'all', showSpecies = false, selectable = false, selected = false, showPvp = false, onAdd, onManage }: { idx: DatasetIndex; species: Species; group: VariantGroup; shiny: boolean; gender?: GenderFilter; showSpecies?: boolean; selectable?: boolean; selected?: boolean; showPvp?: boolean; onAdd: (g: VariantGroup) => void; onManage?: (g: VariantGroup) => void }) {
   const t = useT();
   const { lang } = useLang();
   const v = variantForGender(group, gender);
@@ -56,6 +57,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
           {v.backgrounds?.length ? <Badge tone="muted">{t.backgrounds_count(v.backgrounds.length)}</Badge> : null}
         </span>
       </button>
+      {showPvp && <PvpTops p={pvpOf(idx, group.variants.find((x) => x.gender !== 'f') ?? v)} link />}
       {showSpecies && (
         <Link to={`/dex/${species.dex}`} className="mt-0.5 w-full rounded-md py-0.5 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
       )}

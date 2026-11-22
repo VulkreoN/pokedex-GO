@@ -91,6 +91,8 @@ export interface Dataset {
   pvp?: PvpData;
 }
 
+export type PvpTop = [atk: number, def: number, sta: number, level: number, cp: number];
+
 /** One battle-relevant form: costumes and copies with identical stats are folded into it. */
 export interface PvpPokemon {
   /** Variant key of the form ("26", "26.fALOLA"); also used for the picture. */
@@ -103,6 +105,8 @@ export interface PvpPokemon {
   sta: number;
   /** Keys of the forms this one evolves into (Mega evolutions excluded). */
   evolutions?: string[];
+  /** Rank 1 IVs per league at level 50 (no best buddy): [attack, defense, HP, level, CP]. */
+  top?: { great: PvpTop; ultra: PvpTop };
 }
 export interface PvpData {
   /** CP multiplier per whole level: cpm[0] is level 1. */

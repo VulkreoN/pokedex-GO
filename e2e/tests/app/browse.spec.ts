@@ -187,3 +187,20 @@ test('family order puts Pichu before Pikachu and Raichu, at #25', async ({ page 
   expect(at('Pikachu')).toBeLessThan(at('Raichu'));
   expect(at('Arbok')).toBeLessThan(at('Pichu')); // the family sits at #25, after Ekans' family
 });
+
+test('PvP mode shows the rank 1 IVs per league on the cards', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill('rayquaza');
+  await page.getByRole('button', { name: 'Afficher les meilleurs IV PvP' }).click();
+  const card = page.locator('li', { has: page.getByRole('button', { name: 'Ajouter Rayquaza', exact: true }) });
+  await expect(card.getByLabel(/^Ligue Super · Rang 1 : 0\/15\/12 · Niv\. 14,5 · PC 1499$/)).toBeVisible();
+  await expect(card.getByLabel(/^Ligue Hyper · Rang 1 : 0\/15\/15 · Niv\. 24 · PC 2498$/)).toBeVisible();
+  // Megas do not battle in leagues: nothing shown.
+  const mega = page.locator('li', { has: page.getByRole('button', { name: /^Ajouter Rayquaza Méga/ }) });
+  await expect(mega.getByLabel(/^Ligue Super/)).toHaveCount(0);
+  // Tapping it opens the PvP page with those IVs.
+  await card.getByLabel(/^Ligue Super/).click();
+  await expect(page).toHaveURL(/\/pvp\/384\?a=0&d=15&s=12/);
+  await page.goto('/dex');
+  await expect(page.getByRole('button', { name: 'Afficher les meilleurs IV PvP' })).toHaveAttribute('aria-pressed', 'true'); // remembered
+});
