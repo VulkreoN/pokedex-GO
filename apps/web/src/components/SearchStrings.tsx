@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildSearchStrings, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import { buildSearchStrings, regionsByDex, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { useLang, useT } from '../lib/i18n.js';
@@ -25,21 +25,24 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       localStorage.setItem('gameLang', l);
     } catch {}
   };
+  // Which species have regional forms: a plain entry must leave them out (plain Growlithe, not Hisuian).
+  const regions = useMemo(() => regionsByDex(idx.ds.variants), [idx]);
   const strings = useMemo(() => {
     const targets = entries
       .filter((e) => !onlyMissing || !e.done)
       .flatMap((e) => {
         const v = idx.variantByKey.get(e.variantKey);
-        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag)] : [];
+        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, regions.get(v.dex) ?? [])] : [];
       });
-    return buildSearchStrings(targets, { lang: gameLang });
-  }, [entries, idx, onlyMissing, gameLang]);
+    return buildSearchStrings(targets, { lang: gameLang, regionsByDex: regions });
+  }, [entries, idx, onlyMissing, gameLang, regions]);
 
   const names: Record<string, string> = {
     shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
     shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs, alola: 'Alola', galar: 'Galar', hisui: 'Hisui', paldea: 'Paldea',
   };
-  const label = (mods: string[]) => (mods.length ? mods.map((m) => names[m] ?? m).join(' ') : t.filter_all);
+  const name = (m: string) => (m.startsWith('!') ? t.without(names[m.slice(1)] ?? m.slice(1)) : (names[m] ?? m));
+  const label = (mods: string[]) => (mods.filter((m) => !m.startsWith('!')).length ? mods.map(name).join(' ') : [t.filter_all, ...mods.map(name)].join(' '));
 
   return (
     <div className="space-y-3">
@@ -64,7 +67,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
               <span className="tnum text-ink-3">{s.count}</span>
             </div>
             <code className="block break-all rounded-lg bg-paper-2 p-2 text-[13px] leading-snug">{s.text}</code>
-            {s.unsupported && <p className="mt-1 text-xs text-ink-2">{t.game_lang_missing(s.unsupported.map((m) => names[m] ?? m).join(', '))}</p>}
+            {s.unsupported && <p className="mt-1 text-xs text-ink-2">{t.game_lang_missing(s.unsupported.map(name).join(', '))}</p>}
             <Button
               tone="primary"
               className="mt-2 w-full"

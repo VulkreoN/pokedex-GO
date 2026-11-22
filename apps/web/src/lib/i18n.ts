@@ -191,6 +191,7 @@ const fr = {
   game_strings_help:
     "Colle une chaîne dans la barre de recherche de ton stockage Pokémon (pas celle du Pokédex, qui n'accepte qu'un terme). Les filtres qui ne se chevauchent pas tiennent dans une seule chaîne ; elle est découpée au-delà de 200 caractères. Choisis la langue de ton jeu : il ne comprend que ses propres mots-clés.",
   game_lang: 'Langue du jeu',
+  without: (x: string) => `sans ${x}`,
   game_lang_missing: (f: string) => `Pas de mot-clé connu en français pour : ${f}. Ce filtre est laissé de côté, la recherche montrera aussi les autres versions.`,
   only_missing: 'Manquants seulement',
   copy: 'Copier',
@@ -543,6 +544,7 @@ const en: Dict = {
   game_strings_help:
     "Paste a string in your Pokémon storage search bar (not the Pokédex one, which takes a single term). Filters that do not overlap fit in one string; it is split past 200 characters. Pick your game's language: it only understands its own keywords.",
   game_lang: 'Game language',
+  without: (x: string) => `no ${x}`,
   game_lang_missing: (f: string) => `No known keyword in French for: ${f}. That filter is left out, so the search also shows other versions.`,
   only_missing: 'Missing only',
   copy: 'Copy',

@@ -23,6 +23,8 @@ export interface SearchTarget {
   region?: Region | null;
   gmax?: boolean;
   tag?: EntryTag;
+  /** Regional forms to leave out: a plain Growlithe entry must not catch Hisuian Growlithe. */
+  excludeRegions?: Region[];
 }
 
 export interface SearchString {
@@ -77,7 +79,8 @@ export function regionOfForm(form: string | null): Region | null {
  * Turns a list entry's variant into a search target. The gender filter is only added when the variant exists in
  * both genders: a female-only Pokémon needs no "female".
  */
-export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGender | null, tag: EntryTag = ''): SearchTarget {
+export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGender | null, tag: EntryTag = '', speciesRegions: Region[] = []): SearchTarget {
+  const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
   const both = (v.genders ?? ['m', 'f']).length > 1;
   return {
     dex: v.dex,
@@ -85,9 +88,24 @@ export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGende
     tag,
     costume: v.kind === 'costume',
     gender: both && gender ? gender : null,
-    region: v.kind === 'regional' ? regionOfForm(v.form) : null,
+    region,
     gmax: v.kind === 'gmax',
+    ...(!region && speciesRegions.length ? { excludeRegions: speciesRegions } : {}),
   };
+}
+
+/** Regional forms each species has, from the dataset variants (Growlithe: hisui). */
+export function regionsByDex(variants: Variant[]): Map<number, Region[]> {
+  const out = new Map<number, Region[]>();
+  for (const v of variants) {
+    if (v.kind !== 'regional') continue;
+    const r = regionOfForm(v.form);
+    if (!r) continue;
+    const list = out.get(v.dex) ?? [];
+    if (!list.includes(r)) list.push(r);
+    out.set(v.dex, list);
+  }
+  return out;
 }
 
 /**
@@ -117,7 +135,13 @@ const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
     gigantamax: null,
   },
 };
-export const keyword = (id: string, lang: GameLang = 'en'): string | null => (lang === 'en' ? id : KEYWORDS[lang][id] === undefined ? id : KEYWORDS[lang][id]!);
+export const keyword = (id: string, lang: GameLang = 'en'): string | null => {
+  if (id.startsWith('!')) {
+    const k = keyword(id.slice(1), lang);
+    return k === null ? null : `!${k}`;
+  }
+  return lang === 'en' ? id : KEYWORDS[lang][id] === undefined ? id : KEYWORDS[lang][id]!;
+};
 
 function modifiersOf(t: SearchTarget): string[] {
   const mods: string[] = [];
@@ -128,12 +152,13 @@ function modifiersOf(t: SearchTarget): string[] {
   if (t.gender === 'f') mods.push('female');
   if (t.shiny) mods.push('shiny');
   if (t.tag) mods.push(t.tag.startsWith('bg:') ? 'background' : t.tag); // lucky, background, shadow, purified, xxl, xxs are in-game keywords
+  for (const r of t.excludeRegions ?? []) mods.push(`!${r}`);
   return mods;
 }
 
 export function buildSearchStrings(
   targets: SearchTarget[],
-  options: { maxLength?: number; lang?: GameLang } = {},
+  options: { maxLength?: number; lang?: GameLang; regionsByDex?: Map<number, Region[]> } = {},
 ): SearchString[] {
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
   const lang = options.lang ?? 'en';
@@ -163,12 +188,16 @@ export function buildSearchStrings(
   }
 
   const result: SearchString[] = [];
-  const ordered = [...groups.values()].sort((a, b) => a.modifiers.length - b.modifiers.length || a.modifiers.join().localeCompare(b.modifiers.join()));
+  // Groups with exclusions first: they constrain which others may join them; then fewest filters first.
+  const neg = (g: Group) => (g.modifiers.some((m) => m.startsWith('!')) ? 0 : 1);
+  const ordered = [...groups.values()].sort((a, b) => neg(a) - neg(b) || a.modifiers.length - b.modifiers.length || a.modifiers.join().localeCompare(b.modifiers.join()));
 
   // Pack groups whose dex numbers do not overlap into one string, while it fits.
   const bundles: Group[][] = [];
   for (const g of ordered) {
-    const fit = bundles.find((b) => b.every((x) => disjoint(x.dex, g.dex)) && renderBundle([...b, g], kw).length <= maxLength);
+    const fit = bundles.find(
+      (b) => b.every((x) => disjoint(x.dex, g.dex)) && exclusionsFit([...b, g], options.regionsByDex) && renderBundle([...b, g], kw).length <= maxLength,
+    );
     if (fit) fit.push(g);
     else bundles.push([g]);
   }
@@ -177,7 +206,9 @@ export function buildSearchStrings(
     if (bundle.length > 1) {
       result.push({
         modifiers: [],
-        parts: bundle.map((g) => ({ modifiers: g.modifiers, count: g.dex.size })),
+        parts: [...bundle]
+          .sort((a, b) => a.modifiers.filter((m) => !m.startsWith('!')).length - b.modifiers.filter((m) => !m.startsWith('!')).length)
+          .map((g) => ({ modifiers: g.modifiers, count: g.dex.size })),
         text: renderBundle(bundle, kw),
         count: bundle.reduce((n, g) => n + g.dex.size, 0),
         batch: 1,
@@ -238,12 +269,35 @@ function renderBundle(groups: Group[], kw: (m: string) => string): string {
   const all = groups.flatMap((g) => [...g.dex]);
   const mods: string[] = [];
   for (const g of groups) for (const m of g.modifiers) if (!mods.includes(m)) mods.push(m);
+  mods.sort((a, b) => Number(a.startsWith('!')) - Number(b.startsWith('!'))); // exclusions read best last
   const clauses = [dexRanges(all).join(',')];
   for (const m of mods) {
+    // Exclusions are whole "&!x" clauses (the documented form); exclusionsFit made sure they hurt no group.
+    if (m.startsWith('!')) {
+      clauses.push(kw(m));
+      continue;
+    }
     const without = groups.filter((g) => !g.modifiers.includes(m)).flatMap((g) => [...g.dex]);
     clauses.push(without.length ? `${kw(m)},${dexRanges(without).join(',')}` : kw(m));
   }
   return clauses.join('&');
+}
+
+/**
+ * "&!hisui" applies to every Pokémon of the string, so groups may share a string only if none of them wants that
+ * region, and each either excludes it itself or has no such regional form (known from regionsByDex).
+ */
+function exclusionsFit(groups: Group[], regionsByDex?: Map<number, Region[]>): boolean {
+  const excluded = new Set(groups.flatMap((g) => g.modifiers.filter((m) => m.startsWith('!')).map((m) => m.slice(1))));
+  for (const r of excluded) {
+    for (const g of groups) {
+      if (g.modifiers.includes(r)) return false;
+      if (g.modifiers.includes(`!${r}`)) continue;
+      if (!regionsByDex) return false;
+      for (const d of g.dex) if (regionsByDex.get(d)?.includes(r as Region)) return false;
+    }
+  }
+  return true;
 }
 
 function countDex(tokens: string[]): number {

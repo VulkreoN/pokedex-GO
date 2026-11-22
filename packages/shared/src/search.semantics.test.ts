@@ -50,7 +50,7 @@ function wanted(t: SearchTarget, p: Mon): boolean {
     (!t.shiny || p.shiny) &&
     (!t.costume || p.costume) &&
     (!t.gender || p.gender === t.gender) &&
-    (!t.region || p.region === t.region) &&
+    (t.region ? p.region === t.region : !(p.region && t.excludeRegions?.includes(p.region))) &&
     (!t.gmax || p.gmax) &&
     (!t.tag || (t.tag.startsWith('bg:') ? p.tag === 'background' || p.tag.startsWith('bg:') : p.tag === t.tag))
   );
@@ -64,6 +64,14 @@ function rng(seed: number) {
 const TAGS: EntryTag[] = ['', 'lucky', 'shadow', 'background', 'xxl'];
 const REGIONS: (Region | null)[] = [null, null, 'alola', 'galar'];
 
+/** Regional forms per species, like the real ones (Growlithe: Hisui, Farfetch'd: Galar, Meowth: Alola and Galar). */
+const REGIONAL = new Map<number, Region[]>([
+  [3, ['alola']], [6, ['galar']], [8, ['alola', 'hisui']], [11, ['hisui']],
+  [19, ['alola']], [52, ['alola', 'galar']], [58, ['hisui']], [83, ['galar']], [100, ['hisui']],
+]);
+/** What the app does: a target without a region leaves the species' regional forms out. */
+const asApp = (t: SearchTarget): SearchTarget => (t.region ? t : { ...t, ...(REGIONAL.get(t.dex)?.length ? { excludeRegions: REGIONAL.get(t.dex) } : {}) });
+
 /** Like in the game, a species either has genders or has none (Voltorb, Magnemite...). */
 const GENDERLESS = new Set([5, 10, 100]);
 
@@ -74,7 +82,7 @@ function storage(dexes: number[]): Mon[] {
     for (const shiny of [false, true])
       for (const costume of [false, true])
         for (const gender of GENDERLESS.has(dex) ? [null] : (['m', 'f'] as const))
-          for (const region of REGIONS.slice(1).concat([null]))
+          for (const region of [null, ...(REGIONAL.get(dex) ?? [])])
             for (const tag of TAGS) out.push({ dex, shiny, costume, gender, region, gmax: false, tag });
   return out;
 }
@@ -86,7 +94,8 @@ const loosened = (t: SearchTarget, lang: GameLang): SearchTarget =>
 function check(targets: SearchTarget[], maxLength?: number, lang: GameLang = 'en') {
   const dexes = [...new Set(targets.map((t) => t.dex)).add(999)]; // 999: a Pokémon nobody hunts
   const mons = storage(dexes);
-  const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang });
+  targets = targets.map(asApp);
+  const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang, regionsByDex: REGIONAL });
   for (const s of strings) {
     // A single Pokémon with all its filters cannot be split further; everything else must fit.
     if (maxLength && s.count > 1) expect(s.text.length, s.text).toBeLessThanOrEqual(maxLength);
@@ -140,6 +149,18 @@ describe('search strings behave like the in-game search', () => {
     expect(buildSearchStrings([{ dex: 25, shiny: true }], { lang: 'fr' })[0]!.text).toBe('25&chromatique');
   });
 
+  it("a plain Growlithe leaves Hisuian Growlithe out; the reported list stays short", () => {
+    const targets: SearchTarget[] = [
+      { dex: 1, gender: 'm' }, { dex: 1, gender: 'f' },
+      { dex: 58, gender: 'm' },
+      { dex: 72, gender: 'm' }, { dex: 72, gender: 'f' },
+      { dex: 83, region: 'galar', gender: 'f' },
+      { dex: 100, region: 'hisui' },
+    ];
+    const strings = check(targets, undefined, 'fr');
+    expect(strings.map((s) => s.text)).toEqual(['1,58,72,83&mâle,1,72,83&galar,1,58,72&femelle,1,58,72&!hisui', '100&hisui']);
+  });
+
   it('leaves out filters a French game has no keyword for, and says so', () => {
     const [s] = buildSearchStrings([{ dex: 6, gmax: true, shiny: true }], { lang: 'fr' });
     expect(s!.text).toBe('6&chromatique');
@@ -155,10 +176,14 @@ describe('search strings behave like the in-game search', () => {
         shiny: r() < 0.3,
         costume: r() < 0.2,
         gender: null as 'm' | 'f' | null,
-        region: pick(REGIONS),
+        region: null as Region | null,
         tag: pick([...TAGS, 'purified' as EntryTag]),
       }));
-      for (const t of targets) if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
+      for (const t of targets) {
+        if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
+        const regions = REGIONAL.get(t.dex) ?? [];
+        if (regions.length && r() < 0.4) t.region = pick(regions);
+      }
       check(targets, n % 3 === 0 ? 40 : undefined, 'fr');
     }
   });
@@ -173,10 +198,14 @@ describe('search strings behave like the in-game search', () => {
         shiny: r() < 0.3,
         costume: r() < 0.2,
         gender: null as 'm' | 'f' | null,
-        region: pick(REGIONS),
+        region: null as Region | null,
         tag: pick(TAGS),
       }));
-      for (const t of targets) if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
+      for (const t of targets) {
+        if (!GENDERLESS.has(t.dex)) t.gender = pick([null, null, 'm', 'f'] as const);
+        const regions = REGIONAL.get(t.dex) ?? [];
+        if (regions.length && r() < 0.4) t.region = pick(regions);
+      }
       check(targets, n % 3 === 0 ? 40 : undefined);
     }
   });
