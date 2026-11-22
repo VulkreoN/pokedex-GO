@@ -161,10 +161,12 @@ test('search strings use the game language: mâle / femelle in a French game', a
   await expect(code).toContainText('mâle');
   await expect(code).toContainText('femelle');
   await expect(code).not.toContainText('female');
-  // Plain Growlithe leaves Hisuian Growlithe out; Hisuian Voltorb, which needs Hisui, gets its own short string.
-  await expect(code).toHaveText('1,58,72,83&mâle,1,72,83&galar,1,58,72&femelle,1,58,72&!hisui');
-  await expect(sheet.getByText('Tous (2) · ♂ sans Hisui (1) · Galar ♀ (1)')).toBeVisible();
-  await expect(sheet.locator('code').nth(1)).toHaveText('100&hisui');
+  // One string for the whole list: plain Growlithe leaves Hisuian Growlithe out, normal entries leave shinies and
+  // costumes out, and Hisuian Voltorb still fits in.
+  await expect(sheet.locator('code')).toHaveCount(1);
+  await expect(code).toContainText('!hisui,100');
+  await expect(code).toContainText('!chromatique');
+  await expect(code).toContainText('!costume');
   await sheet.getByRole('button', { name: 'English' }).click();
   await expect(code).toContainText('female');
   await sheet.getByRole('button', { name: 'Français' }).click();

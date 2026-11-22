@@ -5,7 +5,7 @@
  * For random lists, every string must only catch wanted Pokémon, and all strings together must catch all of them.
  */
 import { describe, expect, it } from 'vitest';
-import { buildSearchStrings, type GameLang, type Region, type SearchTarget } from './search.js';
+import { buildSearchStrings, type GameLang, type Region, type SearchTarget, type SpeciesSearchInfo } from './search.js';
 import type { EntryTag } from './types.js';
 
 interface Mon {
@@ -47,8 +47,8 @@ export function gameSearch(text: string, p: Mon): boolean {
 function wanted(t: SearchTarget, p: Mon): boolean {
   return (
     p.dex === t.dex &&
-    (!t.shiny || p.shiny) &&
-    (!t.costume || p.costume) &&
+    (t.shiny === undefined || p.shiny === t.shiny) &&
+    (t.costume === undefined || p.costume === t.costume) &&
     (!t.gender || p.gender === t.gender) &&
     (t.region ? p.region === t.region : !(p.region && t.excludeRegions?.includes(p.region))) &&
     (!t.gmax || p.gmax) &&
@@ -95,7 +95,10 @@ function check(targets: SearchTarget[], maxLength?: number, lang: GameLang = 'en
   const dexes = [...new Set(targets.map((t) => t.dex)).add(999)]; // 999: a Pokémon nobody hunts
   const mons = storage(dexes);
   targets = targets.map(asApp);
-  const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang, regionsByDex: REGIONAL });
+  const species = new Map<number, SpeciesSearchInfo>(
+    dexes.map((d) => [d, { regions: REGIONAL.get(d) ?? [], costumes: true, genders: GENDERLESS.has(d) ? [] : ['m', 'f'] }]),
+  );
+  const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang, species });
   for (const s of strings) {
     // A single Pokémon with all its filters cannot be split further; everything else must fit.
     if (maxLength && s.count > 1) expect(s.text.length, s.text).toBeLessThanOrEqual(maxLength);
@@ -149,7 +152,7 @@ describe('search strings behave like the in-game search', () => {
     expect(buildSearchStrings([{ dex: 25, shiny: true }], { lang: 'fr' })[0]!.text).toBe('25&chromatique');
   });
 
-  it("a plain Growlithe leaves Hisuian Growlithe out; the reported list stays short", () => {
+  it('a plain Growlithe leaves Hisuian Growlithe out, and the whole list is one string', () => {
     const targets: SearchTarget[] = [
       { dex: 1, gender: 'm' }, { dex: 1, gender: 'f' },
       { dex: 58, gender: 'm' },
@@ -158,7 +161,7 @@ describe('search strings behave like the in-game search', () => {
       { dex: 100, region: 'hisui' },
     ];
     const strings = check(targets, undefined, 'fr');
-    expect(strings.map((s) => s.text)).toEqual(['1,58,72,83&mâle,1,72,83&galar,1,58,72&femelle,1,58,72&!hisui', '100&hisui']);
+    expect(strings.map((s) => s.text)).toEqual(['1,58,72,83,100&femelle,1,58,72,100&galar,1,58,72,100&hisui,1,58,72,83&mâle,1,72,83,100&!hisui,100']);
   });
 
   it('leaves out filters a French game has no keyword for, and says so', () => {

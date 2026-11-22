@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildSearchStrings, regionsByDex, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import { buildSearchStrings, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { useLang, useT } from '../lib/i18n.js';
@@ -25,17 +25,18 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       localStorage.setItem('gameLang', l);
     } catch {}
   };
-  // Which species have regional forms: a plain entry must leave them out (plain Growlithe, not Hisuian).
-  const regions = useMemo(() => regionsByDex(idx.ds.variants), [idx]);
+  // What each species can be (regional forms, costumes, genders): a plain entry leaves the others out
+  // (plain Growlithe, not Hisuian), and numbers that cannot break a clause are not listed in it.
+  const species = useMemo(() => speciesSearchInfo(idx.ds.variants), [idx]);
   const strings = useMemo(() => {
     const targets = entries
       .filter((e) => !onlyMissing || !e.done)
       .flatMap((e) => {
         const v = idx.variantByKey.get(e.variantKey);
-        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, regions.get(v.dex) ?? [])] : [];
+        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, species.get(v.dex)?.regions ?? [])] : [];
       });
-    return buildSearchStrings(targets, { lang: gameLang, regionsByDex: regions });
-  }, [entries, idx, onlyMissing, gameLang, regions]);
+    return buildSearchStrings(targets, { lang: gameLang, species });
+  }, [entries, idx, onlyMissing, gameLang, species]);
 
   const names: Record<string, string> = {
     shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,

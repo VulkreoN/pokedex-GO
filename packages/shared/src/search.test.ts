@@ -15,7 +15,7 @@ describe('dex ranges', () => {
 });
 
 describe('buildSearchStrings', () => {
-  it('combines groups whose dex numbers do not overlap, and splits the ones that do', () => {
+  it('puts the whole list in one string, overlapping Pokémon included', () => {
     const out = buildSearchStrings([
       { dex: 25, shiny: true },
       { dex: 1 },
@@ -23,9 +23,9 @@ describe('buildSearchStrings', () => {
       { dex: 26, shiny: true },
       { dex: 25, costume: true, shiny: true },
     ]);
-    // Plain 1, 4 and shiny 25, 26 fit together; costume shiny Pikachu overlaps with shiny Pikachu.
-    expect(out.map((s) => s.text)).toEqual(['1,4,25,26&shiny,1,4', '25&costume&shiny']);
-    expect(out[0]!.parts).toEqual([{ modifiers: [], count: 2 }, { modifiers: ['shiny'], count: 2 }]);
+    // Shiny Pikachu (any) already covers costumed shiny Pikachu.
+    expect(out.map((s) => s.text)).toEqual(['1,4,25,26&shiny,1,4']);
+    expect(out[0]!.parts).toEqual([{ modifiers: [], count: 2 }, { modifiers: ['shiny'], count: 2 }, { modifiers: ['costume', 'shiny'], count: 1 }]);
   });
   it('writes "Pikachu male or Charmander female" as one string', () => {
     expect(buildSearchStrings([{ dex: 25, gender: 'm' }, { dex: 4, gender: 'f' }]).map((s) => s.text)).toEqual(['4,25&female,25&male,4']);
@@ -41,13 +41,16 @@ describe('buildSearchStrings', () => {
     }
     expect(out.reduce((n, s) => n + s.count, 0)).toBe(120);
   });
-  it('filters by gender, both genders of one target collapse into one string', () => {
+  it('filters by gender; "male or female" is dropped when the species has both', () => {
     expect(buildSearchStrings([{ dex: 41, gender: 'm' }, { dex: 42, gender: 'f' }]).map((s) => s.text)).toEqual(['41,42&female,41&male,42']);
     // Both genders of the same target: one string, no filter.
-    expect(buildSearchStrings([{ dex: 25, gender: 'm' }, { dex: 25, gender: 'f' }, { dex: 26, gender: 'f' }]).map((s) => s.text)).toEqual(['25,26&female,25']);
+    const targets = [{ dex: 25, gender: 'm' as const }, { dex: 25, gender: 'f' as const }, { dex: 26, gender: 'f' as const }];
+    expect(buildSearchStrings(targets).map((s) => s.text)).toEqual(['25,26&female,25&female,male,26']);
+    const species = new Map([25, 26].map((d) => [d, { regions: [], costumes: true, genders: ['m', 'f'] as ('m' | 'f')[] }]));
+    expect(buildSearchStrings(targets, { species }).map((s) => s.text)).toEqual(['25,26&female,25']);
   });
   it('adds trait keywords last', () => {
-    expect(buildSearchStrings([{ dex: 25, shiny: true, tag: 'lucky' }, { dex: 1, tag: 'background' }]).map((s) => s.text)).toEqual(['1,25&background,25&shiny,1&lucky,1']);
+    expect(buildSearchStrings([{ dex: 25, shiny: true, tag: 'lucky' }, { dex: 1, tag: 'background' }]).map((s) => s.text)).toEqual(['1,25&background,25&lucky,1&shiny,1']);
   });
   it('orders modifiers consistently', () => {
     const [s] = buildSearchStrings([{ dex: 19, region: 'alola', gender: 'f', shiny: true }]);

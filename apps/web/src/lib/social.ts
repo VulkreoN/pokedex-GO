@@ -54,7 +54,10 @@ export function useRealtime(loggedIn: boolean) {
     const es = new EventSource('/api/stream', { withCredentials: true });
     let opened = false;
     es.addEventListener('ready', () => {
-      if (opened) for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+      // Whatever happened between the page load and this connection would otherwise wait for the next refetch:
+      // re-read the cheap things every time, everything social after a reconnect.
+      const keys = opened ? ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists'] : ['notifications', 'friend-requests'];
+      for (const k of keys) void qc.invalidateQueries({ queryKey: [k] });
       opened = true;
     });
     es.addEventListener('live', (msg) => {

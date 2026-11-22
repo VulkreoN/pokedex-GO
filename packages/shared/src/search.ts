@@ -5,16 +5,25 @@
  *   ","  OR      "&"  AND      "!"  NOT
  *   "1-151" dex range, "25" single dex number
  *   shiny, costume, female, male, alola, galar, hisui, paldea, gigantamax
- * Commas are evaluated inside ampersands: "1,4&shiny" = (1 OR 4) AND shiny (a conjunction of OR-clauses).
- * "Pikachu male OR Charmander female" has no direct form, but when the groups' dex numbers do not overlap it can be
- * written as clauses: "4,25&male,4&female,25" = (Charmander or Pikachu) and (male or Charmander) and (female or
- * Pikachu). Groups are packed that way while the string stays short; overlapping groups get their own string.
- * A third-party tool reports a 200-character limit on the in-game field, so strings are split in batches.
+ * Commas are evaluated inside ampersands: "1,4&shiny" = (1 OR 4) AND shiny, a conjunction of OR-clauses, and "!"
+ * works inside a clause too ("!femelle,746,749" = not female, or one of these numbers; players' sheets rely on it).
+ *
+ * So a whole list fits in ONE string. For each Pokémon, the versions wanted ("Growlithe male, not Hisuian",
+ * "Pikachu: male normal or female shiny") are turned into clauses (conjunctive normal form); a clause about dex d
+ * also lists every other dex number, so it only binds d:
+ *   1,58,83&mâle,1,83&!hisui,1,83&galar,1,58&femelle,1,58
+ *   = (Bulbasaur, Growlithe or Farfetch'd) and (male unless Bulbasaur/Farfetch'd) and (not Hisuian unless ...) ...
+ * Numbers that cannot break a clause are left out of it (no need to list Bulbasaur under "!hisui": there is no
+ * Hisuian Bulbasaur), which keeps the string short. No length limit by default: players use much longer strings.
  */
 import type { EntryGender, EntryTag, Gender, Variant } from './types.js';
 
 export type Region = 'alola' | 'galar' | 'hisui' | 'paldea';
 
+/**
+ * One wanted version. true = must have it, false = must not, undefined = either.
+ * A list entry is exact: "Pikachu normal" is not shiny and not costumed.
+ */
 export interface SearchTarget {
   dex: number;
   shiny?: boolean;
@@ -30,9 +39,9 @@ export interface SearchTarget {
 export interface SearchString {
   /** Filters this list needs but the game's language has no keyword for: left out, so the string shows extra Pokémon. */
   unsupported?: string[];
-  /** Modifiers applied with "&", in display order. Empty for plain dex lists and for combined strings (see parts). */
+  /** Kept for single-filter strings; see parts. */
   modifiers: string[];
-  /** Combined string: the modifier groups it covers, each with its dex count. */
+  /** What the string covers: each combination of filters with its number of Pokémon. */
   parts?: { modifiers: string[]; count: number }[];
   text: string;
   /** Number of distinct dex numbers covered by this string. */
@@ -42,7 +51,8 @@ export interface SearchString {
   batches: number;
 }
 
-export const DEFAULT_MAX_LENGTH = 200;
+/** No limit by default: players paste strings of several hundred characters. */
+export const DEFAULT_MAX_LENGTH = Number.POSITIVE_INFINITY;
 
 /** "1,2,3,5,7,8,9" -> "1-3,5,7-9". Dedupes and sorts. */
 export function compressDexNumbers(nums: number[]): string {
@@ -81,6 +91,7 @@ export function regionOfForm(form: string | null): Region | null {
  */
 export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGender | null, tag: EntryTag = '', speciesRegions: Region[] = []): SearchTarget {
   const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
+  // Exact: a normal entry is not shiny, a plain or regional form is not a costume.
   const both = (v.genders ?? ['m', 'f']).length > 1;
   return {
     dex: v.dex,
@@ -143,166 +154,172 @@ export const keyword = (id: string, lang: GameLang = 'en'): string | null => {
   return lang === 'en' ? id : KEYWORDS[lang][id] === undefined ? id : KEYWORDS[lang][id]!;
 };
 
-function modifiersOf(t: SearchTarget): string[] {
-  const mods: string[] = [];
-  if (t.region) mods.push(t.region);
-  if (t.costume) mods.push('costume');
-  if (t.gmax) mods.push('gigantamax');
-  if (t.gender === 'm') mods.push('male');
-  if (t.gender === 'f') mods.push('female');
-  if (t.shiny) mods.push('shiny');
-  if (t.tag) mods.push(t.tag.startsWith('bg:') ? 'background' : t.tag); // lucky, background, shadow, purified, xxl, xxs are in-game keywords
-  for (const r of t.excludeRegions ?? []) mods.push(`!${r}`);
-  return mods;
+/** What a species can be, to leave out numbers that cannot break a clause (no Hisuian Bulbasaur...). */
+export interface SpeciesSearchInfo {
+  regions: Region[];
+  costumes: boolean;
+  /** Genders it exists in ([] = genderless). */
+  genders: Gender[];
+}
+
+/** Per species: regional forms, costumes, genders, from the dataset. */
+export function speciesSearchInfo(variants: Variant[]): Map<number, SpeciesSearchInfo> {
+  const out = new Map<number, SpeciesSearchInfo>();
+  for (const v of variants) {
+    const info = out.get(v.dex) ?? { regions: [], costumes: false, genders: [] };
+    const r = v.kind === 'regional' ? regionOfForm(v.form) : null;
+    if (r && !info.regions.includes(r)) info.regions.push(r);
+    if (v.kind === 'costume') info.costumes = true;
+    for (const g of v.genders ?? ['m', 'f']) if (!info.genders.includes(g)) info.genders.push(g);
+    out.set(v.dex, info);
+  }
+  return out;
+}
+
+type Lit = { dim: string; pos: boolean };
+const litKey = (l: Lit) => `${l.pos ? '' : '!'}${l.dim}`;
+
+/** The literals a target requires (keyword ids, before translation). */
+function cubeOf(t: SearchTarget): Lit[] {
+  const lits: Lit[] = [];
+  if (t.region) lits.push({ dim: t.region, pos: true });
+  for (const r of t.excludeRegions ?? []) lits.push({ dim: r, pos: false });
+  if (t.costume !== undefined) lits.push({ dim: 'costume', pos: t.costume });
+  if (t.gmax) lits.push({ dim: 'gigantamax', pos: true });
+  if (t.gender === 'm') lits.push({ dim: 'male', pos: true });
+  if (t.gender === 'f') lits.push({ dim: 'female', pos: true });
+  if (t.shiny !== undefined) lits.push({ dim: 'shiny', pos: t.shiny });
+  if (t.tag) lits.push({ dim: t.tag.startsWith('bg:') ? 'background' : t.tag, pos: true }); // lucky, shadow, purified, xxl, xxs...
+  return lits;
+}
+
+/** True when every Pokémon of this species satisfies the literal, so it never needs listing for it. */
+function alwaysTrue(l: Lit, info: SpeciesSearchInfo | undefined): boolean {
+  if (!info) return false;
+  if ((['alola', 'galar', 'hisui', 'paldea'] as string[]).includes(l.dim)) return !l.pos && !info.regions.includes(l.dim as Region);
+  if (l.dim === 'costume') return !l.pos && !info.costumes;
+  if (l.dim === 'male') return l.pos ? info.genders.length === 1 && info.genders[0] === 'm' : !info.genders.includes('m');
+  if (l.dim === 'female') return l.pos ? info.genders.length === 1 && info.genders[0] === 'f' : !info.genders.includes('f');
+  return false;
+}
+
+const MAX_CLAUSES_PER_DEX = 256;
+
+/**
+ * Conjunctive normal form of "one of these cubes": distribute, drop tautologies and subsumed clauses.
+ * Too many targets with too many filters on one Pokémon: fall back to one clause per filter fixed by all of them
+ * (shows a few extra versions, never misses one).
+ */
+function cnfOf(cubes: Lit[][], info?: SpeciesSearchInfo): Lit[][] {
+  if (cubes.some((c) => c.length === 0)) return [];
+  let clauses: Lit[][] = [[]];
+  for (const cube of cubes) {
+    const next: Lit[][] = [];
+    for (const c of clauses) for (const l of cube) if (!c.some((x) => litKey(x) === litKey(l))) next.push([...c, l]);
+      else next.push(c);
+    clauses = next.filter((c) => !c.some((x) => c.some((y) => x.dim === y.dim && x.pos !== y.pos)));
+    if (clauses.length > MAX_CLAUSES_PER_DEX) {
+      const fixed = new Map<string, Lit>();
+      for (const l of cubes[0]!) if (cubes.every((cb) => cb.some((x) => litKey(x) === litKey(l)))) fixed.set(litKey(l), l);
+      return [...fixed.values()].map((l) => [l]);
+    }
+  }
+  // "male or female" holds for every Pokémon of a species that has both genders.
+  const both = info?.genders.length === 2;
+  clauses = clauses.filter((c) => !(both && c.some((l) => l.dim === 'male' && l.pos) && c.some((l) => l.dim === 'female' && l.pos)));
+  const keyed = [...new Map(clauses.map((c) => [c.map(litKey).sort().join('|'), c])).values()];
+  return keyed.filter((c) => !keyed.some((o) => o !== c && o.length < c.length && o.every((l) => c.some((x) => litKey(x) === litKey(l)))));
 }
 
 export function buildSearchStrings(
   targets: SearchTarget[],
-  options: { maxLength?: number; lang?: GameLang; regionsByDex?: Map<number, Region[]> } = {},
+  options: { maxLength?: number; lang?: GameLang; species?: Map<number, SpeciesSearchInfo>; regionsByDex?: Map<number, Region[]> } = {},
 ): SearchString[] {
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH;
   const lang = options.lang ?? 'en';
-  const kw = (m: string) => keyword(m, lang)!;
-  // Hunting both the male and the female of the same thing: one string without a gender filter covers both.
-  const genderless = (t: SearchTarget) => JSON.stringify({ ...t, gender: null });
-  const genders = new Map<string, Set<Gender | null | undefined>>();
-  for (const t of targets) (genders.get(genderless(t)) ?? genders.set(genderless(t), new Set()).get(genderless(t))!).add(t.gender);
-  targets = targets.map((t) => {
-    const g = genders.get(genderless(t))!;
-    return t.gender && g.has('m') && g.has('f') ? { ...t, gender: null } : t;
-  });
+  const species =
+    options.species ??
+    (options.regionsByDex ? new Map([...options.regionsByDex].map(([d, regions]) => [d, { regions, costumes: true, genders: ['m', 'f'] as Gender[] }])) : undefined);
+  if (!targets.length) return [];
 
-  const groups = new Map<string, Group>();
+  const dexes = [...new Set(targets.map((t) => t.dex))].sort((a, b) => a - b);
+  const render = (subset: number[]) => renderString(targets.filter((t) => subset.includes(t.dex)), lang, species);
+  const whole = render(dexes);
+  if (whole.text.length <= maxLength) return [whole];
+
+  // Too long for the limit asked: split by Pokémon (each string stays exact for its own Pokémon).
+  const out: SearchString[] = [];
+  let chunk: number[] = [];
+  for (const d of dexes) {
+    const tryChunk = [...chunk, d];
+    if (chunk.length && render(tryChunk).text.length > maxLength) {
+      out.push(render(chunk));
+      chunk = [d];
+    } else chunk = tryChunk;
+  }
+  if (chunk.length) out.push(render(chunk));
+  return out.map((s, i) => ({ ...s, batch: i + 1, batches: out.length }));
+}
+
+function renderString(targets: SearchTarget[], lang: GameLang, species?: Map<number, SpeciesSearchInfo>): SearchString {
+  const unsupported = new Set<string>();
+  const byDex = new Map<number, Lit[][]>();
   for (const t of targets) {
-    const all = modifiersOf(t);
-    const modifiers = all.filter((m) => keyword(m, lang) !== null);
-    const dropped = all.filter((m) => keyword(m, lang) === null);
-    const id = modifiers.join('&');
-    let g = groups.get(id);
-    if (!g) {
-      g = { modifiers, dex: new Set(), unsupported: new Set() };
-      groups.set(id, g);
-    }
-    g.dex.add(t.dex);
-    for (const m of dropped) g.unsupported.add(m);
-  }
-
-  const result: SearchString[] = [];
-  // Groups with exclusions first: they constrain which others may join them; then fewest filters first.
-  const neg = (g: Group) => (g.modifiers.some((m) => m.startsWith('!')) ? 0 : 1);
-  const ordered = [...groups.values()].sort((a, b) => neg(a) - neg(b) || a.modifiers.length - b.modifiers.length || a.modifiers.join().localeCompare(b.modifiers.join()));
-
-  // Pack groups whose dex numbers do not overlap into one string, while it fits.
-  const bundles: Group[][] = [];
-  for (const g of ordered) {
-    const fit = bundles.find(
-      (b) => b.every((x) => disjoint(x.dex, g.dex)) && exclusionsFit([...b, g], options.regionsByDex) && renderBundle([...b, g], kw).length <= maxLength,
-    );
-    if (fit) fit.push(g);
-    else bundles.push([g]);
-  }
-
-  for (const bundle of bundles) {
-    if (bundle.length > 1) {
-      result.push({
-        modifiers: [],
-        parts: [...bundle]
-          .sort((a, b) => a.modifiers.filter((m) => !m.startsWith('!')).length - b.modifiers.filter((m) => !m.startsWith('!')).length)
-          .map((g) => ({ modifiers: g.modifiers, count: g.dex.size })),
-        text: renderBundle(bundle, kw),
-        count: bundle.reduce((n, g) => n + g.dex.size, 0),
-        batch: 1,
-        batches: 1,
-        ...unsupportedOf(bundle),
-      });
-      continue;
-    }
-    const g = bundle[0]!;
-    const suffix = g.modifiers.map((m) => `&${kw(m)}`).join('');
-    const tokens = dexRanges([...g.dex]);
-    const batches: string[][] = [];
-    let current: string[] = [];
-    let currentLen = 0;
-    for (const tok of tokens) {
-      const extra = current.length ? tok.length + 1 : tok.length;
-      if (current.length && currentLen + extra + suffix.length > maxLength) {
-        batches.push(current);
-        current = [];
-        currentLen = 0;
-      }
-      current.push(tok);
-      currentLen += current.length === 1 ? tok.length : tok.length + 1;
-    }
-    if (current.length) batches.push(current);
-    batches.forEach((b, i) => {
-      result.push({
-        modifiers: g.modifiers,
-        text: b.join(',') + suffix,
-        count: countDex(b),
-        batch: i + 1,
-        batches: batches.length,
-        ...unsupportedOf([g]),
-      });
+    const cube = cubeOf(t).filter((l) => {
+      if (keyword(l.dim, lang) !== null) return true;
+      unsupported.add(l.dim);
+      return false;
     });
+    // Literals the species always satisfies say nothing about it.
+    const info = species?.get(t.dex);
+    const useful = cube.filter((l) => !alwaysTrue(l, info));
+    (byDex.get(t.dex) ?? byDex.set(t.dex, []).get(t.dex)!).push(useful);
   }
-  return result;
-}
+  const dexes = [...byDex.keys()].sort((a, b) => a - b);
 
-type Group = { modifiers: string[]; dex: Set<number>; unsupported: Set<string> };
-
-function unsupportedOf(groups: Group[]): { unsupported?: string[] } {
-  const u = [...new Set(groups.flatMap((g) => [...g.unsupported]))];
-  return u.length ? { unsupported: u } : {};
-}
-
-function disjoint(a: Set<number>, b: Set<number>): boolean {
-  for (const x of a) if (b.has(x)) return false;
-  return true;
-}
-
-/**
- * One string for groups with disjoint dex numbers: every listed dex, then for each modifier "m, <dex of the groups
- * that do not need m>". A Pokémon of group G passes the clause of a modifier G needs only by having it, and passes
- * the clauses of modifiers G does not need through its own dex number.
- */
-function renderBundle(groups: Group[], kw: (m: string) => string): string {
-  const all = groups.flatMap((g) => [...g.dex]);
-  const mods: string[] = [];
-  for (const g of groups) for (const m of g.modifiers) if (!mods.includes(m)) mods.push(m);
-  mods.sort((a, b) => Number(a.startsWith('!')) - Number(b.startsWith('!'))); // exclusions read best last
-  const clauses = [dexRanges(all).join(',')];
-  for (const m of mods) {
-    // Exclusions are whole "&!x" clauses (the documented form); exclusionsFit made sure they hurt no group.
-    if (m.startsWith('!')) {
-      clauses.push(kw(m));
-      continue;
-    }
-    const without = groups.filter((g) => !g.modifiers.includes(m)).flatMap((g) => [...g.dex]);
-    clauses.push(without.length ? `${kw(m)},${dexRanges(without).join(',')}` : kw(m));
-  }
-  return clauses.join('&');
-}
-
-/**
- * "&!hisui" applies to every Pokémon of the string, so groups may share a string only if none of them wants that
- * region, and each either excludes it itself or has no such regional form (known from regionsByDex).
- */
-function exclusionsFit(groups: Group[], regionsByDex?: Map<number, Region[]>): boolean {
-  const excluded = new Set(groups.flatMap((g) => g.modifiers.filter((m) => m.startsWith('!')).map((m) => m.slice(1))));
-  for (const r of excluded) {
-    for (const g of groups) {
-      if (g.modifiers.includes(r)) return false;
-      if (g.modifiers.includes(`!${r}`)) continue;
-      if (!regionsByDex) return false;
-      for (const d of g.dex) if (regionsByDex.get(d)?.includes(r as Region)) return false;
+  // Same clause for several Pokémon: one clause, the numbers of the others listed once.
+  const clauses = new Map<string, { lits: Lit[]; dex: Set<number> }>();
+  for (const [d, cubes] of byDex) {
+    for (const c of cnfOf(cubes, species?.get(d))) {
+      const lits = [...c].sort((a, b) => litKey(a).localeCompare(litKey(b)));
+      const key = lits.map(litKey).join('|');
+      (clauses.get(key) ?? clauses.set(key, { lits, dex: new Set() }).get(key)!).dex.add(d);
     }
   }
-  return true;
-}
 
-function countDex(tokens: string[]): number {
-  return tokens.reduce((n, t) => {
-    const [a, b] = t.split('-').map(Number);
-    return n + (b !== undefined ? b - a! + 1 : 1);
-  }, 0);
+  const kw = (l: Lit) => `${l.pos ? '' : '!'}${keyword(l.dim, lang)!}`;
+  const parts = [dexRanges(dexes).join(',')];
+  const ordered = [...clauses.values()].sort((a, b) => {
+    const neg = (x: { lits: Lit[] }) => (x.lits.every((l) => !l.pos) ? 2 : x.lits.every((l) => l.pos) ? 0 : 1);
+    return neg(a) - neg(b) || a.lits.map(litKey).join().localeCompare(b.lits.map(litKey).join());
+  });
+  for (const { lits, dex } of ordered) {
+    // Pokémon this clause is not about pass it through their own number, unless they satisfy it anyway.
+    const others = dexes.filter((e) => !dex.has(e) && !lits.some((l) => alwaysTrue(l, species?.get(e))));
+    parts.push([...lits.map(kw), ...dexRanges(others)].join(','));
+  }
+
+  // Label: each combination of filters with its number of Pokémon.
+  const combos = new Map<string, { modifiers: string[]; dex: Set<number> }>();
+  for (const t of targets) {
+    const mods = cubeOf(t)
+      .filter((l) => l.pos || (['alola', 'galar', 'hisui', 'paldea'] as string[]).includes(l.dim))
+      .filter((l) => keyword(l.dim, lang) !== null)
+      .map(litKey);
+    const key = mods.join('&');
+    (combos.get(key) ?? combos.set(key, { modifiers: mods, dex: new Set() }).get(key)!).dex.add(t.dex);
+  }
+  const partsInfo = [...combos.values()]
+    .sort((a, b) => a.modifiers.filter((m) => !m.startsWith('!')).length - b.modifiers.filter((m) => !m.startsWith('!')).length)
+    .map((c) => ({ modifiers: c.modifiers, count: c.dex.size }));
+
+  return {
+    modifiers: partsInfo.length === 1 ? partsInfo[0]!.modifiers : [],
+    parts: partsInfo,
+    text: parts.join('&'),
+    count: dexes.length,
+    batch: 1,
+    batches: 1,
+    ...(unsupported.size ? { unsupported: [...unsupported] } : {}),
+  };
 }
