@@ -111,6 +111,7 @@ export function BottomNav() {
     { to: '/dex', label: t.nav_dex, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
     { to: '/lists', label: t.nav_lists, icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /> },
     { to: '/game', label: t.nav_game, icon: <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 10h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /> },
+    { to: '/pvp', label: t.nav_pvp, icon: <path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /> },
     { to: '/friends', label: t.nav_friends, icon: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /> },
     { to: '/me', label: t.nav_me, icon: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /> },
   ];

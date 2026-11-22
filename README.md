@@ -92,6 +92,9 @@ L'onglet « Jeu » :
 
 - Raids, Raids Dynamax (Max Mondays, Dynamax Trails, Gigantamax…), études de terrain, œufs : JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures.
 - Événements : codes promo actifs (page promo de Leek Duck, liens « Utiliser » directs vers la boutique), puis les infographies : des posts X ajoutés par les gérants en collant le lien du tweet (lu via l'oEmbed officiel de X, texte et liens cliquables, codes de réduction extraits en boutons, image via le widget officiel), et le flux officiel intégré du compte `@g47ix`. Aucun scraping de X, donc aucune clé ni compte. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
+- Outils → Capsules : Hyper Training, avec la chaîne de recherche des candidats et la tâche de chaque palier d'IV (liste reprise de [g47ix](https://g47ix.pro/bottlecap/), traduite).
+
+L'onglet « PvP » : rang des IV d'une forme et de ses évolutions en Ligue Super et Hyper, niveau visé, PC, et coût en poussières, bonbons et bonbons XL depuis le niveau actuel (ou le PC). Stats de base, multiplicateurs de niveau, coûts et évolutions viennent du game master (`dataset.pvp`), les calculs de `packages/shared/src/pvp.ts`. Les IV et le niveau sont dans l'URL, donc partageables.
 
 Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial précis ou non, obscur, purifié, Dynamax, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
 

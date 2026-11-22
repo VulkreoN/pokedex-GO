@@ -7,12 +7,9 @@ import { Sparkle } from '../components/Sprite.js';
 import { VariantCard } from '../components/VariantCard.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useDataset } from '../lib/dataset.js';
-import { localized, typeName, useLang, useT } from '../lib/i18n.js';
+import { localized, useLang, useT } from '../lib/i18n.js';
+import { TypeBadge } from '../components/TypeBadge.js';
 
-const TYPE_COLORS: Record<string, string> = {
-  normal: '#a8a77a', fire: '#ee8130', water: '#6390f0', grass: '#7ac74c', electric: '#f7d02c', ice: '#96d9d6', fighting: '#c22e28', poison: '#a33ea1',
-  ground: '#e2bf65', flying: '#a98ff3', psychic: '#f95587', bug: '#a6b91a', rock: '#b6a136', ghost: '#735797', dragon: '#6f35fc', dark: '#705746', steel: '#b7b7ce', fairy: '#d685ad',
-};
 
 export function SpeciesPage() {
   const t = useT();
@@ -59,7 +56,7 @@ export function SpeciesPage() {
       <main className="mx-auto max-w-3xl px-3 pb-24">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {species.types.map((ty) => (
-            <span key={ty} className="rounded-md px-2 py-0.5 text-xs font-bold text-white" style={{ background: TYPE_COLORS[ty] ?? '#888' }}>{typeName(ty, lang)}</span>
+            <TypeBadge key={ty} type={ty} />
           ))}
           {species.rarity !== 'normal' && <Badge tone="muted">{t[`rarity_${species.rarity}`]}</Badge>}
           {!species.released && <Badge tone="datamined">{t.unreleased_species}</Badge>}

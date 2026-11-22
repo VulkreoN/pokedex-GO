@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { XEmbed } from '../components/XEmbed.js';
+import { BottleCaps } from '../components/BottleCaps.js';
 import { useToast } from '../components/toast.js';
 import { api, copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
@@ -15,12 +16,12 @@ import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEv
 
 const X_HANDLE = 'g47ix';
 
-type Tab = 'raids' | 'max' | 'events' | 'research' | 'eggs';
+type Tab = 'raids' | 'max' | 'events' | 'research' | 'eggs' | 'tools';
 
 export function GamePage() {
   const t = useT();
   const [tab, setTab] = useState<Tab>('raids');
-  const tabs: [Tab, string][] = [['raids', t.tab_raids], ['max', t.tab_max], ['events', t.tab_events], ['research', t.tab_research], ['eggs', t.tab_eggs]];
+  const tabs: [Tab, string][] = [['raids', t.tab_raids], ['max', t.tab_max], ['events', t.tab_events], ['research', t.tab_research], ['eggs', t.tab_eggs], ['tools', t.tab_tools]];
   return (
     <>
       <TopBar title={t.nav_game}>
@@ -36,8 +37,24 @@ export function GamePage() {
         {tab === 'events' && <Events />}
         {tab === 'research' && <Research />}
         {tab === 'eggs' && <Eggs />}
-        <p className="mt-8 text-center text-xs text-ink-3">{t.live_source}</p>
+        {tab === 'tools' && <Tools />}
+        {tab !== 'tools' && <p className="mt-8 text-center text-xs text-ink-3">{t.live_source}</p>}
       </main>
+    </>
+  );
+}
+
+/** Small helpers for the game, one at a time. */
+function Tools() {
+  const t = useT();
+  const tools = [['caps', t.tool_caps]] as const;
+  const [tool, setTool] = useState<(typeof tools)[number][0]>('caps');
+  return (
+    <>
+      <div className="mb-3 flex gap-2">
+        {tools.map(([id, label]) => <Chip key={id} active={tool === id} onClick={() => setTool(id)}>{label}</Chip>)}
+      </div>
+      {tool === 'caps' && <BottleCaps />}
     </>
   );
 }

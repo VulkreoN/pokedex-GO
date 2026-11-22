@@ -24,6 +24,7 @@ import {
 import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, SOURCES, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
+import { extractPvp } from './pvp.js';
 
 export interface BuildOptions {
   fetch: FetchOptions;
@@ -385,6 +386,21 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     .sort((a, b) => a.dex - b.dex)
     .map(({ gmForms: _f, tempEvos: _t, ...s }) => s);
 
+  const speciesFull = new Map(species.map((s) => [s.dex, s]));
+  const pvp = extractPvp(gm as Parameters<typeof extractPvp>[0], {
+    isCostume: (dex, token) => speciesByDex.get(dex)?.gmForms.get(token) === true || looksLikeCostume(token),
+    released: (dex) => speciesFull.get(dex)?.released === true,
+    dexOf: (id) => speciesById.get(id)?.dex,
+    name: (dex, token) => {
+      const sp = speciesFull.get(dex)!;
+      const label = token ? labelFor(sp, token, null) : null;
+      if (!label) return sp.name;
+      const fr = sp.name.fr ?? sp.name.en;
+      return { en: `${sp.name.en} (${label.en})`, fr: `${fr} (${label.fr ?? label.en})` };
+    },
+  });
+  if (pvp) log(`pvp: ${pvp.pokemon.length} battle forms`);
+
   const body = JSON.stringify({ species, variants });
   const hash = createHash('sha256').update(body).digest('hex').slice(0, 8);
   const now = new Date();
@@ -397,6 +413,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     species,
     variants,
     ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
+    ...(pvp ? { pvp } : {}),
   };
   const byKind = variants.reduce<Record<string, number>>((acc, v) => ((acc[v.kind] = (acc[v.kind] ?? 0) + 1), acc), {});
   const stats = {

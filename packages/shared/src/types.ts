@@ -81,6 +81,35 @@ export interface Dataset {
   variants: Variant[];
   /** Special backgrounds catalog (location cards, event backgrounds), keyed by id. */
   backgrounds?: Record<string, BackgroundInfo>;
+  /** Base stats, level multipliers and power-up costs for the PvP rank checker. */
+  pvp?: PvpData;
+}
+
+/** One battle-relevant form: costumes and copies with identical stats are folded into it. */
+export interface PvpPokemon {
+  /** Variant key of the form ("26", "26.fALOLA"); also used for the picture. */
+  key: string;
+  dex: number;
+  name: LocalizedText;
+  types: PokemonType[];
+  atk: number;
+  def: number;
+  sta: number;
+  /** Keys of the forms this one evolves into (Mega evolutions excluded). */
+  evolutions?: string[];
+}
+export interface PvpData {
+  /** CP multiplier per whole level: cpm[0] is level 1. */
+  cpm: number[];
+  /** Cost of each power-up from a level, indexed by whole level - 1 (both half steps of a level cost the same). */
+  stardust: number[];
+  candy: number[];
+  /** XL Candy per power-up, indexed by whole level - xlFrom. */
+  xlCandy: number[];
+  xlFrom: number;
+  /** Highest level reachable by powering up (best buddy adds one on top). */
+  maxLevel: number;
+  pokemon: PvpPokemon[];
 }
 
 export interface DatasetManifest {
