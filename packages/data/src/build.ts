@@ -349,8 +349,9 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const today = new Date().toISOString().slice(0, 10);
   for (const v of variants) {
     const rec = known[v.key];
-    if (rec) v.firstSeen = rec;
-    else if (options.baseline || !options.knownSince) {
+    if (rec !== undefined) {
+      if (rec !== FIRST_SEEN_BEFORE_TRACKING) v.firstSeen = rec;
+    } else if (options.baseline || !options.knownSince) {
       const est = estimateFirstSeen(v.form ?? v.costume);
       if (est) v.firstSeen = est;
     } else v.firstSeen = today;
@@ -425,6 +426,27 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   };
   log(`dataset v${dataset.version}: ${stats.species} species, ${stats.variants} variants (${stats.datamined} datamined)`);
   return { dataset, stats };
+}
+
+/** Recorded for variants that existed before first-seen tracking began and whose name gives no date. */
+export const FIRST_SEEN_BEFORE_TRACKING = 'before';
+
+/**
+ * Drops recorded dates shared by an implausible number of variants: a game update adds tens of forms, not hundreds,
+ * so such a date is a tracking artefact (the baseline once skipped undated variants, which then all looked new).
+ * Returns how many keys were dropped; they should be re-estimated with a baseline run.
+ */
+export function repairFirstSeen(map: Record<string, string>, maxPerDay = 300): number {
+  const perDay = new Map<string, number>();
+  for (const d of Object.values(map)) if (d !== FIRST_SEEN_BEFORE_TRACKING) perDay.set(d, (perDay.get(d) ?? 0) + 1);
+  let dropped = 0;
+  for (const [k, d] of Object.entries(map)) {
+    if ((perDay.get(d) ?? 0) > maxPerDay) {
+      delete map[k];
+      dropped++;
+    }
+  }
+  return dropped;
 }
 
 const SEASON_MONTH: [RegExp, string][] = [

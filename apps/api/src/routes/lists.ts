@@ -129,7 +129,8 @@ export const listRoutes = new Hono<AuthEnv>()
       .set({
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
-        ...(body.visibility !== undefined ? { visibility: body.visibility } : {}),
+        // Going private revokes the share link too: "private" means nobody but the owner.
+        ...(body.visibility !== undefined ? { visibility: body.visibility, ...(body.visibility === 'private' ? { shareToken: null } : {}) } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.lists.id, list.id));
@@ -203,13 +204,13 @@ export const listRoutes = new Hono<AuthEnv>()
 export const sharedRoutes = new Hono<AuthEnv>()
   .get('/:token', async (c) => {
     const [list] = await db.select().from(schema.lists).where(eq(schema.lists.shareToken, c.req.param('token'))).limit(1);
-    if (!list) return c.json({ error: 'not_found' }, 404);
+    if (!list || list.visibility === 'private') return c.json({ error: 'not_found' }, 404);
     const viewer = await userFromRequest(c);
     return c.json({ list: await listDetail(list.id, viewer?.id === list.ownerId), access: viewer?.id === list.ownerId ? 'owner' : 'link' });
   })
   .post('/:token/copy', requireAuth, async (c) => {
     const [list] = await db.select().from(schema.lists).where(eq(schema.lists.shareToken, c.req.param('token'))).limit(1);
-    if (!list) return c.json({ error: 'not_found' }, 404);
+    if (!list || list.visibility === 'private') return c.json({ error: 'not_found' }, 404);
     return c.json({ list: await copyList(list, c.get('user')) }, 201);
   });
 

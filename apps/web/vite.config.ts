@@ -53,8 +53,13 @@ export default defineConfig({
       },
     }),
   ],
+  // API_URL lets the test suite point the dev server or the production preview at a throwaway API.
   server: {
     port: 5173,
-    proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: false } },
+    proxy: { '/api': { target: process.env.API_URL ?? 'http://localhost:3000', changeOrigin: false } },
+  },
+  preview: {
+    port: 4173,
+    proxy: { '/api': { target: process.env.API_URL ?? 'http://localhost:3000', changeOrigin: false } },
   },
 });

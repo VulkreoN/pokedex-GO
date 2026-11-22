@@ -52,6 +52,7 @@ export function MePage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
               <Button tone="ghost" onClick={() => setChanging(true)}>{t.change_password}</Button>
+              <Button tone="danger" onClick={() => setDeleting(true)}>{t.delete_account}</Button>
             </div>
           </section>
         ) : (

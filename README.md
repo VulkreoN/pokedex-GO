@@ -105,6 +105,23 @@ Le statut « sorti » automatique dépend du game master publié sur GitHub par 
 - **News officielles** (`NEWS_LOCALES=fr`) : chaque article de pokemongo.com/news est lu ; s'il cite un Pokémon avec un mot de costume, ses variantes non sorties sont proposées. Un gérant coche et valide.
 - C'est volontairement la seule source de signaux : légère, officielle, sans bot ni compte tiers.
 
+## Tests
+
+```
+pnpm test:all                                   # tout, sans toucher aux données de dev ni de prod
+DEPLOY_URL=http://192.168.1.29:8080 pnpm test:all   # + contrôles en lecture seule du serveur déployé
+```
+
+`scripts/test-all.sh` enchaîne :
+
+1. typecheck, tests unitaires (`pnpm -r test`) et build de prod du front ;
+2. une API jetable sur le port 3100, branchée sur une base `mydex_test` toute neuve dans le Postgres de dev (`docker-compose.dev.yml`) ;
+3. les tests d'intégration de l'API (`apps/api/test`) : comptes, mots de passe, codes de réinit., rôles, corrections de gérant, listes, partage, amis, limiteur ;
+4. les tests navigateur Playwright (`e2e/tests/app`) sur le build de prod servi par `vite preview`, en vue téléphone ;
+5. si `DEPLOY_URL` est fourni, des contrôles en lecture seule de l'instance déployée (`e2e/tests/deploy`) : rien n'y est écrit.
+
+L'API, l'aperçu et la base de test sont arrêtés et supprimés à la fin, même en cas d'échec (`--keep` les laisse pour déboguer, `--no-e2e` saute le navigateur).
+
 ## Recherche dans le jeu
 
 Depuis une liste, « Copier pour le jeu » génère des chaînes pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme) : numéros compressés en plages, une chaîne par combinaison (`&shiny`, `&costume`, `&female`, `&alola`...), découpées à 200 caractères.

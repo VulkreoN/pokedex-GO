@@ -4,7 +4,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { PIPELINE_VERSION, applyManualOverrides, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
+import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
 import type { Dataset } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
@@ -43,6 +43,8 @@ const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string
   { name: 'leekduck', label: 'Raids, événements, études (Leek Duck via ScrapedDuck)', repo: 'bigfoott/ScrapedDuck', branch: 'data' },
 ];
 
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
 class DataService {
   private raw: Dataset | null = null;
   private served: { etag: string; body: string } | null = null;
@@ -58,6 +60,8 @@ class DataService {
   private seenSpecies = new Set<number>();
   /** Variant key -> first date it appeared in a build (estimated on the baseline run). */
   private firstSeen: Record<string, string> | null = null;
+  /** Unknown keys get estimates instead of "today" on the next run (first run, or after a repair). */
+  private reestimate = false;
 
   get ready() { return this.raw !== null; }
   /** Raw generated dataset (no manager overrides), for matching jobs. */
@@ -72,15 +76,23 @@ class DataService {
     const refreshMs = env.dataRefreshHours * 3600_000;
     const outdated = this.status.pipelineVersion !== PIPELINE_VERSION;
     const delay = outdated ? 0 : Math.max(0, refreshMs - ageMs);
+    // refresh() schedules the next run itself when it ends.
     if (delay === 0) void this.refresh(outdated ? `pipeline v${this.status.pipelineVersion ?? '?'} -> v${PIPELINE_VERSION}` : 'startup');
-    this.schedule(delay);
+    else this.schedule(delay);
   }
 
   private schedule(delayMs: number) {
     if (this.timer) clearTimeout(this.timer);
-    this.status.nextRunAt = new Date(Date.now() + delayMs).toISOString();
-    this.timer = setTimeout(() => void this.refresh('scheduled').catch((e) => console.error('refresh failed', e)), delayMs);
-    this.timer.unref();
+    const at = Date.now() + delayMs;
+    this.status.nextRunAt = new Date(at).toISOString();
+    // Node fires timeouts over ~24.8 days immediately: wait in steps instead.
+    const tick = () => {
+      const left = at - Date.now();
+      if (left > MAX_TIMEOUT_MS) this.timer = setTimeout(tick, MAX_TIMEOUT_MS);
+      else this.timer = setTimeout(() => void this.refresh('scheduled').catch((e) => console.error('refresh failed', e)), Math.max(0, left));
+      this.timer.unref();
+    };
+    tick();
   }
 
   private async loadFromDisk() {
@@ -99,6 +111,11 @@ class DataService {
     } catch {}
     try {
       this.firstSeen = JSON.parse(await readFile(path.join(env.dataDir, FILES.firstSeen), 'utf8')) as Record<string, string>;
+      const dropped = repairFirstSeen(this.firstSeen);
+      if (dropped) {
+        console.log(`first-seen: ${dropped} keys shared one date (tracking artefact), re-estimating them`);
+        this.reestimate = true;
+      }
     } catch {}
     try {
       const saved = JSON.parse(await readFile(path.join(env.dataDir, FILES.status), 'utf8')) as Partial<DataStatus>;
@@ -123,13 +140,15 @@ class DataService {
         fetch: { cacheDir: path.join(env.dataDir, 'cache'), maxAgeHours: 0, offline: false },
         extraReleased: this.seenSpecies,
         knownSince: this.firstSeen ?? {},
-        baseline: this.firstSeen === null,
+        baseline: this.firstSeen === null || this.reestimate,
         log: (m) => console.log(`  ${m}`),
       });
       const next: Record<string, string> = { ...(this.firstSeen ?? {}) };
       let added = 0;
-      for (const v of dataset.variants) if (v.firstSeen && !next[v.key]) { next[v.key] = v.firstSeen; added++; }
+      // Every key is recorded, dated or not: an undated key left out would look brand new on the next run.
+      for (const v of dataset.variants) if (!(v.key in next)) { next[v.key] = v.firstSeen ?? FIRST_SEEN_BEFORE_TRACKING; added++; }
       this.firstSeen = next;
+      this.reestimate = false;
       await writeFile(path.join(env.dataDir, FILES.firstSeen), JSON.stringify(next)).catch(() => {});
       console.log(`  first-seen: ${Object.keys(next).length} keys (+${added})`);
       this.raw = dataset;

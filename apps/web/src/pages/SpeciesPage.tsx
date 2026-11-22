@@ -44,7 +44,7 @@ export function SpeciesPage() {
   return (
     <>
       <TopBar
-        title={<span><span className="tnum mr-2 text-ink-3">#{dex}</span>{localized(species.name, lang)}</span>}
+        title={<span><span className="tnum mr-2 text-ink-3">#{dex}</span>{' '}{localized(species.name, lang)}</span>}
         back
         actions={
           <div className="flex">
