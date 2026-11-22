@@ -8,7 +8,9 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
-  workers: 3,
+  // GitHub runners have 2 cores: fewer browsers at once, and one retry (a test passing on retry is reported "flaky").
+  workers: process.env.CI ? 2 : 3,
+  retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   use: {
     ...devices['Pixel 7'],

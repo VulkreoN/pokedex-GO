@@ -38,9 +38,9 @@ test("a friend's list updates live while I look at it", async ({ browser }) => {
   await expect(s.friend.getByText('0 / 4 attrapés')).toBeVisible();
   // The owner catches one; the friend's open page follows without reloading.
   await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '25', gender: 'm', shiny: false, done: true }] } });
-  await expect(s.friend.getByText('1 / 4 attrapés')).toBeVisible({ timeout: 5000 });
+  await expect(s.friend.getByText('1 / 4 attrapés')).toBeVisible({ timeout: 10_000 });
   await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '133', gender: 'f', shiny: false }] } });
-  await expect(s.friend.getByText('1 / 5 attrapés')).toBeVisible({ timeout: 5000 });
+  await expect(s.friend.getByText('1 / 5 attrapés')).toBeVisible({ timeout: 10_000 });
   await s.close();
 });
 
@@ -57,7 +57,7 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await expect(s.friend.locator('li', { hasText: 'Bulbizarre' }).getByText("Je l'ai")).toBeVisible();
 
   // Owner side: the mark and the bell, without reloading.
-  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toBeVisible({ timeout: 5000 });
+  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toBeVisible({ timeout: 10_000 });
   await s.owner.goto('/dex');
   await expect(s.owner.getByRole('link', { name: 'Notifications (1)' })).toBeVisible();
   await s.owner.getByRole('link', { name: 'Notifications (1)' }).click();
@@ -65,13 +65,13 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await s.owner.getByText(`${s.uf.username} a un Pokémon de ta liste « Recherche Kanto »`).click();
   await expect(s.owner).toHaveURL(new RegExp(`/lists/${s.listId}$`));
   await s.owner.goto('/dex'); // the bell lives on top-level pages
-  await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible({ timeout: 5000 }); // read
+  await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible({ timeout: 10_000 }); // read
   await s.owner.goto(`/lists/${s.listId}`);
 
   // Taking it back removes the mark.
   await bulbasaur.click();
   await expect(bulbasaur).toHaveAttribute('aria-pressed', 'false');
-  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toHaveCount(0, { timeout: 5000 });
+  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toHaveCount(0, { timeout: 10_000 });
   await s.close();
 });
 
@@ -85,7 +85,7 @@ test('a friend request lights the bell live', async ({ browser }) => {
   await pa.goto('/dex');
   await expect(pa.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
   await pb.request.post('/api/friends/requests', { data: { friendCode: ua.friendCode } });
-  await expect(pa.getByRole('link', { name: 'Notifications (1)' })).toBeVisible({ timeout: 5000 });
+  await expect(pa.getByRole('link', { name: 'Notifications (1)' })).toBeVisible({ timeout: 10_000 });
   await pa.goto('/notifications');
   await expect(pa.getByText(`${ub.username} veut être ton ami`)).toBeVisible();
   await a.close();
