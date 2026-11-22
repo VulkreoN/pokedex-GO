@@ -191,6 +191,8 @@ const fr = {
   game_strings_help:
     "Colle une chaîne dans la barre de recherche de ton stockage Pokémon (pas celle du Pokédex, qui n'accepte qu'un terme). Toute la liste tient dans une seule chaîne, au sexe, à la version shiny et à la forme près. Choisis la langue de ton jeu : il ne comprend que ses propres mots-clés.",
   game_lang: 'Langue du jeu',
+  search_also: (x: string) => `Montre aussi : ${x}. Le jeu ne sait pas exclure une version pour un seul Pokémon quand un autre de la liste la veut.`,
+  search_also_item: (name: string, dim: string, label: string) => (dim === 'shiny' ? `${name} chromatique` : dim === 'costume' ? `${name} costumé` : `${name} de ${label}`),
   without: (x: string) => `sans ${x}`,
   game_lang_missing: (f: string) => `Pas de mot-clé connu en français pour : ${f}. Ce filtre est laissé de côté, la recherche montrera aussi les autres versions.`,
   only_missing: 'Manquants seulement',
@@ -544,6 +546,8 @@ const en: Dict = {
   game_strings_help:
     "Paste a string in your Pokémon storage search bar (not the Pokédex one, which takes a single term). The whole list fits in one string, down to gender, shiny and form. Pick your game's language: it only understands its own keywords.",
   game_lang: 'Game language',
+  search_also: (x: string) => `Also shows: ${x}. The game cannot leave a version out for one Pokémon when another one of the list wants it.`,
+  search_also_item: (name: string, dim: string, label: string) => (dim === 'shiny' ? `shiny ${name}` : dim === 'costume' ? `costumed ${name}` : `${label} ${name}`),
   without: (x: string) => `no ${x}`,
   game_lang_missing: (f: string) => `No known keyword in French for: ${f}. That filter is left out, so the search also shows other versions.`,
   only_missing: 'Missing only',

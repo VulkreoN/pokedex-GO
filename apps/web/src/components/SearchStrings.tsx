@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { buildSearchStrings, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
-import { useLang, useT } from '../lib/i18n.js';
+import { localized, useLang, useT } from '../lib/i18n.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
 
@@ -69,6 +69,15 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
             </div>
             <code className="block break-all rounded-lg bg-paper-2 p-2 text-[13px] leading-snug">{s.text}</code>
             {s.unsupported && <p className="mt-1 text-xs text-ink-2">{t.game_lang_missing(s.unsupported.map(name).join(', '))}</p>}
+            {s.looser && (
+              <p className="mt-1 text-xs text-ink-2">
+                {t.search_also(
+                  s.looser
+                    .flatMap((x) => x.dex.map((d) => t.search_also_item(localized(idx.speciesByDex.get(d)?.name, lang) || `#${d}`, x.dim, names[x.dim] ?? x.dim)))
+                    .join(', '),
+                )}
+              </p>
+            )}
             <Button
               tone="primary"
               className="mt-2 w-full"

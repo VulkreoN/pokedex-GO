@@ -5,14 +5,15 @@
  *   ","  OR      "&"  AND      "!"  NOT
  *   "1-151" dex range, "25" single dex number
  *   shiny, costume, female, male, alola, galar, hisui, paldea, gigantamax
- * Commas are evaluated inside ampersands: "1,4&shiny" = (1 OR 4) AND shiny, a conjunction of OR-clauses, and "!"
- * works inside a clause too ("!femelle,746,749" = not female, or one of these numbers; players' sheets rely on it).
+ * Commas are evaluated inside ampersands: "1,4&shiny" = (1 OR 4) AND shiny, a conjunction of OR-clauses.
+ * A "!" at the start of a block negates the whole block: "!hisui,100" = neither Hisuian nor #100 (seen in game:
+ * Hisuian Voltorb vanished from such a string). Negations are therefore only written alone ("&!costume").
  *
  * So a whole list fits in ONE string. For each Pokémon, the versions wanted ("Growlithe male, not Hisuian",
  * "Pikachu: male normal or female shiny") are turned into clauses (conjunctive normal form); a clause about dex d
  * also lists every other dex number, so it only binds d:
- *   1,58,83&mâle,1,83&!hisui,1,83&galar,1,58&femelle,1,58
- *   = (Bulbasaur, Growlithe or Farfetch'd) and (male unless Bulbasaur/Farfetch'd) and (not Hisuian unless ...) ...
+ *   1,58,83&femelle,1,58&galar,1,58&mâle,1,83
+ *   = (Bulbasaur, Growlithe or Farfetch'd) and (female, or Bulbasaur/Growlithe) and (Galarian, or ...) and (male, or ...)
  * Numbers that cannot break a clause are left out of it (no need to list Bulbasaur under "!hisui": there is no
  * Hisuian Bulbasaur), which keeps the string short. No length limit by default: players use much longer strings.
  */
@@ -39,6 +40,8 @@ export interface SearchTarget {
 export interface SearchString {
   /** Filters this list needs but the game's language has no keyword for: left out, so the string shows extra Pokémon. */
   unsupported?: string[];
+  /** Exclusions that could not stay in one string (another Pokémon of the list wants that version): also shown. */
+  looser?: { dim: string; dex: number[] }[];
   /** Kept for single-filter strings; see parts. */
   modifiers: string[];
   /** What the string covers: each combination of filters with its number of Pokémon. */
@@ -276,15 +279,34 @@ function renderString(targets: SearchTarget[], lang: GameLang, species?: Map<num
     (byDex.get(t.dex) ?? byDex.set(t.dex, []).get(t.dex)!).push(useful);
   }
   const dexes = [...byDex.keys()].sort((a, b) => a - b);
+  const othersOf = (lits: Lit[], dex: Set<number>) => dexes.filter((e) => !dex.has(e) && !lits.some((l) => alwaysTrue(l, species?.get(e))));
 
-  // Same clause for several Pokémon: one clause, the numbers of the others listed once.
-  const clauses = new Map<string, { lits: Lit[]; dex: Set<number> }>();
-  for (const [d, cubes] of byDex) {
-    for (const c of cnfOf(cubes, species?.get(d))) {
-      const lits = [...c].sort((a, b) => litKey(a).localeCompare(litKey(b)));
-      const key = lits.map(litKey).join('|');
-      (clauses.get(key) ?? clauses.set(key, { lits, dex: new Set() }).get(key)!).dex.add(d);
+  // In game, "!" at the start of a block negates the WHOLE block ("!hisui,100" = neither Hisuian nor #100), so a
+  // negation is only safe alone in its block. When an exclusion cannot be global (another Pokémon of the list wants
+  // that very version), it is dropped for the Pokémon concerned: the string shows a bit more, never less.
+  const relaxed = new Map<string, Set<number>>(); // dim -> dex whose "not dim" was dropped
+  let clauses = new Map<string, { lits: Lit[]; dex: Set<number> }>();
+  for (;;) {
+    clauses = new Map();
+    for (const [d, cubes] of byDex) {
+      const kept = cubes.map((c) => c.filter((l) => l.pos || !relaxed.get(l.dim)?.has(d)));
+      for (const c of cnfOf(kept, species?.get(d))) {
+        const lits = [...c].sort((a, b) => litKey(a).localeCompare(litKey(b)));
+        const key = lits.map(litKey).join('|');
+        (clauses.get(key) ?? clauses.set(key, { lits, dex: new Set() }).get(key)!).dex.add(d);
+      }
     }
+    let changed = false;
+    for (const { lits, dex } of clauses.values()) {
+      if (!lits.some((l) => !l.pos)) continue;
+      if (lits.length === 1 && othersOf(lits, dex).length === 0) continue; // "&!costume": fine
+      for (const l of lits) {
+        if (l.pos) continue;
+        const set = relaxed.get(l.dim) ?? relaxed.set(l.dim, new Set()).get(l.dim)!;
+        for (const d of dex) if (!set.has(d)) (set.add(d), (changed = true));
+      }
+    }
+    if (!changed) break;
   }
 
   const kw = (l: Lit) => `${l.pos ? '' : '!'}${keyword(l.dim, lang)!}`;
@@ -295,9 +317,12 @@ function renderString(targets: SearchTarget[], lang: GameLang, species?: Map<num
   });
   for (const { lits, dex } of ordered) {
     // Pokémon this clause is not about pass it through their own number, unless they satisfy it anyway.
-    const others = dexes.filter((e) => !dex.has(e) && !lits.some((l) => alwaysTrue(l, species?.get(e))));
-    parts.push([...lits.map(kw), ...dexRanges(others)].join(','));
+    parts.push([...lits.map(kw), ...dexRanges(othersOf(lits, dex))].join(','));
   }
+  // What the string shows on top of the list, per filter: the Pokémon whose exclusion had to go.
+  const looser = [...relaxed]
+    .map(([dim, ds]) => ({ dim, dex: [...ds].filter((d) => byDex.get(d)!.some((c) => c.some((l) => l.dim === dim && !l.pos))).sort((a, b) => a - b) }))
+    .filter((x) => x.dex.length);
 
   // Label: each combination of filters with its number of Pokémon.
   const combos = new Map<string, { modifiers: string[]; dex: Set<number> }>();
@@ -321,5 +346,6 @@ function renderString(targets: SearchTarget[], lang: GameLang, species?: Map<num
     batch: 1,
     batches: 1,
     ...(unsupported.size ? { unsupported: [...unsupported] } : {}),
+    ...(looser.length ? { looser } : {}),
   };
 }

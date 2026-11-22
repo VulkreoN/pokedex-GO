@@ -164,7 +164,8 @@ test('search strings use the game language: mâle / femelle in a French game', a
   // One string for the whole list: plain Growlithe leaves Hisuian Growlithe out, normal entries leave shinies and
   // costumes out, and Hisuian Voltorb still fits in.
   await expect(sheet.locator('code')).toHaveCount(1);
-  await expect(code).toContainText('!hisui,100');
+  await expect(code).not.toContainText('!hisui'); // Voltorb wants Hisui: a "!hisui,100" block would hide it in game
+  await expect(sheet.getByText(/Montre aussi : Caninos de Hisui/)).toBeVisible();
   await expect(code).toContainText('!chromatique');
   await expect(code).toContainText('!costume');
   await sheet.getByRole('button', { name: 'English' }).click();

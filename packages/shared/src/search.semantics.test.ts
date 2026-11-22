@@ -40,8 +40,12 @@ function termMatches(term: string, p: Mon): boolean {
   return neg ? !ok : ok;
 }
 
+/** As seen in game: a "!" starting a block negates the whole block ("!hisui,100" = neither Hisuian nor #100). */
 export function gameSearch(text: string, p: Mon): boolean {
-  return text.split('&').every((clause) => clause.split(',').some((term) => termMatches(term, p)));
+  return text.split('&').every((clause) => {
+    if (clause.startsWith('!') && clause.includes(',')) return !clause.slice(1).split(',').some((term) => termMatches(term, p));
+    return clause.split(',').some((term) => termMatches(term, p));
+  });
 }
 
 function wanted(t: SearchTarget, p: Mon): boolean {
@@ -100,9 +104,21 @@ function check(targets: SearchTarget[], maxLength?: number, lang: GameLang = 'en
   );
   const strings = buildSearchStrings(targets, { ...(maxLength ? { maxLength } : {}), lang, species });
   for (const s of strings) {
+    // Negations only ever stand alone in their block.
+    for (const block of s.text.split('&')) if (block.includes('!')) expect(block, s.text).toMatch(/^![^,]+$/);
     // A single Pokémon with all its filters cannot be split further; everything else must fit.
     if (maxLength && s.count > 1) expect(s.text.length, s.text).toBeLessThanOrEqual(maxLength);
-    for (const p of mons) if (gameSearch(s.text, p)) expect(targets.some((t) => wanted(loosened(t, lang), p)), `"${s.text}" catches unwanted ${JSON.stringify(p)}`).toBe(true);
+    // Extras are only allowed where the string says so (exclusions it had to drop, keywords the language lacks).
+    const looser = (t: SearchTarget): SearchTarget => {
+      const dims = new Set((s.looser ?? []).filter((x) => x.dex.includes(t.dex)).map((x) => x.dim));
+      return {
+        ...t,
+        ...(dims.has('shiny') && t.shiny === false ? { shiny: undefined } : {}),
+        ...(dims.has('costume') && t.costume === false ? { costume: undefined } : {}),
+        ...(t.excludeRegions ? { excludeRegions: t.excludeRegions.filter((r) => !dims.has(r)) } : {}),
+      };
+    };
+    for (const p of mons) if (gameSearch(s.text, p)) expect(targets.some((t) => wanted(loosened(looser(t), lang), p)), `"${s.text}" catches unwanted ${JSON.stringify(p)}`).toBe(true);
   }
   for (const p of mons) if (targets.some((t) => wanted(t, p))) expect(strings.some((s) => gameSearch(s.text, p)), `nothing catches ${JSON.stringify(p)}`).toBe(true);
   return strings;
@@ -161,7 +177,10 @@ describe('search strings behave like the in-game search', () => {
       { dex: 100, region: 'hisui' },
     ];
     const strings = check(targets, undefined, 'fr');
-    expect(strings.map((s) => s.text)).toEqual(['1,58,72,83,100&femelle,1,58,72,100&galar,1,58,72,100&hisui,1,58,72,83&mâle,1,72,83,100&!hisui,100']);
+    // Voltorb wants Hisui, so "not Hisuian" cannot be a block of its own: Hisuian Growlithe also shows, and the
+    // string says so. Before, "!hisui,100" hid Hisuian Voltorb in game.
+    expect(strings.map((s) => s.text)).toEqual(['1,58,72,83,100&femelle,1,58,72,100&galar,1,58,72,100&hisui,1,58,72,83&mâle,1,72,83,100']);
+    expect(strings[0]!.looser).toEqual([{ dim: 'hisui', dex: [58] }]);
   });
 
   it('leaves out filters a French game has no keyword for, and says so', () => {
