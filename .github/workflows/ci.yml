@@ -1,12 +1,46 @@
-name: CI
+name: CI / CD
+
+# Every push and pull request: the full test battery (types, unit, API integration on a real Postgres, browser).
+# Pushes to main, once green: Docker images to the GitHub Container Registry, then a deploy to the VPS over SSH,
+# then read-only checks against the live site.
+#
+# Repository settings needed for the deploy (Settings > Secrets and variables > Actions):
+#   secrets   VPS_HOST, VPS_USER (deploy), VPS_SSH_KEY (private key whose public half bootstrap.sh installed),
+#             VPS_KNOWN_HOSTS (output of `ssh-keyscan <host>`), optional VPS_PORT
+#   variables DOMAIN (e.g. dex.example.com)
+# Without VPS_HOST the deploy job is skipped, so forks and the first pushes stay green.
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
-  check:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -15,6 +49,106 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm --filter @mydexpogo/web build
+      # Game master, pictures list... downloaded by the test API; cached for the week to stay fast and polite.
+      - id: week
+        run: echo "n=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: apps/api/.data/cache
+          key: data-sources-${{ steps.week.outputs.n }}
+          restore-keys: data-sources-
+      - name: Browser for the end-to-end tests
+        run: pnpm --filter @mydexpogo/e2e exec playwright install --with-deps chromium
+      - name: Test battery
+        run: scripts/test-all.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: e2e/test-results
+          retention-days: 7
+
+  images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        app: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          build-args: APP_VERSION=${{ github.sha }}
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+            ${{ steps.name.outputs.image }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://${{ vars.DOMAIN }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+    steps:
+      - if: env.VPS_HOST == ''
+        run: echo "::notice::No VPS_HOST secret yet, deploy skipped."
+      - if: env.VPS_HOST != ''
+        uses: actions/checkout@v4
+      - name: SSH key
+        if: env.VPS_HOST != ''
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+      - name: Release on the VPS
+        if: env.VPS_HOST != ''
+        env:
+          USER_AT: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -p $PORT -o BatchMode=yes"
+          scp -i ~/.ssh/id_deploy -P "$PORT" -o BatchMode=yes deploy/docker-compose.prod.yml deploy/deploy.sh deploy/backup.sh "$USER_AT:/opt/mydexpogo/"
+          $SSH "$USER_AT" "cd /opt/mydexpogo && chmod +x deploy.sh backup.sh && IMAGE_PREFIX=${IMAGE_PREFIX,,} ./deploy.sh ${{ github.sha }}"
+      - if: env.VPS_HOST != '' && vars.DOMAIN != ''
+        uses: pnpm/action-setup@v4
+      - if: env.VPS_HOST != '' && vars.DOMAIN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Checks against the live site (read-only)
+        if: env.VPS_HOST != '' && vars.DOMAIN != ''
+        run: |
+          pnpm install --frozen-lockfile --filter @mydexpogo/e2e
+          pnpm --filter @mydexpogo/e2e exec playwright install --with-deps chromium
+          DEPLOY_URL=https://${{ vars.DOMAIN }} pnpm --filter @mydexpogo/e2e e2e:deploy

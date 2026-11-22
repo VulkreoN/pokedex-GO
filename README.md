@@ -116,6 +116,11 @@ Le statut « sorti » automatique dépend du game master publié sur GitHub par 
 - Notifications : une boîte dans l'app (cloche) et des notifications push (Web Push, clés VAPID générées dans le volume de données). Types : demande d'ami, demande acceptée, « un ami a un Pokémon de ta liste ». Anti-spam : les « je l'ai » d'un même ami sur une même liste dans l'heure sont regroupés en une notification, chaque type se coupe dans « Moi », et 15 push par jour au maximum.
 - Le push exige HTTPS : il marche une fois `DOMAIN` configuré (ou sur `localhost`), pas sur l'adresse IP locale en http. Sur iPhone, il faut ajouter l'app à l'écran d'accueil (iOS 16.4+).
 
+## Production
+
+Mise en ligne sur un VPS avec un nom de domaine, tests, images et déploiement automatiques à chaque push sur `main` :
+voir [deploy/README.md](deploy/README.md).
+
 ## Tests
 
 ```

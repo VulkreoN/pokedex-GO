@@ -8,6 +8,8 @@
 # Everything it starts is stopped and the test database is dropped at the end, even on failure.
 #
 # Usage: scripts/test-all.sh [--no-e2e] [--keep]   (--keep leaves the test API, preview and database up for debugging)
+# CI: set TEST_PG_ADMIN_URL (e.g. postgres://postgres:postgres@localhost:5432/postgres) to use that server instead of
+# the dev Docker container; the test database is created and dropped next to it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,7 +41,7 @@ cleanup() {
   [ -n "$WEB_PID" ] && kill "$WEB_PID" 2>/dev/null || true
   [ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null || true
   wait 2>/dev/null || true
-  docker exec "$DB_CONTAINER" psql -q -U mydex -d mydex -c "DROP DATABASE IF EXISTS $TEST_DB WITH (FORCE)" >/dev/null 2>&1 || true
+  pg -c "DROP DATABASE IF EXISTS $TEST_DB WITH (FORCE)" >/dev/null 2>&1 || true
   if [ $code -ne 0 ]; then
     echo; echo "FAILED. Last API log lines:"; tail -n 30 "$WORK/api.log" 2>/dev/null || true
   fi
@@ -47,6 +49,11 @@ cleanup() {
   exit $code
 }
 trap cleanup EXIT INT TERM
+
+# psql on the CI server, or inside the dev container.
+pg() {
+  if [ -n "${TEST_PG_ADMIN_URL:-}" ]; then psql -q "$TEST_PG_ADMIN_URL" "$@"; else docker exec "$DB_CONTAINER" psql -q -U mydex -d mydex "$@"; fi
+}
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
@@ -57,15 +64,21 @@ pnpm --filter @mydexpogo/web build >/dev/null
 echo "build ok"
 
 step "2/5 Throwaway API on a fresh database"
-docker compose -f docker-compose.dev.yml up -d db >/dev/null
-for _ in $(seq 1 30); do docker exec "$DB_CONTAINER" pg_isready -q -U mydex && break; sleep 1; done
-docker exec "$DB_CONTAINER" psql -q -U mydex -d mydex -c "DROP DATABASE IF EXISTS $TEST_DB WITH (FORCE)" -c "CREATE DATABASE $TEST_DB" >/dev/null
-export DATABASE_URL="postgres://mydex:mydex@localhost:5432/$TEST_DB"
+if [ -z "${TEST_PG_ADMIN_URL:-}" ]; then
+  docker compose -f docker-compose.dev.yml up -d db >/dev/null
+  for _ in $(seq 1 30); do docker exec "$DB_CONTAINER" pg_isready -q -U mydex && break; sleep 1; done
+fi
+pg -c "DROP DATABASE IF EXISTS $TEST_DB WITH (FORCE)" -c "CREATE DATABASE $TEST_DB" >/dev/null
+if [ -n "${TEST_PG_ADMIN_URL:-}" ]; then
+  export DATABASE_URL="${TEST_PG_ADMIN_URL%/*}/$TEST_DB"
+else
+  export DATABASE_URL="postgres://mydex:mydex@localhost:5432/$TEST_DB"
+fi
 pnpm --filter @mydexpogo/api db:migrate >/dev/null
 # Reuse the dev source cache so the dataset builds in seconds instead of downloading everything.
 mkdir -p "$WORK/data"
 [ -d apps/api/.data/cache ] && cp -R apps/api/.data/cache "$WORK/data/cache"
-(cd apps/api && PORT=$API_PORT DATA_DIR="$WORK/data" NEWS_LOCALES= DATA_REFRESH_HOURS=1000 ADMIN_USERNAMES=e2eadmin PUSH_DRY_RUN=1 exec node --import tsx src/index.ts) >"$WORK/api.log" 2>&1 &
+(cd apps/api && PORT=$API_PORT DATA_DIR="$WORK/data" NEWS_LOCALES='' DATA_REFRESH_HOURS=1000 ADMIN_USERNAMES=e2eadmin PUSH_DRY_RUN=1 exec node --import tsx src/index.ts) >"$WORK/api.log" 2>&1 &
 API_PID=$!
 for _ in $(seq 1 60); do curl -sf "$API_URL/api/health" >/dev/null && break; sleep 1; done
 curl -sf "$API_URL/api/health" >/dev/null || { echo "API did not start"; exit 1; }

@@ -16,6 +16,7 @@ import { gameRoutes } from './routes/game.js';
 import { feedService } from './feed/service.js';
 import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js';
 import { pruneNotifications } from './notify/service.js';
+import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
@@ -24,7 +25,8 @@ if (!env.isProd) app.use(logger());
 app.use(secureHeaders());
 if (env.corsOrigin) app.use(cors({ origin: env.corsOrigin.split(','), credentials: true }));
 
-app.get('/health', (c) => c.json({ ok: true }));
+// The deploy job checks this version to know the new release is the one answering.
+app.get('/health', (c) => c.json({ ok: true, version: env.appVersion }));
 app.route('/auth', authRoutes);
 app.route('/lists', listRoutes);
 app.route('/shared', sharedRoutes);
@@ -56,3 +58,5 @@ dataService.onDataset(async () => {
 });
 void dataService.start().then(() => feedService.start());
 setInterval(() => void pruneNotifications().catch(() => {}), 24 * 3600_000).unref();
+// Push keys exist from the first start, so the nightly backup always has them.
+void vapidKeys().catch((e) => console.error('push keys', e));

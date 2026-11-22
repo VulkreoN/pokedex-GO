@@ -31,7 +31,7 @@ beforeAll(async () => {
 
 describe('health and errors', () => {
   it('answers health and returns JSON 404s', async () => {
-    expect((await anon.get('/health')).body).toEqual({ ok: true });
+    expect((await anon.get('/health')).body).toMatchObject({ ok: true, version: expect.any(String) });
     const r = await anon.get('/nope');
     expect(r.status).toBe(404);
     expect(r.body).toEqual({ error: 'not_found' });

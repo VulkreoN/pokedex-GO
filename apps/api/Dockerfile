@@ -11,5 +11,8 @@ COPY packages/shared packages/shared
 COPY packages/data packages/data
 COPY apps/api apps/api
 WORKDIR /app/apps/api
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=4 CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["sh", "-c", "pnpm db:migrate && pnpm start"]
