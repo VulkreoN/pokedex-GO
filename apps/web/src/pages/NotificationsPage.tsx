@@ -6,7 +6,7 @@ import { useLang, useT } from '../lib/i18n.js';
 import { useMarkRead, useNotifications } from '../lib/social.js';
 
 function target(n: AppNotification): string {
-  if (n.type === 'offer' && n.list) return `/lists/${n.list.id}`;
+  if ((n.type === 'offer' || n.type === 'offer_caught') && n.list) return `/lists/${n.list.id}`;
   if (n.type === 'friend_accepted' && n.actor) return `/friends/${n.actor.id}`;
   return '/friends';
 }
@@ -29,6 +29,7 @@ export function NotificationsPage() {
     const who = n.actor?.username ?? '?';
     if (n.type === 'friend_request') return t.notif_friend_request(who);
     if (n.type === 'friend_accepted') return t.notif_friend_accepted(who);
+    if (n.type === 'offer_caught') return t.notif_offer_caught(who, Number(n.data.count ?? 1), n.list?.name ?? '');
     return t.notif_offer(who, Number(n.data.count ?? 1), n.list?.name ?? '');
   };
   const when = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

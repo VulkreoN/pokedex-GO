@@ -127,5 +127,12 @@
   "megas": [
     "398.fMEGA",
     "609.fMEGA"
-  ]
+  ],
+  "genders": {
+    "169.fHALLOWEEN_2026_01": [
+      "m",
+      "f"
+    ]
+  },
+  "gendersNotes": "Genders checked by hand for costumes the published game master does not describe yet (key: gender-neutral variant key). Managers can also set them from the app. 2026-11-22: Crobat Halloween 2026 only comes from Golbat Halloween 2026, which has a female picture (gender is kept on evolution), so both genders."
 }

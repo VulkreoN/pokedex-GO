@@ -54,14 +54,14 @@ export const notificationRoutes = new Hono<AuthEnv>()
   })
   .get('/prefs', async (c) => {
     const [u] = await db.select({ prefs: schema.users.notifyPrefs }).from(schema.users).where(eq(schema.users.id, c.get('user').id));
-    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, ...(u?.prefs ?? {}) } });
+    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, offer_caught: true, ...(u?.prefs ?? {}) } });
   })
-  .put('/prefs', zValidator('json', z.object({ friend_request: z.boolean(), friend_accepted: z.boolean(), offer: z.boolean() }).partial()), async (c) => {
+  .put('/prefs', zValidator('json', z.object({ friend_request: z.boolean(), friend_accepted: z.boolean(), offer: z.boolean(), offer_caught: z.boolean() }).partial()), async (c) => {
     const me = c.get('user');
     const [u] = await db.select({ prefs: schema.users.notifyPrefs }).from(schema.users).where(eq(schema.users.id, me.id));
     const prefs = { ...(u?.prefs ?? {}), ...c.req.valid('json') };
     await db.update(schema.users).set({ notifyPrefs: prefs }).where(eq(schema.users.id, me.id));
-    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, ...prefs } });
+    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, offer_caught: true, ...prefs } });
   });
 
 const subscription = z.object({

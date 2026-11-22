@@ -63,7 +63,8 @@ export function PokedexPage() {
       if (filter === 'datamined') vs = vs.filter((v) => v.datamined);
       else if (filter !== 'all') vs = vs.filter((v) => FILTER_KINDS[filter].includes(v.kind));
       for (const g of groupVariants(vs)) {
-        if (gender !== 'all' && g.variants.length > 1 && !g.variants.some((v) => v.gender === gender)) continue;
+        // A gender filter keeps what exists in that gender (game master): no female-only costume under ♂, no genderless.
+        if (gender !== 'all' && !((g.variants.find((v) => v.gender !== 'f') ?? g.variants[0]!).genders ?? ['m', 'f']).includes(gender)) continue;
         if (words.length) {
           const hay = normalize(`${s.dex} ${s.name.en} ${s.name.fr ?? ''} ${g.label?.en ?? ''} ${g.label?.fr ?? ''}`);
           if (!words.every((w) => hay.includes(w))) continue;

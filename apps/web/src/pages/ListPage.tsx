@@ -7,12 +7,13 @@ import { useToast } from '../components/toast.js';
 import { Badge, Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
-import { tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
+import { entryVariant, genderSymbol, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, type ListAccess } from '../lib/lists.js';
 import { useUpsertEntries } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
-import { useOffer } from '../lib/social.js';
+import { useFollowList, useOffer } from '../lib/social.js';
+import { cardDone, cardMissing, cardsOf, type EntryCard } from '../lib/cards.js';
 import { exportListPdf } from '../lib/pdf.js';
 
 export function ListPage() {
@@ -27,7 +28,7 @@ export function SharedListPage() {
   return <ListView query={q} token={token!} />;
 }
 
-type Q = { data?: { list: ListDetail; access: ListAccess }; isPending: boolean; isError: boolean; error: unknown };
+type Q = { data?: { list: ListDetail; access: ListAccess; following?: boolean }; isPending: boolean; isError: boolean; error: unknown };
 
 function ListView({ query, id, token }: { query: Q; id?: string; token?: string }) {
   const t = useT();
@@ -45,12 +46,12 @@ function ListView({ query, id, token }: { query: Q; id?: string; token?: string 
       </>
     );
   }
-  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} id={id} token={token} loggedIn={!!me.data} />;
+  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} following={query.data.following} id={id} token={token} loggedIn={!!me.data} />;
 }
 
 type View = 'missing' | 'caught' | 'all';
 
-function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; id?: string; token?: string; loggedIn: boolean }) {
+function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; following?: boolean; id?: string; token?: string; loggedIn: boolean }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -58,11 +59,12 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
   const owner = access === 'owner';
   const friend = access === 'friend';
   const offer = useOffer(list.id);
+  const follow = useFollowList(list.id);
   const [exporting, setExporting] = useState(false);
   const [view, setView] = useState<View>('missing');
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [selected, setSelected] = useState<ListDetailEntry | null>(null);
+  const [selected, setSelected] = useState<EntryCard | null>(null);
   const upsert = useUpsertEntries();
   const remove = useRemoveEntries();
   const update = useUpdateList(list.id);
@@ -70,17 +72,28 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
   const share = useShareList();
   const copy = useCopyList();
 
-  const entries = useMemo(() => list.entries.filter((e) => view === 'all' || (view === 'caught' ? e.done : !e.done)), [list.entries, view]);
+  // One card per target; ♂ / ♀ are tracked inside it. A card is "missing" while one of its genders is.
+  const allCards = useMemo(() => cardsOf(list.entries), [list.entries]);
+  const cards = useMemo(() => allCards.filter((c) => view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c))), [allCards, view]);
   const done = list.entries.filter((e) => e.done).length;
 
-  const toggle = (e: ListDetailEntry) => {
-    // A friend's tap says "I have this one" (or takes it back); only what the owner still hunts can be offered.
+  const setDone = (members: ListDetailEntry[], value: boolean) =>
+    upsert.mutate({ id: list.id, entries: members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) });
+  const setOffer = (m: ListDetailEntry, on: boolean) => offer.mutate({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on });
+
+  /** Owner: one gender caught / not caught. Friend: "I have this one" for that gender, if still hunted. */
+  const toggleMember = (m: ListDetailEntry) => {
     if (friend) {
-      if (!e.done) offer.mutate({ variantKey: e.variantKey, shiny: e.shiny, tag: e.tag, on: !e.offeredByMe });
-      return;
-    }
-    if (!owner) return;
-    upsert.mutate({ id: list.id, entries: [{ variantKey: e.variantKey, shiny: e.shiny, tag: e.tag, done: !e.done, note: e.note }] });
+      if (!m.done) setOffer(m, !m.offeredByMe);
+    } else if (owner) setDone([m], !m.done);
+  };
+  /** Tapping the card does it for every gender at once. */
+  const toggleCard = (c: EntryCard) => {
+    if (friend) {
+      const open = c.members.filter((m) => !m.done);
+      const on = !open.every((m) => m.offeredByMe);
+      for (const m of open) if (!!m.offeredByMe !== on) setOffer(m, on);
+    } else if (owner) setDone(c.members, cardMissing(c));
   };
   const exportPdf = async () => {
     setExporting(true);
@@ -105,12 +118,17 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
             <IconButton label={t.edit} onClick={() => setEditing(true)}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
             </IconButton>
+          ) : friend && following !== undefined ? (
+            <Button tone="ghost" className="min-h-9 shrink-0 px-3 text-sm" disabled={follow.isPending} onClick={() => follow.mutate(!following)}>
+              {following ? t.unfollow : t.follow}
+            </Button>
           ) : null
         }
       >
         <div className="mx-auto max-w-3xl px-3 pb-2">
           {!owner && <p className="muted text-sm">{t.by(list.ownerName)}</p>}
           {friend && <p className="muted text-sm">{t.offer_hint(list.ownerName)}</p>}
+          {friend && following === false && <p className="muted text-sm">{t.unfollowed_hint}</p>}
           {list.description && <p className="muted text-sm">{list.description}</p>}
           <div className="mt-2 flex items-center gap-3">
             <Progress done={done} total={list.entries.length} />
@@ -141,46 +159,75 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
             {owner && <><br /><Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link></>}
           </Empty>
         )}
-        {list.entries.length > 0 && entries.length === 0 && <Empty>{t.nothing_here}</Empty>}
-        <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-          {entries.map((e) => {
-            const v = idx.variantByKey.get(e.variantKey);
+        {list.entries.length > 0 && cards.length === 0 && <Empty>{t.nothing_here}</Empty>}
+        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {cards.map((c) => {
+            const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
             const sp = v && idx.speciesByDex.get(v.dex);
             if (!v || !sp) return null;
+            const allDone = cardDone(c);
+            const gendered = c.members.some((m) => m.gender);
+            const myOffers = c.members.some((m) => m.offeredByMe);
+            const offerLines = owner ? c.members.filter((m) => !m.done && m.offers?.length) : [];
             return (
-              <li key={`${e.variantKey}:${e.shiny}:${e.tag}`} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 118px' }}>
-                <button
-                  type="button"
-                  onClick={() => toggle(e)}
-                  onContextMenu={(ev) => { ev.preventDefault(); setSelected(e); }}
-                  aria-pressed={friend ? !!e.offeredByMe : e.done}
-                  className={`card flex w-full flex-col items-center px-1 pb-2 pt-1 transition ${e.done ? 'ring-2 ring-go' : ''} ${e.offeredByMe ? 'ring-2 ring-sky' : ''} ${owner || (friend && !e.done) ? 'hover:brightness-95 active:scale-[0.97]' : 'cursor-default'}`}
-                >
-                  <div className="relative">
-                    <Sprite idx={idx} variant={v} shiny={e.shiny} dim={!e.done} size={72} />
-                    {e.shiny && <Sparkle className={`absolute -right-1 top-0 ${e.done ? 'text-shiny' : 'text-ink-3'}`} />}
-                    {e.done && (
-                      <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
-                      </span>
-                    )}
-                    {v.datamined && !e.done && <span className="absolute -right-1 bottom-0 h-2 w-2 rounded-full bg-sky" />}
-                  </div>
-                  <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(sp.name, lang)}</span>
-                  {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
-                  {(v.gender || e.tag) && (
-                    <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">
-                      {[v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.tag ? tagLabel(idx, e.tag, t) : ''].filter(Boolean).join(' · ')}
-                    </span>
+              <li key={c.id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 150px' }}>
+                <div className={`card flex h-full flex-col items-center px-1 pb-2 pt-1 ${allDone ? 'ring-2 ring-go' : ''} ${myOffers ? 'ring-2 ring-sky' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCard(c)}
+                    onContextMenu={(ev) => { ev.preventDefault(); setSelected(c); }}
+                    aria-pressed={friend ? c.members.filter((m) => !m.done).every((m) => m.offeredByMe) : allDone}
+                    aria-label={`${localized(sp.name, lang)}${v.label ? ` ${localized(v.label, lang)}` : ''}`}
+                    className={`flex w-full flex-col items-center transition ${owner || (friend && cardMissing(c)) ? 'active:scale-[0.97]' : 'cursor-default'}`}
+                  >
+                    <div className="relative">
+                      <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone} size={72} />
+                      {c.shiny && <Sparkle className={`absolute -right-1 top-0 ${allDone ? 'text-shiny' : 'text-ink-3'}`} />}
+                      {allDone && (
+                        <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                        </span>
+                      )}
+                      {v.datamined && !allDone && <span className="absolute -right-1 bottom-0 h-2 w-2 rounded-full bg-sky" />}
+                    </div>
+                    <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(sp.name, lang)}</span>
+                    {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
+                    {c.tag && <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">{tagLabel(idx, c.tag, t)}</span>}
+                  </button>
+                  {gendered && (
+                    <div className="mt-1 flex gap-1">
+                      {c.members.map((m) => {
+                        const label = `${genderSymbol(m.gender)} ${m.gender === 'm' ? t.male : t.female}`;
+                        const state = m.done ? t.caught : m.offeredByMe ? t.offer_mine : t.missing;
+                        return (
+                          <button
+                            key={m.gender}
+                            type="button"
+                            onClick={() => toggleMember(m)}
+                            aria-pressed={friend ? !!m.offeredByMe : m.done}
+                            aria-label={`${label} : ${state}`}
+                            title={`${label} : ${state}`}
+                            className={`flex h-7 min-w-9 items-center justify-center gap-0.5 rounded-full border-2 px-1.5 text-[13px] font-bold transition ${
+                              m.done ? 'border-go bg-go text-white' : m.offeredByMe ? 'border-sky bg-sky/15 text-sky' : 'border-line text-ink-3'
+                            }`}
+                          >
+                            {genderSymbol(m.gender)}
+                            {m.done && <span className="text-[10px]">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                  {e.offeredByMe && <span className="mt-0.5 rounded-md bg-sky/15 px-1.5 text-[10px] font-bold text-sky">{t.offer_mine}</span>}
-                  {owner && !e.done && e.offers?.length ? (
-                    <span className="mt-0.5 max-w-full truncate rounded-md bg-sky/15 px-1.5 text-[10px] font-bold text-sky">{t.offer_by(e.offers.map((o) => o.username))}</span>
-                  ) : null}
-                </button>
-                {owner && (
-                  <button type="button" onClick={() => setSelected(e)} className="mt-0.5 w-full text-center text-[10px] text-ink-3 hover:text-berry" aria-label={t.remove_entry}>···</button>
-                )}
+                  {myOffers && <span className="mt-0.5 rounded-md bg-sky/15 px-1.5 text-[10px] font-bold text-sky">{t.offer_mine}</span>}
+                  {offerLines.map((m) => (
+                    <span key={m.gender} className="mt-0.5 max-w-full truncate rounded-md bg-sky/15 px-1.5 text-[10px] font-bold text-sky">
+                      {genderSymbol(m.gender)} {t.offer_by(m.offers!.map((o) => o.username))}
+                    </span>
+                  ))}
+                  {owner && (
+                    <button type="button" onClick={() => setSelected(c)} className="mt-0.5 w-full text-center text-[10px] text-ink-3 hover:text-berry" aria-label={t.remove_entry}>···</button>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -212,10 +259,14 @@ function ListBody({ idx, list, access, id, token, loggedIn }: { idx: DatasetInde
       <Sheet open={!!selected} onClose={() => setSelected(null)} title={selected ? localized(idx.speciesByDex.get(idx.variantByKey.get(selected.variantKey)?.dex ?? 0)?.name, lang) : ''}>
         {selected && (
           <div className="space-y-2">
-            <Button className="w-full" onClick={() => { toggle(selected); setSelected(null); }} disabled={!owner}>
-              {selected.done ? t.missing : t.caught}
-            </Button>
-            {owner && selected.offers?.length ? <p className="text-sm text-ink-2">{t.offer_by(selected.offers.map((o) => o.username))}</p> : null}
+            {selected.members.map((m) => (
+              <div key={m.gender} className="space-y-1">
+                <Button className="w-full" onClick={() => { toggleMember(m); setSelected(null); }} disabled={!owner}>
+                  {[genderSymbol(m.gender), m.done ? t.missing : t.caught].filter(Boolean).join(' ')}
+                </Button>
+                {owner && m.offers?.length ? <p className="text-sm text-ink-2">{genderSymbol(m.gender)} {t.offer_by(m.offers.map((o) => o.username))}</p> : null}
+              </div>
+            ))}
             <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="block"><Button className="w-full">{t.nav_dex}</Button></Link>
             {owner && (
               <Button tone="danger" className="w-full" onClick={async () => { await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] }); setSelected(null); }}>
@@ -264,6 +315,8 @@ function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }:
                 <Button tone="ghost" onClick={() => onShare(false)}>{t.share_off}</Button>
               </div>
             </div>
+          ) : list.visibility === 'private' ? (
+            <p className="text-sm text-ink-2">{t.share_private_hint}</p>
           ) : (
             <Button className="w-full" onClick={() => onShare(true)}>{t.copy_link}</Button>
           )}

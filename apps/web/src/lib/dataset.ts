@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { variantImageUrl, type Dataset, type Species, type Variant } from '@mydexpogo/shared';
+import { neutralKey, variantImageUrl, type Dataset, type EntryGender, type Species, type Variant } from '@mydexpogo/shared';
 
 export interface DatasetIndex {
   ds: Dataset;
@@ -62,3 +62,18 @@ export function matchesQuery(idx: DatasetIndex, dex: number, q: string): boolean
   if (/^\d+$/.test(q)) return String(dex) === q || text.startsWith(`${q} `) === false && String(dex).startsWith(q);
   return text.includes(q);
 }
+
+/** Genders a list entry of this variant can have ('' alone = genderless), from the game master. */
+export function entryGenders(idx: DatasetIndex, key: string): EntryGender[] {
+  const v = idx.variantByKey.get(neutralKey(key));
+  const g = v?.genders ?? ['m', 'f'];
+  return g.length ? g : [''];
+}
+
+/** The picture of an entry: the female one when the Pokémon has a distinct female look. */
+export function entryVariant(idx: DatasetIndex, key: string, gender: EntryGender): Variant | undefined {
+  const k = neutralKey(key);
+  return (gender === 'f' ? idx.variantByKey.get(`${k}.g2`) : undefined) ?? idx.variantByKey.get(k);
+}
+
+export const genderSymbol = (g: EntryGender | null | undefined) => (g === 'm' ? '♂' : g === 'f' ? '♀' : '');

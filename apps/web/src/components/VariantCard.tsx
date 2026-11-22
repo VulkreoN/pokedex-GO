@@ -37,7 +37,12 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
             <span className={`absolute -left-3 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] ${selected ? 'border-go bg-go text-white' : 'border-line bg-card text-transparent'}`}>✓</span>
           )}
           <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
-          {group.variants.length > 1 && <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3">{gender === 'm' ? '♂' : gender === 'f' ? '♀' : '♂♀'}</span>}
+          {(() => {
+            // Genders from the game master: female-only costumes show ♀ even with a single picture; genderless show nothing.
+            const possible = (group.variants.find((x) => x.gender !== 'f') ?? v).genders ?? ['m', 'f'];
+            const shown = group.variants.length > 1 && gender !== 'all' ? (gender === 'm' ? '♂' : '♀') : possible.length === 2 ? '♂♀' : possible[0] === 'm' ? '♂' : possible[0] === 'f' ? '♀' : '';
+            return shown ? <span className="absolute -right-2 top-0 text-[11px] font-bold text-ink-3" aria-label={shown}>{shown}</span> : null;
+          })()}
           {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
           {showSpecies && <span className="tnum absolute -left-2 -top-1 text-[10px] font-semibold text-ink-3">#{species.dex}</span>}
         </div>

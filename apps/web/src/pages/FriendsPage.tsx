@@ -1,3 +1,4 @@
+import { useFollowList } from '../lib/social.js';
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../components/toast.js';
@@ -136,10 +137,22 @@ export function FriendListsPage() {
                   <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{t.progress(l.doneCount, l.entryCount)}</span>
                 </div>
               </Link>
+              {l.following !== undefined && <FollowButton listId={l.id} following={l.following} />}
             </li>
           ))}
         </ul>
       </main>
     </>
+  );
+}
+
+/** Friends' lists are followed by default; this hides or brings back one in "Friends' lists". */
+function FollowButton({ listId, following }: { listId: string; following: boolean }) {
+  const t = useT();
+  const follow = useFollowList(listId);
+  return (
+    <button type="button" disabled={follow.isPending} onClick={() => follow.mutate(!following)} className="mt-1 w-full rounded-lg py-1 text-center text-xs font-semibold text-sky hover:bg-paper-2">
+      {following ? t.unfollow : t.follow}
+    </button>
   );
 }

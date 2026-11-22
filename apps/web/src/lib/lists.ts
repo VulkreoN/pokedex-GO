@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { FriendRequest, ListDetail, ListEntry, ListSummary, ListVisibility, PublicUser } from '@mydexpogo/shared';
+import type { EntryGender, FriendRequest, ListDetail, ListEntry, ListSummary, ListVisibility, PublicUser } from '@mydexpogo/shared';
+
+/** What the app sends: no gender = every gender the Pokémon exists in (the server checks against the game master). */
+export type EntryInput = Omit<ListEntry, 'note' | 'gender'> & { gender?: EntryGender; note?: string | null };
 import { api } from './api.js';
 
 export type ListAccess = 'owner' | 'friend' | 'link';
@@ -8,7 +11,7 @@ export type Friend = PublicUser & { since: string };
 export const useLists = () => useQuery({ queryKey: ['lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists').then((r) => r.lists) });
 
 export const useList = (id: string) =>
-  useQuery({ queryKey: ['list', id], queryFn: () => api<{ list: ListDetail; access: ListAccess }>(`/lists/${id}`) });
+  useQuery({ queryKey: ['list', id], queryFn: () => api<{ list: ListDetail; access: ListAccess; following?: boolean }>(`/lists/${id}`) });
 
 export const useSharedList = (token: string) =>
   useQuery({ queryKey: ['shared', token], queryFn: () => api<{ list: ListDetail; access: ListAccess }>(`/shared/${token}`) });
@@ -40,13 +43,13 @@ export const useDeleteList = () =>
 
 export const useUpsertEntries = () =>
   useListMutation(
-    (vars: { id: string; entries: Omit<ListEntry, 'note'>[] | ListEntry[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'PUT', body: { entries: vars.entries } }),
+    (vars: { id: string; entries: EntryInput[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'PUT', body: { entries: vars.entries } }),
     (vars) => [['lists'], ['list', vars.id]],
   );
 
 export const useRemoveEntries = () =>
   useListMutation(
-    (vars: { id: string; entries: { variantKey: string; shiny: boolean; tag: ListEntry['tag'] }[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'DELETE', body: { entries: vars.entries } }),
+    (vars: { id: string; entries: { variantKey: string; gender?: EntryGender; shiny: boolean; tag: ListEntry['tag'] }[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'DELETE', body: { entries: vars.entries } }),
     (vars) => [['lists'], ['list', vars.id]],
   );
 

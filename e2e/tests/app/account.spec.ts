@@ -94,7 +94,7 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   for (const p of [pa, pb]) p.on('dialog', (d) => void d.accept());
   const ua = await apiRegister(pa.request, uniq('ash'));
   const ub = await apiRegister(pb.request, uniq('misty'));
-  await apiCreateList(pa.request, 'Ma liste Kanto', ['1', '4', '7']);
+  await apiCreateList(pa.request, 'Ma liste Kanto', ['1:m', '4:m', '7:m']);
 
   await pb.goto('/friends');
   await pb.getByPlaceholder('Code ami à 12 chiffres').fill(ua.friendCode);
@@ -191,7 +191,7 @@ test('a manager marks a datamined variant released from its card, for everyone',
 
   // Back to automatic.
   await cardOf(mgr).getByRole('button', { name: 'Gérer cette variante' }).click();
-  await sheet.getByRole('button', { name: 'Automatique', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Automatique', exact: true }).first().click(); // release status (the second one is genders)
   await sheet.getByRole('button', { name: 'Enregistrer' }).click();
   await visitor.reload();
   await expect(cardOf(visitor).getByText('Pas encore sorti', { exact: true })).toBeVisible();

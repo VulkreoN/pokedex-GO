@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { LocalizedText, Role } from '@mydexpogo/shared';
+import type { Gender, LocalizedText, Role } from '@mydexpogo/shared';
 import { api } from './api.js';
 
 export interface SourceFreshness { name: string; label: string; updatedAt: string | null; url: string }
@@ -17,7 +17,7 @@ export interface DataStatus {
   sources: SourceFreshness[];
   feed?: { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number };
 }
-export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; updatedBy: string | null; updatedAt: string }
+export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; updatedBy: string | null; updatedAt: string }
 
 export const useDataStatus = () => useQuery({ queryKey: ['data-status'], queryFn: () => api<DataStatus>('/data/status'), refetchInterval: (q) => (q.state.data?.running ? 5000 : false) });
 
@@ -27,8 +27,8 @@ export const useOverrides = (enabled: boolean) =>
 export function useSetOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null }) =>
-      api<{ ok: true }>(`/overrides/${vars.variantKey}`, { method: 'PUT', body: { released: vars.released ?? null, label: vars.label ?? null } }),
+    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null }) =>
+      api<{ ok: true }>(`/overrides/${vars.variantKey}`, { method: 'PUT', body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['overrides'] });
       qc.invalidateQueries({ queryKey: ['dataset'] });

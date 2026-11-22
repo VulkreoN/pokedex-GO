@@ -259,12 +259,14 @@ describe('roles', () => {
 
 describe('lists', () => {
   let listId: string;
-  const keys = () => ds.variants.filter((v) => !v.datamined).slice(0, 3).map((v) => v.key);
+  // Genderless Pokémon: one entry per target, so the counts below stay simple (genders have their own tests).
+  const keys = () => ds.variants.filter((v) => !v.datamined && v.genders?.length === 0).slice(0, 3).map((v) => v.key);
 
   it('creates a list with validation', async () => {
     expect((await alice.post('/lists', { name: '' })).status).toBe(400);
     expect((await alice.post('/lists', { name: 'x'.repeat(61) })).status).toBe(400);
     expect((await alice.post('/lists', { name: 'Ok', visibility: 'public' })).status).toBe(400);
+    expect((await alice.post('/lists', { name: 'Ok', visibility: 'link' })).status).toBe(400); // no longer a visibility
     const r = await alice.post('/lists', { name: 'Shinies à chasser', description: 'Test' });
     expect(r.status).toBe(201);
     expect(r.body.list.visibility).toBe('friends');
@@ -293,7 +295,7 @@ describe('lists', () => {
     expect((await alice.put(`/lists/${listId}/entries`, { entries: [{ variantKey: 'pikachu', shiny: false }] })).status).toBe(400);
     expect((await alice.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '25', shiny: false, tag: 'golden' }] })).status).toBe(400);
     expect((await alice.put(`/lists/${listId}/entries`, { entries: [] })).status).toBe(400);
-    const big = Array.from({ length: 3001 }, (_, i) => ({ variantKey: String((i % 1000) + 1), shiny: i >= 1000 }));
+    const big = Array.from({ length: 3001 }, (_, i) => ({ variantKey: String((i % 1000) + 1), shiny: i >= 1000, gender: 'm' }));
     expect((await alice.put(`/lists/${listId}/entries`, { entries: big })).status).toBe(400);
   });
 
@@ -330,6 +332,12 @@ describe('lists', () => {
     expect((await anon.get(`/shared/${token}`)).status).toBe(404);
   });
 
+  it('cannot share a private list', async () => {
+    const priv = (await alice.post('/lists', { name: 'Privée', visibility: 'private' })).body.list.id;
+    expect((await alice.post(`/lists/${priv}/share`)).status).toBe(409);
+    await alice.del(`/lists/${priv}`);
+  });
+
   it('cuts the share link when a list goes private', async () => {
     const token = (await alice.post(`/lists/${listId}/share`)).body.shareToken;
     expect((await anon.get(`/shared/${token}`)).status).toBe(200);
@@ -341,6 +349,56 @@ describe('lists', () => {
   it('lists only my own lists', async () => {
     const mine = (await bob.get('/lists')).body.lists;
     expect(mine.every((l: any) => l.ownerId === bob.user.id)).toBe(true);
+  });
+});
+
+describe('genders in lists', () => {
+  let listId: string;
+  const put = (entries: object[]) => alice.put(`/lists/${listId}/entries`, { entries });
+  const rows = (r: any, key: string) => r.body.list.entries.filter((e: any) => e.variantKey === key).map((e: any) => e.gender).sort();
+  beforeAll(async () => {
+    listId = (await alice.post('/lists', { name: 'Sexes' })).body.list.id;
+  });
+
+  it('expands a Pokémon that has both genders into one entry per gender', async () => {
+    const r = await put([{ variantKey: '25', shiny: false }]);
+    expect(rows(r, '25')).toEqual(['f', 'm']);
+  });
+
+  it('stores the female picture key as the neutral key plus gender f', async () => {
+    const r = await put([{ variantKey: '26.g2', shiny: true }]);
+    expect(r.body.list.entries.find((e: any) => e.variantKey === '26' && e.shiny)).toMatchObject({ gender: 'f' });
+    expect(r.body.list.entries.some((e: any) => e.variantKey.endsWith('.g2'))).toBe(false);
+  });
+
+  it('follows the game master: no male Nidoran♀, no gender on Magnemite', async () => {
+    expect((await put([{ variantKey: '29', shiny: false, gender: 'm' }])).body).toMatchObject({ error: 'invalid_gender', variantKey: '29' });
+    expect(rows(await put([{ variantKey: '29', shiny: false }]), '29')).toEqual(['f']);
+    expect(rows(await put([{ variantKey: '32', shiny: false }]), '32')).toEqual(['m']);
+    expect((await put([{ variantKey: '81', shiny: false, gender: 'f' }])).status).toBe(400);
+    expect(rows(await put([{ variantKey: '81', shiny: false }]), '81')).toEqual(['']);
+  });
+
+  it('knows single-gender costumes', async () => {
+    const femaleOnly = ds.variants.find((v) => v.dex === 25 && v.kind === 'costume' && v.genders?.length === 1 && v.genders[0] === 'f');
+    expect(femaleOnly).toBeTruthy();
+    expect((await put([{ variantKey: femaleOnly!.key, shiny: false, gender: 'm' }])).status).toBe(400);
+    expect(rows(await put([{ variantKey: femaleOnly!.key, shiny: false }]), femaleOnly!.key)).toEqual(['f']);
+  });
+
+  it('refuses variants the Pokédex does not know', async () => {
+    expect((await put([{ variantKey: '25.fNOT_A_REAL_FORM', shiny: false }])).body).toMatchObject({ error: 'unknown_variant' });
+  });
+
+  it('tracks each gender apart, and removes all of them when no gender is given', async () => {
+    let r = await put([{ variantKey: '25', shiny: false, gender: 'm', done: true }]);
+    expect(r.body.list.entries.filter((e: any) => e.variantKey === '25').map((e: any) => [e.gender, e.done])).toEqual(
+      expect.arrayContaining([['m', true], ['f', false]]),
+    );
+    r = await alice.del(`/lists/${listId}/entries`, { entries: [{ variantKey: '25', shiny: false, gender: 'm' }] });
+    expect(rows(r, '25')).toEqual(['f']);
+    r = await alice.del(`/lists/${listId}/entries`, { entries: [{ variantKey: '29', shiny: false }] });
+    expect(rows(r, '29')).toEqual([]);
   });
 });
 

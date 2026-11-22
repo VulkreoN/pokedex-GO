@@ -5,7 +5,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
-import type { Dataset } from '@mydexpogo/shared';
+import type { Dataset, Variant } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 
@@ -69,9 +69,31 @@ class DataService {
   getStatus(): DataStatus { return { ...this.status, eventsArchived: this.events.length }; }
   getEventsBody() { return this.eventsBody; }
 
+  private readyListeners: (() => Promise<void> | void)[] = [];
+  /** Runs after the dataset is loaded from disk and after every successful refresh. */
+  onDataset(fn: () => Promise<void> | void) {
+    this.readyListeners.push(fn);
+  }
+  private async notifyDataset() {
+    for (const fn of this.readyListeners) await Promise.resolve(fn()).catch((e) => console.error('dataset listener', e));
+  }
+
+  private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;
+  /** Variants of the current dataset by key, managers' corrections included (null until a dataset is loaded). */
+  async variants(): Promise<Map<string, Variant> | null> {
+    // Datasets built before pipeline v8 have no genders: treat them as unknown rather than "every gender".
+    if (!this.raw || !this.raw.variants.some((v) => v.genders)) return null;
+    const manual = await this.loadOverrides();
+    if (this.variantIndex?.version !== this.raw.version || this.variantIndex.manual !== manual) {
+      this.variantIndex = { version: this.raw.version, manual, byKey: new Map(applyManualOverrides(this.raw, manual).variants.map((v) => [v.key, v])) };
+    }
+    return this.variantIndex.byKey;
+  }
+
   async start() {
     await mkdir(env.dataDir, { recursive: true });
     await this.loadFromDisk();
+    await this.notifyDataset();
     const ageMs = this.status.generatedAt ? Date.now() - new Date(this.status.generatedAt).getTime() : Infinity;
     const refreshMs = env.dataRefreshHours * 3600_000;
     const outdated = this.status.pipelineVersion !== PIPELINE_VERSION;
@@ -164,6 +186,7 @@ class DataService {
       await writeFile(path.join(env.dataDir, FILES.dataset), JSON.stringify(dataset));
       await writeFile(path.join(env.dataDir, FILES.events), this.eventsBody);
       console.log(`dataset refreshed in ${((Date.now() - started) / 1000).toFixed(1)}s, ${merged.added} new events`);
+      await this.notifyDataset();
       return true;
     } catch (e) {
       this.status.lastError = (e as Error).message;
@@ -240,6 +263,7 @@ class DataService {
       manual[r.variantKey] = {
         released: r.released,
         label: r.labelEn ? { en: r.labelEn, ...(r.labelFr ? { fr: r.labelFr } : {}) } : null,
+        genders: r.genders ?? null,
       };
     }
     this.overridesCache = manual;

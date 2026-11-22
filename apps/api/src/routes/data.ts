@@ -8,6 +8,7 @@ import { dataService } from '../data/service.js';
 import { feedService } from '../feed/service.js';
 import { db, schema } from '../db/index.js';
 import { hashToken } from '../lib/ids.js';
+import { migrateStoredGenders } from '../lists/genders.js';
 import { randomBytes } from 'node:crypto';
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
@@ -35,6 +36,8 @@ export const dataRoutes = new Hono<AuthEnv>()
 const overrideBody = z.object({
   released: z.boolean().nullable().optional(),
   label: z.object({ en: z.string().trim().min(1).max(60), fr: z.string().trim().max(60).optional() }).nullable().optional(),
+  /** For forms the game master does not describe yet: which genders exist ([] = genderless). */
+  genders: z.array(z.enum(['m', 'f'])).max(2).refine((g) => new Set(g).size === g.length, 'duplicate gender').nullable().optional(),
 });
 
 /** Managers: force a variant released / not released, or rename it. */
@@ -46,7 +49,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
       .leftJoin(schema.users, eq(schema.users.id, schema.variantOverrides.updatedBy))
       .orderBy(sql`${schema.variantOverrides.updatedAt} desc`);
     return c.json({
-      overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
+      overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, genders: o.genders, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
     });
   })
   .put('/:key', requireRole('manager'), zValidator('json', overrideBody), async (c) => {
@@ -58,15 +61,21 @@ export const overrideRoutes = new Hono<AuthEnv>()
       released: body.released ?? null,
       labelEn: body.label?.en ?? null,
       labelFr: body.label?.fr ?? null,
+      genders: body.genders ?? null,
       updatedBy: c.get('user').id,
       updatedAt: new Date(),
     };
-    if (values.released === null && !values.labelEn) {
+    if (values.released === null && !values.labelEn && !values.genders) {
       await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     } else {
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();
+    // Entries now listed under a gender this variant does not have move to the right one.
+    if (body.genders) {
+      const variants = await dataService.variants();
+      if (variants) await migrateStoredGenders(variants);
+    }
     return c.json({ ok: true });
   })
   .delete('/:key', requireRole('manager'), async (c) => {

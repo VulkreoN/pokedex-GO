@@ -107,9 +107,11 @@ Le statut « sorti » automatique dépend du game master publié sur GitHub par 
 
 ## Listes, amis et notifications
 
-- L'onglet Listes sépare « Mes listes » et « Listes de mes amis » (toutes les listes non privées de ses amis, en lecture seule, groupées par ami).
+- L'onglet Listes sépare « Mes listes » et « Listes de mes amis » (les listes que ses amis montrent, en lecture seule, groupées par ami). Elles sont suivies par défaut ; « Ne plus suivre » (sur la liste ou la fiche de l'ami) en retire une, « Suivre » la remet.
+- Une liste est « Moi seulement » ou « Mes amis ». Le lien de partage reste possible sur une liste visible des amis.
+- Sexes : chaque entrée suit un sexe (♂, ♀, ou aucun pour les asexués), pour tous les Pokémon, pas seulement ceux qui ont une apparence différente. Une carte de liste porte une pastille par sexe. Les sexes possibles viennent du game master, forme par forme et costume par costume (Pikachu Docteur : ♀ seulement, Nidoran♀, Magnéti asexué...) et l'API refuse un sexe qui n'existe pas. Les costumes plus récents que le game master publié sont marqués « non confirmé » et listés dans « À confirmer » → « Sexes à vérifier » pour les gérants ; les corrections permanentes vont dans `packages/data/src/overrides.json` (`genders`).
 - Temps réel : l'app garde une connexion Server-Sent Events (`/api/stream`) tant qu'on est connecté. Quand un ami modifie une liste, ou qu'une demande d'ami arrive, l'écran se met à jour sans recharger.
-- « Je l'ai » : sur la liste d'un ami, toucher un Pokémon qu'il cherche le lui signale. Le propriétaire voit qui l'a sous l'entrée, les autres amis ne voient que leur propre marque. Les marques disparaissent avec l'entrée ou l'amitié.
+- « Je l'ai » : sur la liste d'un ami, toucher un Pokémon (ou une pastille ♂/♀) qu'il cherche le lui signale. Le propriétaire voit tous les amis qui l'ont, les autres amis ne voient que leur propre marque. Quand le propriétaire l'attrape, ceux qui l'avaient marqué sont prévenus (plus besoin de le garder) et les marques sont effacées.
 - Export PDF : bouton « PDF » sur une liste, grille A4 avec images, attrapés estompés et barrés (seulement les manquants si l'onglet « Manquants » est ouvert).
 - Notifications : une boîte dans l'app (cloche) et des notifications push (Web Push, clés VAPID générées dans le volume de données). Types : demande d'ami, demande acceptée, « un ami a un Pokémon de ta liste ». Anti-spam : les « je l'ai » d'un même ami sur une même liste dans l'heure sont regroupés en une notification, chaque type se coupe dans « Moi », et 15 push par jour au maximum.
 - Le push exige HTTPS : il marche une fois `DOMAIN` configuré (ou sur `localhost`), pas sur l'adresse IP locale en http. Sur iPhone, il faut ajouter l'app à l'écran d'accueil (iOS 16.4+).
@@ -133,7 +135,7 @@ L'API, l'aperçu et la base de test sont arrêtés et supprimés à la fin, mêm
 
 ## Recherche dans le jeu
 
-Depuis une liste, « Copier pour le jeu » génère des chaînes pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme) : numéros compressés en plages, une chaîne par combinaison (`&shiny`, `&costume`, `&female`, `&alola`...), découpées à 200 caractères.
+Depuis une liste, « Copier pour le jeu » génère des chaînes pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme) : numéros compressés en plages, filtres `&shiny`, `&costume`, `&male`, `&female`, `&alola`..., découpage à 200 caractères. Dans le jeu, `,` (ou) se lit à l'intérieur de chaque bloc `&` (et) : « Pikachu mâle ou Salamèche femelle » s'écrit `4,25&female,25&male,4`. Les combinaisons dont les numéros ne se chevauchent pas sont ainsi regroupées dans une seule chaîne ; les autres restent séparées. `packages/shared/src/search.semantics.test.ts` rejoue ces règles sur des centaines de listes aléatoires.
 
 ## Structure
 

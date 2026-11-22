@@ -98,7 +98,7 @@ describe('notifications', () => {
 describe("friends' lists", () => {
   beforeAll(async () => {
     listId = (await owner.post('/lists', { name: 'Cherche' })).body.list.id;
-    await owner.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '25', shiny: true }, { variantKey: '133', shiny: false }, { variantKey: '1', shiny: false, done: true }] });
+    await owner.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '25', gender: 'f', shiny: true }, { variantKey: '133', gender: 'm', shiny: false }, { variantKey: '1', gender: 'f', shiny: false }] });
     privateId = (await owner.post('/lists', { name: 'Secret', visibility: 'private' })).body.list.id;
   });
 
@@ -107,14 +107,14 @@ describe("friends' lists", () => {
     const ids = r.body.lists.map((l: any) => l.id);
     expect(ids).toContain(listId);
     expect(ids).not.toContain(privateId);
-    expect(r.body.lists.find((l: any) => l.id === listId)).toMatchObject({ ownerName: owner.user.username, entryCount: 3, doneCount: 1 });
+    expect(r.body.lists.find((l: any) => l.id === listId)).toMatchObject({ ownerName: owner.user.username, entryCount: 3, doneCount: 0 });
     expect((await friend.get('/lists')).body.lists.map((l: any) => l.id)).not.toContain(listId);
     expect((await stranger.get('/lists/friends')).body.lists).toEqual([]);
   });
 
   it('pushes list changes live to friends', async () => {
     const live = await listen(friend);
-    await owner.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '133', shiny: false, done: true }] });
+    await owner.patch(`/lists/${listId}`, { description: 'live' });
     expect(await live.waitFor((e) => e.type === 'list' && e.listId === listId)).toBe(true);
     live.close();
   });
@@ -129,7 +129,7 @@ describe("friends' lists", () => {
 
 describe('"I have it"', () => {
   it('is for friends only, on existing entries', async () => {
-    const body = { variantKey: '25', shiny: true, on: true };
+    const body = { variantKey: '25', gender: 'f', shiny: true, on: true };
     expect((await stranger.post(`/lists/${listId}/offers`, body)).status).toBe(403);
     expect((await owner.post(`/lists/${listId}/offers`, body)).status).toBe(403);
     expect((await friend.post(`/lists/${listId}/offers`, { ...body, variantKey: '999' })).status).toBe(404);
@@ -138,7 +138,7 @@ describe('"I have it"', () => {
 
   it('shows the owner who has what, and the friend only their own mark', async () => {
     await owner.post('/push/subscribe', sub(4));
-    const r = await friend.post(`/lists/${listId}/offers`, { variantKey: '25', shiny: true, on: true });
+    const r = await friend.post(`/lists/${listId}/offers`, { variantKey: '25', gender: 'f', shiny: true, on: true });
     expect(r.status).toBe(200);
     const mine = r.body.list.entries.find((e: any) => e.variantKey === '25');
     expect(mine.offeredByMe).toBe(true);
@@ -154,8 +154,8 @@ describe('"I have it"', () => {
 
   it('groups a burst of marks into one notification and one push', async () => {
     const pushedBefore = (await owner.get('/push/sent')).body.sent.length;
-    await friend.post(`/lists/${listId}/offers`, { variantKey: '133', shiny: false, on: true });
-    await friend.post(`/lists/${listId}/offers`, { variantKey: '133', shiny: false, on: true }); // idempotent
+    await friend.post(`/lists/${listId}/offers`, { variantKey: '133', gender: 'm', shiny: false, on: true });
+    await friend.post(`/lists/${listId}/offers`, { variantKey: '133', gender: 'm', shiny: false, on: true }); // idempotent
     const inbox = await owner.get('/notifications');
     const offers = inbox.body.items.filter((n: any) => n.type === 'offer');
     expect(offers).toHaveLength(1);
@@ -167,22 +167,22 @@ describe('"I have it"', () => {
 
   it('respects the per-kind switch: inbox yes, push no', async () => {
     const prefs = await owner.put('/notifications/prefs', { offer: false });
-    expect(prefs.body.prefs).toEqual({ friend_request: true, friend_accepted: true, offer: false });
+    expect(prefs.body.prefs).toEqual({ friend_request: true, friend_accepted: true, offer: false, offer_caught: true });
     await owner.post('/notifications/read', {}); // a new burst starts a new notification
     const before = (await owner.get('/push/sent')).body.sent.length;
-    await friend.post(`/lists/${listId}/offers`, { variantKey: '1', shiny: false, on: true });
+    await friend.post(`/lists/${listId}/offers`, { variantKey: '1', gender: 'f', shiny: false, on: true });
     expect((await owner.get('/notifications')).body.unread).toBe(1);
     expect((await owner.get('/push/sent')).body.sent.length).toBe(before);
     await owner.put('/notifications/prefs', { offer: true });
   });
 
   it('can be taken back, and disappears with the entry or the friendship', async () => {
-    await friend.post(`/lists/${listId}/offers`, { variantKey: '25', shiny: true, on: false });
+    await friend.post(`/lists/${listId}/offers`, { variantKey: '25', gender: 'f', shiny: true, on: false });
     let e = (await owner.get(`/lists/${listId}`)).body.list.entries;
     expect(e.find((x: any) => x.variantKey === '25').offers).toBeUndefined();
 
-    await owner.del(`/lists/${listId}/entries`, { entries: [{ variantKey: '133', shiny: false }] });
-    await owner.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '133', shiny: false }] });
+    await owner.del(`/lists/${listId}/entries`, { entries: [{ variantKey: '133', gender: 'm', shiny: false }] });
+    await owner.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '133', gender: 'm', shiny: false }] });
     e = (await owner.get(`/lists/${listId}`)).body.list.entries;
     expect(e.find((x: any) => x.variantKey === '133').offers).toBeUndefined();
 
@@ -190,5 +190,79 @@ describe('"I have it"', () => {
     await friend.del(`/friends/${owner.user.id}`);
     e = (await owner.get(`/lists/${listId}`)).body.list.entries;
     expect(e.find((x: any) => x.variantKey === '1').offers).toBeUndefined();
+  });
+});
+
+describe('following friends\' lists', () => {
+  let a: U;
+  let b: U;
+  let shown: string;
+  beforeAll(async () => {
+    a = await register(name('fa'));
+    b = await register(name('fb'));
+    await b.post('/friends/requests', { friendCode: a.user.friendCode });
+    await a.post(`/friends/requests/${(await a.get('/friends/requests')).body.requests[0].id}/accept`);
+    shown = (await a.post('/lists', { name: 'Visible' })).body.list.id;
+  });
+
+  it('follows by default, can stop and start again', async () => {
+    expect((await b.get('/lists/friends')).body.lists.map((l: any) => l.id)).toContain(shown);
+    expect((await b.get(`/lists/${shown}`)).body.following).toBe(true);
+    expect((await b.del(`/lists/${shown}/follow`)).body).toEqual({ following: false });
+    expect((await b.get('/lists/friends')).body.lists.map((l: any) => l.id)).not.toContain(shown);
+    expect((await b.get(`/lists/${shown}`)).status).toBe(200); // still readable from the friend's page
+    expect((await b.get(`/friends/${a.user.id}/lists`)).body.lists.find((l: any) => l.id === shown).following).toBe(false);
+    expect((await b.post(`/lists/${shown}/follow`)).body).toEqual({ following: true });
+    expect((await b.get('/lists/friends')).body.lists.map((l: any) => l.id)).toContain(shown);
+  });
+
+  it('is only for friends', async () => {
+    expect((await stranger.del(`/lists/${shown}/follow`)).status).toBe(404);
+    expect((await a.del(`/lists/${shown}/follow`)).status).toBe(404); // own list
+  });
+});
+
+describe('caught after an "I have it"', () => {
+  let a: U;
+  let b: U;
+  let c: U;
+  let list: string;
+  beforeAll(async () => {
+    a = await register(name('ca'));
+    b = await register(name('cb'));
+    c = await register(name('cc'));
+    for (const x of [b, c]) {
+      await x.post('/friends/requests', { friendCode: a.user.friendCode });
+      const req = (await a.get('/friends/requests')).body.requests.find((r: any) => r.from.id === x.user.id);
+      await a.post(`/friends/requests/${req.id}/accept`);
+    }
+    list = (await a.post('/lists', { name: 'Chasse' })).body.list.id;
+    await a.put(`/lists/${list}/entries`, { entries: [{ variantKey: '25', shiny: false }] }); // ♂ and ♀
+    await b.post(`/lists/${list}/offers`, { variantKey: '25', gender: 'f', shiny: false, on: true });
+    await c.post(`/lists/${list}/offers`, { variantKey: '25', gender: 'f', shiny: false, on: true });
+    await c.post(`/lists/${list}/offers`, { variantKey: '25', gender: 'm', shiny: false, on: true });
+  });
+
+  it('shows the owner every friend who has it', async () => {
+    const f = (await a.get(`/lists/${list}`)).body.list.entries.find((e: any) => e.variantKey === '25' && e.gender === 'f');
+    expect(f.offers.map((o: any) => o.username).sort()).toEqual([b.user.username, c.user.username].sort());
+  });
+
+  it('tells each of them once it is caught, and clears their marks', async () => {
+    await a.put(`/lists/${list}/entries`, { entries: [{ variantKey: '25', gender: 'f', shiny: false, done: true }] });
+    for (const x of [b, c]) {
+      const n = (await x.get('/notifications')).body.items.find((i: any) => i.type === 'offer_caught');
+      expect(n).toMatchObject({ actor: { username: a.user.username }, list: { id: list }, data: { count: 1 } });
+    }
+    const entries = (await a.get(`/lists/${list}`)).body.list.entries;
+    expect(entries.find((e: any) => e.gender === 'f').offers).toBeUndefined();
+    expect(entries.find((e: any) => e.gender === 'm').offers).toHaveLength(1); // the male is still hunted
+    expect((await b.post(`/lists/${list}/offers`, { variantKey: '25', gender: 'f', shiny: false, on: true })).status).toBe(409);
+  });
+
+  it('does not notify again when saving an entry that was already caught', async () => {
+    const before = (await b.get('/notifications')).body.items.length;
+    await a.put(`/lists/${list}/entries`, { entries: [{ variantKey: '25', gender: 'f', shiny: false, done: true, note: 'x' }] });
+    expect((await b.get('/notifications')).body.items.length).toBe(before);
   });
 });

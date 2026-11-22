@@ -12,8 +12,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   makeVariantKey,
+  neutralKey,
   type BackgroundInfo,
   type Dataset,
+  type Gender,
   type LocalizedText,
   type PokemonType,
   type Rarity,
@@ -40,7 +42,7 @@ export interface BuildOptions {
 }
 
 /** What a manager can change from the web app, keyed by variant key. */
-export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null }>;
+export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null }>;
 
 export interface BuildResult {
   dataset: Dataset;
@@ -234,7 +236,13 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const variants: Variant[] = [];
   const femaleKeys = new Set([...groups.values()].filter((g) => g.female).map((g) => makeVariantKey({ dex: g.dex, form: g.form, costume: g.costume, gender: null })));
   // Read at build time (not a static import) so a long-running job picks up edits without restarting.
-  const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { labels: Record<string, LocalizedText>; status: Record<string, 'released' | 'datamined'>; megas?: string[] };
+  const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as {
+    labels: Record<string, LocalizedText>;
+    status: Record<string, 'released' | 'datamined'>;
+    megas?: string[];
+    /** Checked by hand for forms the game master does not describe yet, by gender-neutral variant key. */
+    genders?: Record<string, Gender[]>;
+  };
   const labelOverrides = overrides.labels;
   const statusOverrides = overrides.status;
 
@@ -383,6 +391,49 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     log(`backgrounds: ${Object.keys(backgrounds).length}, on ${variants.filter((v) => v.backgrounds?.length).length} pictures`);
   }
 
+  // Genders per form / costume from SPAWN_V####_POKEMON_<ID>[_<FORM>] templates. "_NORMAL" describes the base
+  // form better than the formless template (Oinkologne: formless 50/50, NORMAL male only, FEMALE form female only).
+  const gendersBy = new Map<string, Gender[]>(); // `${dex}|${token}` ('' = formless)
+  type SpawnTemplate = { templateId: string; data: { genderSettings?: { pokemon: string; gender?: { malePercent?: number; femalePercent?: number } } } };
+  const spawns = (gm as unknown as SpawnTemplate[])
+    .map((t) => ({ t, m: /^SPAWN_V(\d{4})_POKEMON_(.+)$/.exec(t.templateId) }))
+    .filter((x): x is { t: SpawnTemplate; m: RegExpExecArray } => !!x.m && !!x.t.data.genderSettings);
+  // The template name of a species is its shortest one (Nidoran♀: "NIDORAN", while its id is "NIDORAN_FEMALE").
+  const baseName = new Map<number, string>();
+  for (const { m } of spawns) {
+    const dex = Number(m[1]);
+    const cur = baseName.get(dex);
+    if (!cur || m[2]!.length < cur.length) baseName.set(dex, m[2]!);
+  }
+  for (const { t, m } of spawns) {
+    const gs = t.data.genderSettings!;
+    const rest = m[2]!;
+    const name = baseName.get(Number(m[1]))!;
+    const token = rest === name ? '' : rest.startsWith(`${name}_`) ? rest.slice(name.length + 1) : rest;
+    const g: Gender[] = [];
+    if ((gs.gender?.malePercent ?? 0) > 0) g.push('m');
+    if ((gs.gender?.femalePercent ?? 0) > 0) g.push('f');
+    gendersBy.set(`${Number(m[1])}|${token}`, g);
+  }
+  const keys = new Set(variants.map((v) => v.key));
+  for (const v of variants) {
+    const base = gendersBy.get(`${v.dex}|NORMAL`) ?? gendersBy.get(`${v.dex}|`);
+    const own = (v.form && gendersBy.get(`${v.dex}|${v.form}`)) || (v.costume && gendersBy.get(`${v.dex}|${v.costume}`)) || undefined;
+    // Megas and Gigantamax keep the species' genders; unknown species (datamined) may be either.
+    const pinned = overrides.genders?.[neutralKey(v.key)];
+    v.genders = pinned ?? own ?? base ?? ['m', 'f'];
+    // Only costumes defined as forms can be newer than the published game master; old costume-enum costumes and
+    // species forms (Unown, Burmy...) follow the species, which is right.
+    // Two facts settle it without the game master: a distinct female picture means both genders exist, and a
+    // costume on a genderless species is genderless.
+    const hasFemalePicture = v.gender === 'f' || keys.has(`${neutralKey(v.key)}.g2`);
+    if (!pinned && !own && v.kind === 'costume' && v.form) {
+      if (hasFemalePicture) v.genders = ['m', 'f'];
+      else if (base && base.length === 0) v.genders = [];
+      else v.gendersGuessed = true;
+    }
+  }
+
   const species: Species[] = [...speciesByDex.values()]
     .sort((a, b) => a.dex - b.dex)
     .map(({ gmForms: _f, tempEvos: _t, ...s }) => s);
@@ -496,11 +547,16 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
       if (spRel === false && !manual[v.key]?.released) return { ...v, datamined: true };
       const m = manual[v.key];
       if (!m) return v;
-      return {
+      const out: Variant = {
         ...v,
         datamined: m.released === null || m.released === undefined ? v.datamined : !m.released,
         label: m.label ?? v.label,
       };
+      if (m.genders) {
+        out.genders = m.genders;
+        delete out.gendersGuessed;
+      }
+      return out;
     }),
   };
 }

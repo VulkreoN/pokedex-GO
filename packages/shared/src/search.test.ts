@@ -15,7 +15,7 @@ describe('dex ranges', () => {
 });
 
 describe('buildSearchStrings', () => {
-  it('groups by modifier combination, plain first', () => {
+  it('combines groups whose dex numbers do not overlap, and splits the ones that do', () => {
     const out = buildSearchStrings([
       { dex: 25, shiny: true },
       { dex: 1 },
@@ -23,7 +23,12 @@ describe('buildSearchStrings', () => {
       { dex: 26, shiny: true },
       { dex: 25, costume: true, shiny: true },
     ]);
-    expect(out.map((s) => s.text)).toEqual(['1,4', '25,26&shiny', '25&costume&shiny']);
+    // Plain 1, 4 and shiny 25, 26 fit together; costume shiny Pikachu overlaps with shiny Pikachu.
+    expect(out.map((s) => s.text)).toEqual(['1,4,25,26&shiny,1,4', '25&costume&shiny']);
+    expect(out[0]!.parts).toEqual([{ modifiers: [], count: 2 }, { modifiers: ['shiny'], count: 2 }]);
+  });
+  it('writes "Pikachu male or Charmander female" as one string', () => {
+    expect(buildSearchStrings([{ dex: 25, gender: 'm' }, { dex: 4, gender: 'f' }]).map((s) => s.text)).toEqual(['4,25&female,25&male,4']);
   });
   it('splits long groups into batches that keep the suffix', () => {
     const targets = Array.from({ length: 120 }, (_, i) => ({ dex: i * 2 + 1, shiny: true }));
@@ -36,11 +41,13 @@ describe('buildSearchStrings', () => {
     }
     expect(out.reduce((n, s) => n + s.count, 0)).toBe(120);
   });
-  it('ignores male targets, keeps female ones', () => {
-    expect(buildSearchStrings([{ dex: 41, gender: 'm' }, { dex: 42, gender: 'f' }]).map((s) => s.text)).toEqual(['41', '42&female']);
+  it('filters by gender, both genders of one target collapse into one string', () => {
+    expect(buildSearchStrings([{ dex: 41, gender: 'm' }, { dex: 42, gender: 'f' }]).map((s) => s.text)).toEqual(['41,42&female,41&male,42']);
+    // Both genders of the same target: one string, no filter.
+    expect(buildSearchStrings([{ dex: 25, gender: 'm' }, { dex: 25, gender: 'f' }, { dex: 26, gender: 'f' }]).map((s) => s.text)).toEqual(['25,26&female,25']);
   });
   it('adds trait keywords last', () => {
-    expect(buildSearchStrings([{ dex: 25, shiny: true, tag: 'lucky' }, { dex: 1, tag: 'background' }]).map((s) => s.text)).toEqual(['1&background', '25&shiny&lucky']);
+    expect(buildSearchStrings([{ dex: 25, shiny: true, tag: 'lucky' }, { dex: 1, tag: 'background' }]).map((s) => s.text)).toEqual(['1,25&background,25&shiny,1&lucky,1']);
   });
   it('orders modifiers consistently', () => {
     const [s] = buildSearchStrings([{ dex: 19, region: 'alola', gender: 'f', shiny: true }]);

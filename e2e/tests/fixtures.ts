@@ -36,11 +36,16 @@ export async function apiRegister(request: APIRequestContext, username = uniq('u
   return (await r.json()).user as { id: string; username: string; friendCode: string; role: string };
 }
 
+/** keys: "25" (every gender the Pokémon has) or "25:m" / "25:f" for one gender. */
 export async function apiCreateList(request: APIRequestContext, name: string, keys: string[]) {
   const r = await request.post('/api/lists', { data: { name } });
   expect(r.status()).toBe(201);
   const id = (await r.json()).list.id as string;
-  const e = await request.put(`/api/lists/${id}/entries`, { data: { entries: keys.map((k) => ({ variantKey: k, shiny: false })) } });
+  const entries = keys.map((k) => {
+    const [variantKey, gender] = k.split(':');
+    return { variantKey, shiny: false, ...(gender ? { gender } : {}) };
+  });
+  const e = await request.put(`/api/lists/${id}/entries`, { data: { entries } });
   expect(e.status()).toBe(200);
   return id;
 }

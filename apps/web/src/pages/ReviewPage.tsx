@@ -1,3 +1,4 @@
+import { GenderReview } from '../components/GenderReview.js';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -68,6 +69,7 @@ export function ReviewPage() {
         </div>
       </TopBar>
       <main className="mx-auto max-w-3xl space-y-3 px-3 pb-24">
+        {status === 'new' && idx && <GenderReview idx={idx} />}
         {q.data && (
           <p className="text-xs text-ink-3">
             {q.data.status.enabled.news.length === 0 ? t.feed_disabled : t.feed_sources(q.data.status.enabled.news.length)}

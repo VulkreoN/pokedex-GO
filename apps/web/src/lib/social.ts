@@ -10,7 +10,7 @@ export const useAllFriendLists = (enabled = true) =>
 export function useOffer(listId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { variantKey: string; shiny: boolean; tag: string; on: boolean }) => api<{ list: ListDetail }>(`/lists/${listId}/offers`, { body: b }),
+    mutationFn: (b: { variantKey: string; gender: string; shiny: boolean; tag: string; on: boolean }) => api<{ list: ListDetail }>(`/lists/${listId}/offers`, { body: b }),
     onSuccess: (r) => qc.setQueryData(['list', listId], (old: { list: ListDetail; access: string } | undefined) => (old ? { ...old, list: r.list } : old)),
   });
 }
@@ -117,4 +117,15 @@ export async function disablePush(): Promise<PushState> {
     await subscription.unsubscribe();
   }
   return 'off';
+}
+
+/** Friends' lists are followed by default; unfollowing hides one from "Friends' lists". */
+export function useFollowList(listId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (on: boolean) => api<{ following: boolean }>(`/lists/${listId}/follow`, { method: on ? 'POST' : 'DELETE' }),
+    onSuccess: () => {
+      for (const k of ['list', 'friends-lists', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+    },
+  });
 }

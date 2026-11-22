@@ -63,6 +63,10 @@ export interface Variant {
   backgrounds?: string[];
   /** When this variant first appeared (ISO date). Estimated from the costume name for the initial baseline, exact afterwards. */
   firstSeen?: string;
+  /** Genders this variant exists in, from the game master (per form and costume). Empty = genderless. */
+  genders?: Gender[];
+  /** The game master has no gender data for this form yet (newer than the published file): genders are the species'. */
+  gendersGuessed?: boolean;
 }
 
 export interface BackgroundInfo {
@@ -130,8 +134,13 @@ export type EntryTag = (typeof ENTRY_TAGS)[number] | `bg:${string}`;
 export const isEntryTag = (s: string): s is EntryTag => (ENTRY_TAGS as readonly string[]).includes(s) || /^bg:[A-Za-z0-9_.-]{1,80}$/.test(s);
 export const backgroundIdOf = (tag: EntryTag): string | null => (tag.startsWith('bg:') ? tag.slice(3) : null);
 
+/** '' for genderless Pokémon, otherwise the gender this entry tracks. */
+export type EntryGender = '' | Gender;
+
 export interface ListEntry {
+  /** Gender-neutral variant key (never ends with ".g2": the gender lives in `gender`). */
   variantKey: string;
+  gender: EntryGender;
   /** The target is the shiny version of the variant. */
   shiny: boolean;
   tag: EntryTag;
@@ -152,6 +161,8 @@ export interface ListSummary {
   createdAt: string;
   updatedAt: string;
   shareToken: string | null;
+  /** Friend's list only: shown in my "Friends' lists" (followed by default). */
+  following?: boolean;
 }
 
 /** A friend saying "I have this one" on a list entry. */
@@ -171,14 +182,14 @@ export interface ListDetail extends ListSummary {
   entries: ListDetailEntry[];
 }
 
-export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer';
+export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught';
 
 export interface AppNotification {
   id: string;
   type: NotificationType;
   actor: { id: string; username: string } | null;
   list: { id: string; name: string } | null;
-  /** offer: { count, variantKeys } (offers from one friend on one list are grouped) */
+  /** offer / offer_caught: { count, variants } (grouped per friend and list) */
   data: Record<string, unknown>;
   createdAt: string;
   readAt: string | null;

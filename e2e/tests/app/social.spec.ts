@@ -13,7 +13,7 @@ async function friends(browser: Browser, ip: number) {
   await friend.request.post('/api/friends/requests', { data: { friendCode: uo.friendCode } });
   const req = (await (await owner.request.get('/api/friends/requests')).json()).requests[0];
   await owner.request.post(`/api/friends/requests/${req.id}/accept`);
-  const listId = await apiCreateList(owner.request, 'Recherche Kanto', ['1', '4', '7', '25']);
+  const listId = await apiCreateList(owner.request, 'Recherche Kanto', ['1:m', '4:m', '7:m', '25:m']);
   await owner.request.post('/api/notifications/read', { data: {} }); // the friend request is old news
   return { a, b, owner, friend, uo, uf, listId, close: async () => { await a.close(); await b.close(); } };
 }
@@ -37,9 +37,9 @@ test("a friend's list updates live while I look at it", async ({ browser }) => {
   await s.friend.goto(`/lists/${s.listId}`);
   await expect(s.friend.getByText('0 / 4 attrapés')).toBeVisible();
   // The owner catches one; the friend's open page follows without reloading.
-  await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '25', shiny: false, done: true }] } });
+  await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '25', gender: 'm', shiny: false, done: true }] } });
   await expect(s.friend.getByText('1 / 4 attrapés')).toBeVisible({ timeout: 5000 });
-  await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '133', shiny: false }] } });
+  await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '133', gender: 'f', shiny: false }] } });
   await expect(s.friend.getByText('1 / 5 attrapés')).toBeVisible({ timeout: 5000 });
   await s.close();
 });

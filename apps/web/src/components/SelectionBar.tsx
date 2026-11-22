@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router';
-import { tagLabel, useDataset } from '../lib/dataset.js';
+import { entryVariant, genderSymbol, tagLabel, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCreateList, useLists, useUpsertEntries } from '../lib/lists.js';
 import { selection, useSelection } from '../lib/selection.js';
@@ -31,7 +31,7 @@ export function SelectionBar() {
       const r = await create.mutateAsync({ name: newName.trim() });
       ids.push(r.list.id);
     }
-    const entries = items.map((i) => ({ variantKey: i.variantKey, shiny: i.shiny, tag: i.tag, done: false }));
+    const entries = items.map((i) => ({ variantKey: i.variantKey, ...(i.gender !== undefined ? { gender: i.gender } : {}), shiny: i.shiny, tag: i.tag, done: false }));
     await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     selection.clear();
@@ -57,13 +57,13 @@ export function SelectionBar() {
       <Sheet open={open} onClose={() => setOpen(false)} title={t.selection_title(items.length)}>
         <ul className="mb-4 max-h-[32vh] space-y-1 overflow-y-auto">
           {items.map((i) => {
-            const v = idx?.variantByKey.get(i.variantKey);
+            const v = idx ? entryVariant(idx, i.variantKey, i.gender ?? '') : undefined;
             const sp = v && idx?.speciesByDex.get(v.dex);
             return (
               <li key={i.id} className="flex items-center gap-2 rounded-xl px-1 py-1">
                 {idx && v ? <Sprite idx={idx} variant={v} shiny={i.shiny} size={40} /> : <span className="h-10 w-10" />}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{sp ? localized(sp.name, lang) : i.variantKey}{v?.gender ? ` ${v.gender === 'f' ? '♀' : '♂'}` : ''}</span>
+                  <span className="block truncate text-sm font-semibold">{sp ? localized(sp.name, lang) : i.variantKey}{i.gender ? ` ${genderSymbol(i.gender)}` : ''}</span>
                   <span className="flex flex-wrap items-center gap-1 text-xs text-ink-2">
                     {v?.label && <span className="truncate">{localized(v.label, lang)}</span>}
                     {i.shiny && <Badge tone="shiny"><Sparkle className="mr-0.5 inline" />{t.shiny}</Badge>}

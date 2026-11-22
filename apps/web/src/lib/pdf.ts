@@ -3,7 +3,8 @@
  * jsPDF is loaded on demand; sprites are fetched as data URLs (both image hosts send CORS headers).
  */
 import type { ListDetail } from '@mydexpogo/shared';
-import { imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
+import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
+import { cardDone, cardMissing, cardsOf } from './cards.js';
 import { localized } from './i18n.js';
 import type { Lang } from '@mydexpogo/shared';
 
@@ -59,12 +60,13 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   const cellH = 44;
   const img = 24;
 
-  const entries = list.entries.filter((e) => !opts.onlyMissing || !e.done);
-  const rows = entries
-    .map((e) => {
-      const v = idx.variantByKey.get(e.variantKey);
+  // One cell per card (variant x normal/shiny x trait); its genders are listed under the name.
+  const cards = cardsOf(list.entries).filter((c) => !opts.onlyMissing || cardMissing(c));
+  const rows = cards
+    .map((c) => {
+      const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
       const sp = v && idx.speciesByDex.get(v.dex);
-      return v && sp ? { e, v, sp } : null;
+      return v && sp ? { c, e: { shiny: c.shiny, tag: c.tag, done: cardDone(c) }, v, sp } : null;
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
   const pictures = await mapLimit(rows, 8, async ({ e, v }) => {
@@ -88,7 +90,7 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   };
 
   let y = header(true);
-  rows.forEach(({ e, v, sp }, i) => {
+  rows.forEach(({ c, e, v, sp }, i) => {
     const col = i % COLS;
     if (col === 0 && i > 0) y += cellH;
     if (y + cellH > H - M) {
@@ -107,7 +109,7 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     }
     const name = pdfText(localized(sp.name, lang));
     const detail = pdfText(
-      [v.label ? localized(v.label, lang) : '', v.gender === 'f' ? '♀' : v.gender === 'm' ? '♂' : '', e.shiny ? t.shiny : '', e.tag ? tagLabel(idx, e.tag, t) : ''].filter(Boolean).join(' · '),
+      [v.label ? localized(v.label, lang) : '', e.shiny ? t.shiny : '', e.tag ? tagLabel(idx, e.tag, t) : ''].filter(Boolean).join(' · '),
     );
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
@@ -121,11 +123,34 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
       doc.setLineWidth(0.5);
       doc.line(cx - w / 2 - 1, ny - 1.1, cx + w / 2 + 1, ny - 1.1);
     }
+    let dy = ny + 3.5;
     if (detail) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(120, 128, 136);
-      doc.text((doc.splitTextToSize(detail, cellW - 3) as string[]).slice(0, 2), cx, ny + 3.5, { align: 'center' });
+      const lines = (doc.splitTextToSize(detail, cellW - 3) as string[]).slice(0, 1);
+      doc.text(lines, cx, dy, { align: 'center' });
+      dy += 3.5;
+    }
+    // Genders: "M" / "F", struck through and green once caught (standard PDF fonts cannot draw ♂ ♀).
+    const genders = c.members.filter((m) => m.gender);
+    if (genders.length) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const gap = 5;
+      let gx = cx - ((genders.length - 1) * gap) / 2;
+      for (const m of genders) {
+        const label = m.gender === 'm' ? 'M' : 'F';
+        if (m.done) doc.setTextColor(60, 150, 90);
+        else doc.setTextColor(30, 45, 55);
+        doc.text(label, gx, dy, { align: 'center' });
+        if (m.done) {
+          doc.setDrawColor(60, 150, 90);
+          doc.setLineWidth(0.4);
+          doc.line(gx - 1.6, dy - 1, gx + 1.6, dy - 1);
+        }
+        gx += gap;
+      }
     }
   });
 

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer'] as const;
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(
@@ -60,12 +60,14 @@ export const listEntries = pgTable(
     shiny: boolean('shiny').notNull().default(false),
     /** '' | lucky | background | shadow | purified | xxl | xxs */
     tag: text('tag').notNull().default(''),
+    /** '' (genderless) | m | f */
+    gender: text('gender').notNull().default(''),
     done: boolean('done').notNull().default(false),
     note: text('note'),
     position: integer('position').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag] })],
+  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.gender] })],
 );
 
 export const friendRequests = pgTable(
@@ -99,6 +101,8 @@ export const variantOverrides = pgTable('variant_overrides', {
   released: boolean('released'),
   labelEn: text('label_en'),
   labelFr: text('label_fr'),
+  /** Genders the variant exists in, when the game master does not say (new costumes): ["m"], ["f"], ["m","f"] or [] */
+  genders: jsonb('genders').$type<('m' | 'f')[]>(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -176,12 +180,15 @@ export const listOffers = pgTable(
     variantKey: text('variant_key').notNull(),
     shiny: boolean('shiny').notNull(),
     tag: text('tag').notNull(),
+    gender: text('gender').notNull().default(''),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.userId] }),
-    foreignKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag], foreignColumns: [listEntries.listId, listEntries.variantKey, listEntries.shiny, listEntries.tag] }).onDelete('cascade'),
+    primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.gender, t.userId] }),
+    foreignKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.gender], foreignColumns: [listEntries.listId, listEntries.variantKey, listEntries.shiny, listEntries.tag, listEntries.gender] })
+      .onDelete('cascade')
+      .onUpdate('cascade'),
   ],
 );
 
@@ -212,4 +219,15 @@ export const pushSubscriptions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);
+
+/** Friends' lists are followed by default; a row here means "stop showing me this one". */
+export const listUnfollows = pgTable(
+  'list_unfollows',
+  {
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull().references(() => lists.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.listId] })],
 );

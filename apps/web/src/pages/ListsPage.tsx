@@ -8,7 +8,8 @@ import { useCreateList, useLists } from '../lib/lists.js';
 
 export function VisibilityField({ value, onChange }: { value: ListVisibility; onChange: (v: ListVisibility) => void }) {
   const t = useT();
-  const opts: [ListVisibility, string][] = [['private', t.vis_private], ['friends', t.vis_friends], ['link', t.vis_link]];
+  // "Anyone with the link" is gone: a list is mine or my friends'. The share link stays available on friends' lists.
+  const opts: [ListVisibility, string][] = [['private', t.vis_private], ['friends', t.vis_friends]];
   return (
     <fieldset>
       <legend className="mb-1 text-sm font-medium text-ink-2">{t.list_visibility}</legend>

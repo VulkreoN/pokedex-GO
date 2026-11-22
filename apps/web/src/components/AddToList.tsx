@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ENTRY_TAGS, type EntryTag, type Variant } from '@mydexpogo/shared';
+import { ENTRY_TAGS, neutralKey, type EntryGender, type EntryTag, type Variant } from '@mydexpogo/shared';
 import { Link } from 'react-router';
-import type { DatasetIndex } from '../lib/dataset.js';
+import { entryGenders, entryVariant, genderSymbol, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCreateList, useLists, useUpsertEntries } from '../lib/lists.js';
 import { selection } from '../lib/selection.js';
@@ -29,16 +29,28 @@ export function groupVariants(variants: Variant[]): VariantGroup[] {
 
 interface Option {
   id: string;
+  /** Gender-neutral key: the gender is part of the entry. */
+  key: string;
+  gender: EntryGender;
+  /** Picture to show: the female one when the Pokémon looks different. */
   variant: Variant;
   shiny: boolean;
 }
 
-/** Every version collectors count separately: male / female x normal / shiny. */
-function optionsOf(group: VariantGroup): Option[] {
-  return group.variants.flatMap((variant) => [
-    { id: `${variant.key}:0`, variant, shiny: false },
-    ...(variant.hasShiny ? [{ id: `${variant.key}:1`, variant, shiny: true }] : []),
-  ]);
+/**
+ * Every version collectors count separately: each gender the game master allows (any Pokémon, not only those that
+ * look different; a female-only costume only offers ♀) x normal / shiny.
+ */
+function optionsOf(idx: DatasetIndex, group: VariantGroup): Option[] {
+  const base = group.variants.find((v) => v.gender !== 'f') ?? group.variants[0]!;
+  const key = neutralKey(base.key);
+  return entryGenders(idx, key).flatMap((gender) => {
+    const variant = entryVariant(idx, key, gender) ?? base;
+    return [
+      { id: `${key}:${gender}:0`, key, gender, variant, shiny: false },
+      ...(base.hasShiny ? [{ id: `${key}:${gender}:1`, key, gender, variant, shiny: true }] : []),
+    ];
+  });
 }
 
 /** Picks the versions (gender x shiny), an optional trait, then one or more lists, and adds one entry per version to each. */
@@ -56,17 +68,19 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
   const [tags, setTags] = useState<Set<EntryTag>>(new Set(['']));
   /** Specific backgrounds picked under the "special background" trait; empty = any background. */
   const [bgs, setBgs] = useState<Set<string>>(new Set());
-  const options = group ? optionsOf(group) : [];
+  const options = group ? optionsOf(idx, group) : [];
+  const twoGenders = new Set(options.map((o) => o.gender)).size > 1;
   const availableBgs = [...new Set((group?.variants ?? []).flatMap((v) => v.backgrounds ?? []))].map((id) => idx.ds.backgrounds?.[id]).filter((b): b is NonNullable<typeof b> => !!b);
 
   useEffect(() => {
     if (!group) return;
-    const opts = optionsOf(group);
-    const first = opts.find((o) => o.shiny === initialShiny) ?? opts[0];
-    setPicked(new Set(first ? [first.id] : []));
+    // Default: every gender, in the normal or shiny look the page was showing.
+    const opts = optionsOf(idx, group);
+    const look = opts.filter((o) => o.shiny === initialShiny);
+    setPicked(new Set((look.length ? look : opts.filter((o) => !o.shiny)).map((o) => o.id)));
     setTags(new Set(['']));
     setBgs(new Set());
-  }, [group, initialShiny]);
+  }, [group, initialShiny, idx]);
 
   /** Effective tags: "background" expands to one tag per picked specific background. */
   const effectiveTags = (): EntryTag[] =>
@@ -82,8 +96,8 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
     });
   const presets: { label: string; ids: string[] }[] = options.length > 1
     ? [
-        { label: group && group.variants.length > 1 ? `${t.normal} ♂♀` : t.normal, ids: options.filter((o) => !o.shiny).map((o) => o.id) },
-        { label: group && group.variants.length > 1 ? `${t.shiny} ♂♀` : t.shiny, ids: options.filter((o) => o.shiny).map((o) => o.id) },
+        { label: twoGenders ? `${t.normal} ♂♀` : t.normal, ids: options.filter((o) => !o.shiny).map((o) => o.id) },
+        { label: twoGenders ? `${t.shiny} ♂♀` : t.shiny, ids: options.filter((o) => o.shiny).map((o) => o.id) },
         { label: t.filter_all, ids: options.map((o) => o.id) },
       ].filter((p) => p.ids.length > 0)
     : [];
@@ -98,7 +112,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
       const r = await create.mutateAsync({ name: newName.trim() });
       ids.push(r.list.id);
     }
-    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag, done: false })));
+    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag, done: false })));
     await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     setSelected(new Set());
@@ -108,13 +122,13 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
 
   const toSelection = () => {
     if (chosen.length === 0) return;
-    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.variant.key, shiny: o.shiny, tag })));
+    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag })));
     selection.add(entries);
     toast(t.added_to_selection(entries.length));
     onClose();
   };
 
-  const optionLabel = (o: Option) => [o.variant.gender === 'f' ? '♀' : o.variant.gender === 'm' ? '♂' : null, o.shiny ? t.shiny : t.normal].filter(Boolean).join(' ');
+  const optionLabel = (o: Option) => [genderSymbol(o.gender), o.shiny ? t.shiny : t.normal].filter(Boolean).join(' ');
 
   return (
     <Sheet open={!!group} onClose={onClose} title={t.add_to_list}>
@@ -125,6 +139,10 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
             <span className="text-sm text-ink-2">{localized(group.label, lang) || t.normal}</span>
           </div>
           <p className="mb-1.5 text-xs font-medium text-ink-3">{t.which_versions}</p>
+          {group.variants[0]!.gendersGuessed && twoGenders && <p className="mb-1.5 text-xs text-ink-3">{t.genders_unconfirmed}</p>}
+          {options.length > 0 && options.every((o) => o.gender === options[0]!.gender) && options[0]!.gender && (
+            <p className="mb-1.5 text-xs text-ink-2">{options[0]!.gender === 'f' ? t.female_only : t.male_only}</p>
+          )}
           {presets.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {presets.map((p) => {
@@ -145,6 +163,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
                   key={o.id}
                   type="button"
                   aria-pressed={on}
+                  aria-label={optionLabel(o)}
                   onClick={() => setPicked((p) => { const n = new Set(p); on ? n.delete(o.id) : n.add(o.id); return n; })}
                   className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition ${on ? 'border-go bg-go-soft' : 'border-line text-ink-2'}`}
                 >

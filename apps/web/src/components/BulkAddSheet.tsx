@@ -1,3 +1,4 @@
+import { neutralKey, type EntryGender } from '@mydexpogo/shared';
 import { useState } from 'react';
 import { ENTRY_TAGS, type EntryTag } from '@mydexpogo/shared';
 import type { VariantGroup } from './AddToList.js';
@@ -23,14 +24,17 @@ export function BulkAddSheet({ open, groups, gender, onClose, onDone }: { open: 
     });
 
   const entries = () => {
-    const out: { variantKey: string; shiny: boolean; tag: EntryTag }[] = [];
+    const out: { variantKey: string; gender: EntryGender; shiny: boolean; tag: EntryTag }[] = [];
     for (const g of groups) {
-      const vs = gender === 'all' ? g.variants : [g.variants.find((v) => v.gender === gender) ?? g.variants[0]!];
-      for (const v of vs) {
+      const v = g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!;
+      const possible: EntryGender[] = v.genders?.length === 0 ? [''] : (v.genders ?? ['m', 'f']);
+      // The gender filter only keeps what exists: a female-only costume gets no male entry.
+      const genders = gender === 'all' ? possible : possible.filter((x) => x === gender || x === '');
+      for (const sex of genders) {
         const shinies = versions === 'normal' ? [false] : versions === 'shiny' ? [true] : [false, true];
         for (const shiny of shinies) {
           if (shiny && !v.hasShiny) continue;
-          for (const tag of tags) out.push({ variantKey: v.key, shiny, tag });
+          for (const tag of tags) out.push({ variantKey: neutralKey(v.key), gender: sex, shiny, tag });
         }
       }
     }

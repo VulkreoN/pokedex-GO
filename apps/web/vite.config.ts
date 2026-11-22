@@ -41,9 +41,11 @@ export default defineConfig({
             options: { cacheName: 'leekduck', expiration: { maxEntries: 1000, maxAgeSeconds: 14 * 86400 }, cacheableResponse: { statuses: [0, 200] } },
           },
           {
+            // Network first: a manager's correction shows on the next page load (the ETag makes it a cheap 304);
+            // the cached copy keeps the app working offline or on a slow network.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/data/') && !url.pathname.endsWith('/status'),
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'dataset', expiration: { maxEntries: 4 } },
+            handler: 'NetworkFirst',
+            options: { cacheName: 'dataset', networkTimeoutSeconds: 4, expiration: { maxEntries: 4 } },
           },
           {
             urlPattern: ({ url }) => url.hostname === 'raw.githubusercontent.com' || (url.hostname === 'trade.pokemongopro.com' && url.pathname.startsWith('/assets/')),

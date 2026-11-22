@@ -33,3 +33,8 @@ export function parseVariantKey(key: string): VariantKeyParts | null {
 export function isValidVariantKey(key: string): boolean {
   return KEY_RE.test(key) && key.length <= 80;
 }
+
+/** "25.fX.g2" -> "25.fX": list entries keep the gender apart from the key. */
+export function neutralKey(key: string): string {
+  return key.endsWith('.g2') ? key.slice(0, -3) : key;
+}

@@ -15,13 +15,12 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       .filter((e) => !onlyMissing || !e.done)
       .flatMap((e) => {
         const v = idx.variantByKey.get(e.variantKey);
-        const sp = v && idx.speciesByDex.get(v.dex);
-        return v && sp ? [targetFromVariant(v, e.shiny, sp.genderDiff, e.tag)] : [];
+        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag)] : [];
       });
     return buildSearchStrings(targets);
   }, [entries, idx, onlyMissing]);
 
-  const names: Record<string, string> = { shiny: t.shiny, costume: t.filter_costumes, female: t.female, gigantamax: 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background, shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs };
+  const names: Record<string, string> = { shiny: t.shiny, costume: t.filter_costumes, female: t.female, male: t.male, gigantamax: 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background, shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs };
   const label = (mods: string[]) => (mods.length ? mods.map((m) => names[m] ?? m).join(' + ') : t.filter_all);
 
   return (
@@ -36,7 +35,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
           <li key={s.text} className="rounded-card border border-line bg-paper p-3">
             <div className="mb-1 flex items-center justify-between gap-2 text-sm">
               <span className="font-semibold">
-                {label(s.modifiers)}
+                {(s.parts ? s.parts.map((p) => `${label(p.modifiers)} (${p.count})`).join(' + ') : label(s.modifiers))}
                 {s.batches > 1 && <span className="text-ink-3"> {s.batch}/{s.batches}</span>}
               </span>
               <span className="tnum text-ink-3">{s.count}</span>

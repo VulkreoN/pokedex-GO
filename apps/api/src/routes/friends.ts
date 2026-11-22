@@ -126,7 +126,10 @@ export const friendRoutes = new Hono<AuthEnv>()
     const [friend] = await db.select().from(schema.users).where(eq(schema.users.id, other)).limit(1);
     if (!friend) return c.json({ error: 'not_found' }, 404);
     const lists = await listSummaries(and(eq(schema.lists.ownerId, other), inArray(schema.lists.visibility, ['friends', 'link']))!);
-    return c.json({ friend: pub(friend), lists });
+    const unfollowed = new Set(
+      (await db.select({ id: schema.listUnfollows.listId }).from(schema.listUnfollows).where(eq(schema.listUnfollows.userId, me.id))).map((r) => r.id),
+    );
+    return c.json({ friend: pub(friend), lists: lists.map((l) => ({ ...l, following: !unfollowed.has(l.id) })) });
   });
 
 async function acceptRequest(requestId: string, fromId: string, toId: string) {
