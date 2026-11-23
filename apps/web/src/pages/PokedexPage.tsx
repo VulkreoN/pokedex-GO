@@ -9,6 +9,8 @@ import { Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js
 import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
 import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
+import { ManagerSheet } from '../components/ManagerSheet.js';
+import { useMe } from '../lib/auth.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 /** Appeared in the last 45 days. */
@@ -25,6 +27,8 @@ export function PokedexPage() {
   const [query, setQuery] = useState('');
   const [kinds, setKinds] = useState<Set<VariantKind>>(ALL_KINDS);
   const [onlyDatamined, setOnlyDatamined] = useState(false);
+  /** The other way round: only what is in the game. */
+  const [hideDatamined, setHideDatamined] = useState(false);
   const [gen, setGen] = useState(0);
   const [shiny, setShiny] = useState(false);
   const [gender, setGender] = useState<GenderFilter>('all');
@@ -33,6 +37,10 @@ export function PokedexPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
+  // Managers correct a variant from any card, search results included, as on the species page.
+  const me = useMe();
+  const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
+  const [managing, setManaging] = useState<VariantGroup | null>(null);
   /** PvP mode: rank 1 IVs in Great and Ultra League on every card. Remembered per device. */
   const [pvpMode, setPvpModeState] = useState(() => {
     try {
@@ -53,8 +61,8 @@ export function PokedexPage() {
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
   const allKinds = kinds.size === KINDS.length;
   const exploded = forceExploded || !allKinds || onlyDatamined || q !== '' || multi;
-  const activeCount = (allKinds ? 0 : 1) + (onlyDatamined ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0);
-  const shown = (v: Variant) => kinds.has(v.kind) && (!onlyDatamined || !!v.datamined);
+  const activeCount = (allKinds ? 0 : 1) + (onlyDatamined ? 1 : 0) + (hideDatamined ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0);
+  const shown = (v: Variant) => kinds.has(v.kind) && (!onlyDatamined || !!v.datamined) && (!hideDatamined || !v.datamined);
   /** The last kind left on cannot be switched off: the Pokédex is never empty by construction. */
   const toggleKind = (k: VariantKind) =>
     setKinds((prev) => {
@@ -72,16 +80,24 @@ export function PokedexPage() {
     return on.length <= off.length ? t.kinds_only(on.map((k, i) => (i ? kindLc(k) : kindName(k))).join(', ')) : t.kinds_without(off.map((k) => kindLc(k)).join(', '));
   };
 
+  /** Costume and form names per species, so "sorcière" finds the witch hats. */
+  const labelText = useMemo(() => {
+    const idx = dataset.data;
+    const out = new Map<number, string>();
+    if (!idx) return out;
+    for (const [dex, vs] of idx.variantsByDex) out.set(dex, normalize(vs.map((v) => `${v.label?.en ?? ''} ${v.label?.fr ?? ''}`).join(' ')));
+    return out;
+  }, [dataset.data]);
   const rows = useMemo(() => {
     const idx = dataset.data;
     if (!idx) return [];
     return idx.ds.species.filter((s) => {
       if (gen && s.gen !== gen) return false;
-      if (q && !q.split(/\s+/).filter(Boolean).some((w) => matchesQuery(idx, s.dex, w))) return false;
-      if (allKinds && !onlyDatamined) return true;
+      if (q && !q.split(/\s+/).filter(Boolean).some((w) => matchesQuery(idx, s.dex, w) || (!/^\d+$/.test(w) && (labelText.get(s.dex) ?? '').includes(w)))) return false;
+      if (allKinds && !onlyDatamined && !hideDatamined) return true;
       return (idx.variantsByDex.get(s.dex) ?? []).some(shown);
     });
-  }, [dataset.data, q, kinds, onlyDatamined, gen]);
+  }, [dataset.data, q, kinds, onlyDatamined, hideDatamined, gen, labelText]);
 
   /** Newest first: a species ranks by the most recent of its variants. */
   const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
@@ -110,7 +126,7 @@ export function PokedexPage() {
     }
     if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
     return out;
-  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, q, gender, sort]);
+  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, q, gender, sort]);
 
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
@@ -121,6 +137,7 @@ export function PokedexPage() {
   const reset = () => {
     setKinds(ALL_KINDS);
     setOnlyDatamined(false);
+    setHideDatamined(false);
     setGen(0);
     setShiny(false);
     setGender('all');
@@ -166,6 +183,7 @@ export function PokedexPage() {
             <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
               {!allKinds && !multi && <Chip active onClick={() => setKinds(ALL_KINDS)}>{kindsSummary()} ✕</Chip>}
               {onlyDatamined && <Chip active onClick={() => setOnlyDatamined(false)}>{t.filter_datamined} ✕</Chip>}
+              {hideDatamined && <Chip active onClick={() => setHideDatamined(false)}>{t.hide_datamined} ✕</Chip>}
               {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
               {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
               {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
@@ -223,6 +241,7 @@ export function PokedexPage() {
                       onPick={(p) => setTicked((m) => new Map(m).set(id, p))}
                       showPvp={pvpMode}
                       onAdd={(g) => (multi ? toggleTick(id, g) : setAdding(g))}
+                      onManage={isManager && !multi ? setManaging : undefined}
                     />
                   </li>
                 ))}
@@ -284,7 +303,8 @@ export function PokedexPage() {
               ))}
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <Chip active={onlyDatamined} onClick={() => setOnlyDatamined((v) => !v)}>{t.only_datamined}</Chip>
+              <Chip active={onlyDatamined} onClick={() => { setOnlyDatamined((v) => !v); setHideDatamined(false); }}>{t.only_datamined}</Chip>
+              <Chip active={hideDatamined} onClick={() => { setHideDatamined((v) => !v); setOnlyDatamined(false); }}>{t.hide_datamined}</Chip>
             </div>
           </div>
           <div>
@@ -325,6 +345,7 @@ export function PokedexPage() {
       </Sheet>
 
       {dataset.data && <AddToListSheet idx={dataset.data} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />}
+      {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
       <BulkAddSheet
         open={bulkOpen}
         picks={[...ticked.values()]}

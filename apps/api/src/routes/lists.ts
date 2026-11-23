@@ -53,7 +53,8 @@ export async function listSummaries(where: SQL): Promise<ListSummary[]> {
     .from(schema.lists)
     .innerJoin(schema.users, eq(schema.users.id, schema.lists.ownerId))
     .where(where)
-    .orderBy(desc(schema.lists.updatedAt));
+    // The owner's order, which friends see too.
+    .orderBy(schema.lists.position, desc(schema.lists.updatedAt));
   return rows.map((r) => toSummary(r.list, r.ownerName, r.entryCount, r.doneCount));
 }
 
@@ -127,11 +128,17 @@ async function touch(id: string) {
   await db.update(schema.lists).set({ updatedAt: new Date() }).where(eq(schema.lists.id, id));
 }
 
+/** A new collection goes on top of its owner's. */
+async function topPosition(ownerId: string): Promise<number> {
+  const [r] = await db.select({ min: sql<number>`coalesce(min(${schema.lists.position}), 1)`.mapWith(Number) }).from(schema.lists).where(eq(schema.lists.ownerId, ownerId));
+  return (r?.min ?? 1) - 1;
+}
+
 /** Copies a list (entries reset to "not done") into the viewer's account. */
 async function copyList(source: typeof schema.lists.$inferSelect, owner: AuthUser) {
   const id = newId();
   await db.transaction(async (tx) => {
-    await tx.insert(schema.lists).values({ id, ownerId: owner.id, name: source.name.slice(0, 60), description: source.description, visibility: 'friends' });
+    await tx.insert(schema.lists).values({ id, ownerId: owner.id, name: source.name.slice(0, 60), description: source.description, visibility: 'friends', position: await topPosition(owner.id) });
     const entries = await tx.select().from(schema.listEntries).where(eq(schema.listEntries.listId, source.id));
     if (entries.length) {
       await tx.insert(schema.listEntries).values(entries.map((e) => ({ listId: id, variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag, done: false, note: null, position: e.position })));
@@ -150,13 +157,39 @@ export const listRoutes = new Hono<AuthEnv>()
     const ids = await friendIdsOf(me.id);
     if (!ids.length) return c.json({ lists: [] });
     const unfollowed = db.select({ id: schema.listUnfollows.listId }).from(schema.listUnfollows).where(eq(schema.listUnfollows.userId, me.id));
-    return c.json({ lists: await listSummaries(and(inArray(schema.lists.ownerId, ids), sql`${schema.lists.visibility} <> 'private'`, sql`${schema.lists.id} not in ${unfollowed}`)!) });
+    const lists = await listSummaries(and(inArray(schema.lists.ownerId, ids), sql`${schema.lists.visibility} <> 'private'`, sql`${schema.lists.id} not in ${unfollowed}`)!);
+    // Pinned collections and pinned friends come first (the page groups by friend).
+    const favLists = new Set((await db.select({ id: schema.listFavorites.listId }).from(schema.listFavorites).where(eq(schema.listFavorites.userId, me.id))).map((r) => r.id));
+    const favFriends = new Set(
+      (await db.select({ id: schema.friendships.friendId }).from(schema.friendships).where(and(eq(schema.friendships.userId, me.id), eq(schema.friendships.favorite, true)))).map((r) => r.id),
+    );
+    return c.json({ lists: lists.map((l) => ({ ...l, favorite: favLists.has(l.id), ownerFavorite: favFriends.has(l.ownerId) })) });
+  })
+  /** My collections in the order I want them (friends see the same order). */
+  .put('/order', zValidator('json', z.object({ ids: z.array(z.string()).min(1).max(500) })), async (c) => {
+    const me = c.get('user');
+    const { ids } = c.req.valid('json');
+    await db.transaction(async (tx) => {
+      for (const [i, id] of ids.entries()) await tx.update(schema.lists).set({ position: i + 1 }).where(and(eq(schema.lists.id, id), eq(schema.lists.ownerId, me.id)));
+    });
+    const friends = await friendIdsOf(me.id);
+    hub.emit([me.id, ...friends], { type: 'list', listId: ids[0]!, ownerId: me.id });
+    return c.json({ lists: await listSummaries(eq(schema.lists.ownerId, me.id)) });
+  })
+  /** Pin a friend's collection to the top, or unpin it. */
+  .put('/:id/favorite', zValidator('json', z.object({ on: z.boolean() })), async (c) => {
+    const me = c.get('user');
+    const list = await getList(c.req.param('id'));
+    if (!list || (await accessOf(list, me)) !== 'friend') return c.json({ error: 'not_found' }, 404);
+    if (c.req.valid('json').on) await db.insert(schema.listFavorites).values({ userId: me.id, listId: list.id }).onConflictDoNothing();
+    else await db.delete(schema.listFavorites).where(and(eq(schema.listFavorites.userId, me.id), eq(schema.listFavorites.listId, list.id)));
+    return c.json({ ok: true });
   })
   .post('/', zValidator('json', listBody), async (c) => {
     const me = c.get('user');
     const body = c.req.valid('json');
     const id = newId();
-    await db.insert(schema.lists).values({ id, ownerId: me.id, name: body.name, description: body.description ?? null, visibility: body.visibility ?? 'friends' });
+    await db.insert(schema.lists).values({ id, ownerId: me.id, name: body.name, description: body.description ?? null, visibility: body.visibility ?? 'friends', position: await topPosition(me.id) });
     await recordListEvent(id, me.id, 'created');
     return c.json({ list: await listDetail(id, true, me.id) }, 201);
   })

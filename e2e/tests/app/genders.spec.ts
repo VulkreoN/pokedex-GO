@@ -166,11 +166,13 @@ test('search strings use the game language: mâle / femelle in a French game', a
   await expect(sheet.locator('code')).toHaveCount(1);
   await expect(code).not.toContainText('!hisui'); // Voltorb wants Hisui: a "!hisui,100" block would hide it in game
   await expect(sheet.getByText(/Montre aussi : Caninos de Hisui/)).toBeVisible();
-  await expect(code).toHaveText(/^!échangé&!4\*&!chromatique&!costume&!obscur&!purifié&!chanceux&1,58,72,83,100&/); // trades for luckies
+  // By default only what cannot be traded for a lucky is left out; the rest is each player's choice.
+  await expect(code).toHaveText(/^!échangé&!chanceux&/);
+  await expect(code).not.toContainText('!obscur');
   await sheet.getByRole('button', { name: 'Échangés' }).click(); // can be switched off
-  await expect(code).toHaveText(/^!4\*&/);
-  await sheet.getByRole('button', { name: 'Échangés' }).click();
-  await expect(code).toContainText('!costume');
+  await expect(code).not.toContainText('!échangé');
+  await sheet.getByRole('button', { name: 'Obscurs' }).click(); // and others switched on
+  await expect(code).toContainText('!obscur');
   await sheet.getByRole('button', { name: 'English' }).click();
   await expect(code).toContainText('female');
   await sheet.getByRole('button', { name: 'Français' }).click();

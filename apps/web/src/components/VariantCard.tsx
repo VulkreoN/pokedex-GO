@@ -23,6 +23,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
   const { lang } = useLang();
   const v = variantForGender(group, gender);
   const shinyMissing = shiny && !v.hasShiny;
+  const shinyNotOut = shiny && v.hasShiny && v.shinyReleased === false;
   const datamined = group.variants.some((x) => x.datamined);
   const label = localized(group.label, lang);
   return (
@@ -54,6 +55,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
           {isRecent(v.firstSeen) && <Badge tone="grass">{t.new_badge}</Badge>}
           {datamined && <Badge tone="datamined">{t.datamined}</Badge>}
           {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
+          {shinyNotOut && <Badge tone="datamined">{t.shiny_not_out}</Badge>}
           {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
           {v.noMega && <Badge tone="muted">{t.no_mega}</Badge>}
           {v.backgrounds?.length ? <Badge tone="muted">{t.backgrounds_count(v.backgrounds.length)}</Badge> : null}

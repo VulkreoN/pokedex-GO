@@ -6,7 +6,7 @@ export type EntryInput = Omit<ListEntry, 'note' | 'gender'> & { gender?: EntryGe
 import { api } from './api.js';
 
 export type ListAccess = 'owner' | 'friend' | 'link';
-export type Friend = PublicUser & { since: string };
+export type Friend = PublicUser & { since: string; favorite?: boolean };
 
 export const useLists = () => useQuery({ queryKey: ['lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists').then((r) => r.lists) });
 
@@ -82,4 +82,24 @@ export const useRespondFriendRequest = () =>
     (vars: { id: string; action: 'accept' | 'decline' }) => api<{ ok: true }>(`/friends/requests/${vars.id}/${vars.action}`, { method: 'POST' }),
     () => [['friends'], ['friend-requests']],
   );
+/** My collections in a new order: shown at once, saved behind. */
+export function useReorderLists() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api<{ lists: ListSummary[] }>('/lists/order', { method: 'PUT', body: { ids } }),
+    onMutate: (ids) => {
+      const before = qc.getQueryData<ListSummary[]>(['lists']);
+      if (before) qc.setQueryData(['lists'], ids.map((id) => before.find((l) => l.id === id)).filter(Boolean));
+      return { before };
+    },
+    onError: (_e, _ids, ctx) => ctx?.before && qc.setQueryData(['lists'], ctx.before),
+    onSuccess: (r) => qc.setQueryData(['lists'], r.lists),
+  });
+}
+
+export const usePinFriend = () =>
+  useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/friends/${v.id}/favorite`, { method: 'PUT', body: { on: v.on } }), () => [['friends'], ['friends-lists']]);
+export const usePinList = () =>
+  useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/lists/${v.id}/favorite`, { method: 'PUT', body: { on: v.on } }), () => [['friends-lists']]);
+
 export const useRemoveFriend = () => useListMutation((id: string) => api<{ ok: true }>(`/friends/${id}`, { method: 'DELETE' }), () => [['friends']]);

@@ -54,6 +54,8 @@ export interface Variant {
   /** Absolute shiny URL for fallback sources; omitted when derivable from img. */
   shinyImg?: string;
   hasShiny: boolean;
+  /** false: a shiny picture exists but the shiny is not in the game yet (species shiny list, or a manager). */
+  shinyReleased?: boolean;
   /** Found in datamined assets but not in the game master or costume list yet. */
   datamined: boolean;
   inGameMaster: boolean;
@@ -175,6 +177,9 @@ export interface ListSummary {
   shareToken: string | null;
   /** Friend's list only: shown in my "Friends' lists" (followed by default). */
   following?: boolean;
+  /** Friends' collections: I pinned this one / its owner. */
+  favorite?: boolean;
+  ownerFavorite?: boolean;
 }
 
 /** A friend saying "I have this one" on a list entry. */

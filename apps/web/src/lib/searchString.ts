@@ -19,17 +19,20 @@ export function saveGameLang(l: GameLang) {
   } catch {}
 }
 
-/** Optional exclusions, remembered per device; all on by default. */
+/** On by default: what cannot be traded for a lucky. The rest (shiny, shadow...) is each player's choice. */
+export const DEFAULT_EXCLUSIONS = ['traded', 'lucky'];
+/** Saved per device. A new key: choices saved before also held shiny and costume, then forced on. */
+const EXCLUDE_KEY = 'searchExclude2';
 export function savedExclusions(): string[] {
   try {
-    const saved = JSON.parse(localStorage.getItem('searchExclude') ?? 'null') as string[] | null;
+    const saved = JSON.parse(localStorage.getItem(EXCLUDE_KEY) ?? 'null') as string[] | null;
     if (Array.isArray(saved)) return saved;
   } catch {}
-  return [...TRADE_EXCLUSIONS];
+  return [...DEFAULT_EXCLUSIONS];
 }
 export function saveExclusions(list: string[]) {
   try {
-    localStorage.setItem('searchExclude', JSON.stringify(list));
+    localStorage.setItem(EXCLUDE_KEY, JSON.stringify(list));
   } catch {}
 }
 
@@ -57,6 +60,9 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
 
 /** The missing Pokémon's search with this device's settings, for exports. */
 export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], appLang: string): string | null {
-  const { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: savedExclusions() });
+  const exclude = savedExclusions();
+  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude });
+  // A collection of shinies or costumes only would get no search at all with those excluded: keep them then.
+  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume') }));
   return strings.length ? strings.map((s) => s.text).join('\n') : null;
 }

@@ -614,6 +614,11 @@ describe('admin panel', () => {
     expect(last).toMatchObject({ actor: admin.user.username, undoable: true, data: { before: { released: true }, after: { released: false } } });
     // What players saw before and after, for the journal to say what changed.
     expect(last.data).toMatchObject({ was: { released: true }, now: { released: false } });
+    // A shiny that is not out yet and a costume that cannot evolve, set by hand, reach every player.
+    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: true, shinyReleased: false, noEvolve: true });
+    const v = (await anon.get('/data/pokedex.json')).body.variants.find((x: any) => x.key === key);
+    expect(v).toMatchObject({ shinyReleased: false, noEvolve: true, datamined: false });
+    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: false });
     expect((await admin.post(`/admin/audit/${last.id}/undo`)).status).toBe(200);
     const o = (await anon.get('/overrides')).body.overrides.find((x: any) => x.variantKey === key);
     expect(o.released).toBe(true);

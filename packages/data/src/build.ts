@@ -42,7 +42,7 @@ export interface BuildOptions {
 }
 
 /** What a manager can change from the web app, keyed by variant key. */
-export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null }>;
+export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null }>;
 
 export interface BuildResult {
   dataset: Dataset;
@@ -408,6 +408,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     const s = shinyList?.[String(sp.dex)];
     sp.shinyReleased = s ? Object.values(s).some((x) => x === true) : null;
   }
+  // The shiny list only knows species: when a species' shiny is not out, none of its versions' is.
+  for (const v of variants) if (speciesByDex.get(v.dex)?.shinyReleased === false && v.hasShiny) v.shinyReleased = false;
   // Species release: PokeMiners ship pictures long before a Pokémon is in the game (Arceus...), so
   // "has a picture" is only the fallback. Baseline = pogoapi released list, plus species seen live
   // on Leek Duck (raids, eggs, research, events), plus file / manager overrides on the base key.
@@ -646,6 +648,10 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
         out.genders = m.genders;
         delete out.gendersGuessed;
       }
+      if (m.shinyReleased === true) delete out.shinyReleased;
+      else if (m.shinyReleased === false) out.shinyReleased = false;
+      if (m.noEvolve === true) out.noEvolve = true;
+      else if (m.noEvolve === false) delete out.noEvolve;
       return out;
     }),
   };

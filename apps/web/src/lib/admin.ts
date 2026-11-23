@@ -17,7 +17,7 @@ export interface DataStatus {
   sources: SourceFreshness[];
   feed?: { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number };
 }
-export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; updatedBy: string | null; updatedAt: string }
+export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean | null; noEvolve: boolean | null; updatedBy: string | null; updatedAt: string }
 
 export const useDataStatus = () => useQuery({ queryKey: ['data-status'], queryFn: () => api<DataStatus>('/data/status'), refetchInterval: (q) => (q.state.data?.running ? 5000 : false) });
 
@@ -27,8 +27,12 @@ export const useOverrides = (enabled: boolean) =>
 export function useSetOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null }) =>
-      api<{ ok: true }>(`/overrides/${vars.variantKey}`, { method: 'PUT', body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null } }),
+    // A save rewrites the whole correction: callers pass every field, the ones they did not touch included.
+    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null }) =>
+      api<{ ok: true }>(`/overrides/${vars.variantKey}`, {
+        method: 'PUT',
+        body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null, shinyReleased: vars.shinyReleased ?? null, noEvolve: vars.noEvolve ?? null },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['overrides'] });
       qc.invalidateQueries({ queryKey: ['dataset'] });

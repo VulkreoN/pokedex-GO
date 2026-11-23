@@ -91,9 +91,9 @@ class DataService {
 
   private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;
   /** What players see for a variant right now (corrections included), for the admin journal's before / after. */
-  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null } | null> {
+  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean } | null> {
     const v = (await this.variants())?.get(key);
-    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null } : null;
+    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve } : null;
   }
 
   /** Variants of the current dataset by key, managers' corrections included (null until a dataset is loaded). */
@@ -283,6 +283,8 @@ class DataService {
         released: r.released,
         label: r.labelEn ? { en: r.labelEn, ...(r.labelFr ? { fr: r.labelFr } : {}) } : null,
         genders: r.genders ?? null,
+        shinyReleased: r.shinyReleased,
+        noEvolve: r.noEvolve,
       };
     }
     this.overridesCache = manual;

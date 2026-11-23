@@ -129,14 +129,43 @@ test('a list shares as a picture, with its in-game search', async ({ browser }) 
   const sheet = page.locator('dialog[open]');
   await expect(sheet.getByRole('button', { name: 'Manquants seulement' })).toHaveAttribute('aria-pressed', 'true');
   await expect(sheet.getByText(/QR code pour la copier/)).toBeVisible();
-  // Desktop browsers cannot share files: the picture is downloaded.
-  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), sheet.getByRole('button', { name: 'Image' }).click()]);
+  // "Save" always downloads, on a computer too.
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), sheet.getByRole('button', { name: 'Enregistrer' }).click()]);
   expect(download.suggestedFilename()).toBe('pour-discord.png');
   const png = await readFile((await download.path())!);
   expect(png.subarray(1, 4).toString()).toBe('PNG');
   expect(png.readUInt32BE(16)).toBe(1080); // width
   expect(png.readUInt32BE(20)).toBeGreaterThan(1000); // header, two rows of cards, the search
   await expect(page.getByText('Image enregistrée')).toBeVisible();
+  await ctx.close();
+});
+
+test('a long list: every card in compact pictures, and a PDF even when the search is too long for a QR code', async ({ browser }) => {
+  const ctx = await browser.newContext({ acceptDownloads: true, extraHTTPHeaders: {} });
+  const page = await ctx.newPage();
+  await apiRegister(page.request, uniq('long'));
+  // Alternate genders over every species that has both: a search far past what a QR code holds.
+  const ds = await (await page.request.get('/api/data/pokedex.json')).json();
+  const both = (ds.variants as { key: string; kind: string; genders?: string[] }[]).filter((v) => v.kind === 'base' && v.genders?.length === 2);
+  const id = await apiCreateList(page.request, 'Longue', both.map((v, i) => `${v.key}:${i % 2 ? 'm' : 'f'}`));
+  await page.goto(`/lists/${id}`);
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('button', { name: 'Tout, en compact' }).click();
+  const downloads: string[] = [];
+  page.on('download', (d) => downloads.push(d.suggestedFilename()));
+  await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText(/^\d+ images enregistrées$/)).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => downloads.length).toBeGreaterThan(1);
+  expect(downloads[0]).toBe('longue-1.png');
+
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  const [pdf] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.getByRole('button', { name: 'Exporter en PDF' }).click()]);
+  const bytes = await readFile((await pdf.path())!);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+  // Pictures are shrunk: a few hundred Pokémon stay a reasonable file.
+  expect(bytes.length).toBeLessThan(40_000_000);
+  expect(bytes.toString('latin1')).toContain('Trop longue pour un QR code');
   await ctx.close();
 });
 

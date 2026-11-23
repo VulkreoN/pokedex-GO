@@ -53,7 +53,7 @@ test('a game search pasted into a collection adds what it shows', async ({ page 
   expect([...keys].sort()).toEqual(expect.arrayContaining(['1', '2', '3']));
 });
 
-test('shinies can be kept in the game string by unticking the exclusion', async ({ page }) => {
+test('shinies are in the game string by default, and can be left out', async ({ page }) => {
   await apiRegister(page.request);
   const list = (await (await page.request.post('/api/lists', { data: { name: 'Shinies' } })).json()).list;
   await page.request.put(`/api/lists/${list.id}/entries`, { data: { entries: [{ variantKey: '1', gender: 'm', shiny: true }, { variantKey: '4', gender: 'm', shiny: false }] } });
@@ -61,12 +61,12 @@ test('shinies can be kept in the game string by unticking the exclusion', async 
   await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
   const sheet = page.locator('dialog[open]');
   await sheet.getByRole('button', { name: 'Français' }).click();
+  // Only traded and lucky are left out by default: the shiny Bulbasaur is searched for.
+  await expect(sheet.getByRole('button', { name: 'Chromatiques', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  expect((await sheet.locator('code').allTextContents()).join('\n')).toMatch(/(^|[&,])chromatique/);
+  await sheet.getByRole('button', { name: 'Chromatiques', exact: true }).click();
   await expect(sheet.locator('code').first()).toContainText('!chromatique&');
   await expect(sheet.getByText(/Décoche « Chromatiques »/)).toBeVisible();
-  await sheet.getByRole('button', { name: 'Chromatiques', exact: true }).click();
-  const codes = (await sheet.locator('code').allTextContents()).join('\n');
-  expect(codes).toMatch(/(^|[&,])chromatique/);
-  expect(codes).not.toContain('!chromatique&!costume');
 });
 
 test('a collection sorts by Pokédex order, recently added or name, and remembers it', async ({ page }) => {
@@ -87,4 +87,17 @@ test('a collection sorts by Pokédex order, recently added or name, and remember
   expect(await names()).toEqual(['Bulbizarre', 'Pikachu', 'Salamèche']);
   await page.reload();
   await expect(page.getByRole('combobox', { name: 'Trier' })).toHaveValue('name');
+});
+
+test('collections can be put in any order', async ({ page }) => {
+  await apiRegister(page.request);
+  await apiCreateList(page.request, 'Première', ['1']);
+  await apiCreateList(page.request, 'Deuxième', ['4']);
+  await page.goto('/lists');
+  await expect(page.locator('main li').first()).toContainText('Deuxième'); // the newest on top
+  await page.getByRole('button', { name: 'Réorganiser' }).click();
+  await page.getByRole('button', { name: 'Descendre' }).first().click();
+  await expect(page.locator('main li').first()).toContainText('Première');
+  await page.reload();
+  await expect(page.locator('main li').first()).toContainText('Première');
 });

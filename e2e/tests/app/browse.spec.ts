@@ -444,3 +444,25 @@ test('multi-select: the sheet switches a version on or off for every ticked card
   await sheet.getByRole('button', { name: '♂ Mâle', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Mettre 4 entrées dans la sélection' })).toBeVisible();
 });
+
+test('search finds costumes by their name, and unreleased forms can be hidden', async ({ page }) => {
+  const ds = await (await page.request.get('/api/data/pokedex.json')).json();
+  const costume = ds.variants.find((v: any) => v.kind === 'costume' && !v.datamined && v.label?.fr && /^[A-Za-zÀ-ÿ ]{6,}$/.test(v.label.fr));
+  const word = costume.label.fr.split(' ').sort((a: string, b: string) => b.length - a.length)[0];
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill(word);
+  await expect(page.getByRole('button', { name: new RegExp(`^Ajouter .*${word}`, 'i') }).first()).toBeVisible();
+
+  // Hiding what is not out yet.
+  await page.getByPlaceholder('Nom ou numéro').fill('');
+  const released = new Set(ds.species.filter((x: any) => x.released).map((x: any) => x.dex));
+  const unreleased = ds.variants.find((v: any) => v.datamined && v.label && !v.gender && released.has(v.dex));
+  const sp = ds.species.find((s: any) => s.dex === unreleased.dex);
+  await page.getByPlaceholder('Nom ou numéro').fill(String(sp.dex));
+  const card = page.getByRole('button', { name: `Ajouter ${sp.name.fr ?? sp.name.en} ${unreleased.label.fr ?? unreleased.label.en}`, exact: true });
+  await expect(card).toBeVisible();
+  await page.getByRole('button', { name: 'Filtres' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Masquer les non sortis' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: /^Voir / }).click();
+  await expect(card).toHaveCount(0);
+});

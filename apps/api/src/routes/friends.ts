@@ -30,12 +30,24 @@ export const friendRoutes = new Hono<AuthEnv>()
   .get('/', async (c) => {
     const me = c.get('user');
     const rows = await db
-      .select({ user: schema.users, since: schema.friendships.createdAt })
+      .select({ user: schema.users, since: schema.friendships.createdAt, favorite: schema.friendships.favorite })
       .from(schema.friendships)
       .innerJoin(schema.users, eq(schema.users.id, schema.friendships.friendId))
       .where(eq(schema.friendships.userId, me.id))
-      .orderBy(schema.users.username);
-    return c.json({ friends: rows.map((r) => ({ ...pub(r.user), since: r.since.toISOString() })) });
+      // Pinned friends first.
+      .orderBy(desc(schema.friendships.favorite), schema.users.username);
+    return c.json({ friends: rows.map((r) => ({ ...pub(r.user), since: r.since.toISOString(), favorite: r.favorite })) });
+  })
+  /** Pin a friend to the top of my friends (and of their collections), or unpin them. */
+  .put('/:id/favorite', zValidator('json', z.object({ on: z.boolean() })), async (c) => {
+    const me = c.get('user');
+    const r = await db
+      .update(schema.friendships)
+      .set({ favorite: c.req.valid('json').on })
+      .where(and(eq(schema.friendships.userId, me.id), eq(schema.friendships.friendId, c.req.param('id'))))
+      .returning();
+    if (!r.length) return c.json({ error: 'not_friends' }, 404);
+    return c.json({ ok: true });
   })
   .get('/requests', async (c) => {
     const me = c.get('user');

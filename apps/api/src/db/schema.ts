@@ -52,6 +52,8 @@ export const lists = pgTable(
     description: text('description'),
     visibility: text('visibility', { enum: ['private', 'friends', 'link'] }).notNull().default('friends'),
     shareToken: text('share_token'),
+    /** The owner's order, which friends see too (smallest first). */
+    position: integer('position').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -95,6 +97,8 @@ export const friendships = pgTable(
   {
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     friendId: text('friend_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** userId pinned this friend to the top of their friends. */
+    favorite: boolean('favorite').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.friendId] })],
@@ -109,6 +113,10 @@ export const variantOverrides = pgTable('variant_overrides', {
   labelFr: text('label_fr'),
   /** Genders the variant exists in, when the game master does not say (new costumes): ["m"], ["f"], ["m","f"] or [] */
   genders: jsonb('genders').$type<('m' | 'f')[]>(),
+  /** true = its shiny is in the game, false = not yet (the variant itself may be), null = automatic */
+  shinyReleased: boolean('shiny_released'),
+  /** true = this costume cannot evolve, false = it can, null = from the game master */
+  noEvolve: boolean('no_evolve'),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -247,6 +255,17 @@ export const pushSubscriptions = pgTable(
 /** Friends' lists are followed by default; a row here means "stop showing me this one". */
 export const listUnfollows = pgTable(
   'list_unfollows',
+  {
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    listId: text('list_id').notNull().references(() => lists.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.listId] })],
+);
+
+/** A friend's collection pinned to the top of "Friends' collections". */
+export const listFavorites = pgTable(
+  'list_favorites',
   {
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     listId: text('list_id').notNull().references(() => lists.id, { onDelete: 'cascade' }),

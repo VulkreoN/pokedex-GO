@@ -112,6 +112,34 @@ describe("friends' lists", () => {
     expect((await stranger.get('/lists/friends')).body.lists).toEqual([]);
   });
 
+  it('keeps the owner’s order for friends too, new collections on top', async () => {
+    const third = (await owner.post('/lists', { name: 'Troisième' })).body.list.id;
+    expect((await owner.get('/lists')).body.lists[0].id).toBe(third);
+    const order = [listId, third, privateId];
+    expect((await owner.put('/lists/order', { ids: order })).status).toBe(200);
+    expect((await owner.get('/lists')).body.lists.map((l: any) => l.id)).toEqual(order);
+    const seen = (await friend.get(`/friends/${owner.user.id}/lists`)).body.lists.map((l: any) => l.id);
+    expect(seen).toEqual([listId, third]);
+    // Someone else's collection cannot be moved.
+    await stranger.put('/lists/order', { ids: [third, listId] });
+    expect((await owner.get('/lists')).body.lists.map((l: any) => l.id)).toEqual(order);
+    await owner.del(`/lists/${third}`);
+  });
+
+  it('pins a friend and a friend’s collection to the top', async () => {
+    expect((await friend.put(`/friends/${owner.user.id}/favorite`, { on: true })).status).toBe(200);
+    expect((await friend.get('/friends')).body.friends.find((f: any) => f.id === owner.user.id).favorite).toBe(true);
+    expect((await friend.put(`/lists/${listId}/favorite`, { on: true })).status).toBe(200);
+    const mine = (await friend.get('/lists/friends')).body.lists.find((l: any) => l.id === listId);
+    expect(mine).toMatchObject({ favorite: true, ownerFavorite: true });
+    // Only friends can pin, and only collections they can see.
+    expect((await stranger.put(`/lists/${listId}/favorite`, { on: true })).status).toBe(404);
+    expect((await friend.put(`/lists/${privateId}/favorite`, { on: true })).status).toBe(404);
+    expect((await stranger.put(`/friends/${owner.user.id}/favorite`, { on: true })).status).toBe(404);
+    await friend.put(`/lists/${listId}/favorite`, { on: false });
+    expect((await friend.get('/lists/friends')).body.lists.find((l: any) => l.id === listId).favorite).toBe(false);
+  });
+
   it('pushes list changes live to friends', async () => {
     const live = await listen(friend);
     await owner.patch(`/lists/${listId}`, { description: 'live' });

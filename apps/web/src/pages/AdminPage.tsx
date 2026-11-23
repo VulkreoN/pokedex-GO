@@ -356,7 +356,7 @@ function describe(e: AuditEntry, t: ReturnType<typeof useT>, variant: (key: stri
   }
 }
 
-type Shown = { released?: boolean | null; label?: { en?: string; fr?: string } | null; genders?: string[] | null };
+type Shown = { released?: boolean | null; label?: { en?: string; fr?: string } | null; genders?: string[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null };
 
 /**
  * What a variant correction changed, one line per field: "Nom FR : « K 2026 A » → « Kanto 2026 A »".
@@ -377,6 +377,9 @@ function variantChanges(d: Record<string, any>, t: ReturnType<typeof useT>): str
     if (touched('label') && (from.label?.[l] ?? '') !== (to.label?.[l] ?? '')) out.push(`${t.change_name(l)} : ${name(from.label?.[l])} → ${name(to.label?.[l])}`);
   }
   if (touched('genders') && sexes(from.genders) !== sexes(to.genders)) out.push(`${t.change_genders} : ${sexes(from.genders)} → ${sexes(to.genders)}`);
+  const plain = (b: boolean | null | undefined) => (b === null || b === undefined ? t.change_auto : b ? t.change_yes_plain : t.change_no_plain);
+  if (touched('shinyReleased') && plain(from.shinyReleased) !== plain(to.shinyReleased)) out.push(`${t.shiny_status} : ${plain(from.shinyReleased)} → ${plain(to.shinyReleased)}`);
+  if (touched('noEvolve') && plain(from.noEvolve) !== plain(to.noEvolve)) out.push(`${t.no_evolve} : ${plain(from.noEvolve)} → ${plain(to.noEvolve)}`);
   return out;
 }
 

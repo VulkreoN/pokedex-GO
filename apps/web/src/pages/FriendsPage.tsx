@@ -6,7 +6,8 @@ import { Button, Empty, Progress, Spinner, TextField, TopBar } from '../componen
 import { ApiError, copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { useT, type T } from '../lib/i18n.js';
-import { useFriendLists, useFriendRequests, useFriends, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest } from '../lib/lists.js';
+import { PinButton } from './ListsPage.js';
+import { useFriendLists, useFriendRequests, useFriends, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest } from '../lib/lists.js';
 import { VisibilityIcon } from './ListsPage.js';
 import { FriendQr, QrScanSheet } from '../components/FriendQr.js';
 
@@ -45,6 +46,7 @@ export function FriendsPage() {
   const send = useSendFriendRequest();
   const respond = useRespondFriendRequest();
   const removeFriend = useRemoveFriend();
+  const pinFriend = usePinFriend();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
@@ -139,6 +141,7 @@ export function FriendsPage() {
           <ul className="space-y-2">
             {friends.data?.map((f) => (
               <li key={f.id} className="flex items-center gap-2 rounded-card border border-line p-2 pl-3">
+                <PinButton on={!!f.favorite} label={f.favorite ? t.unpin : t.pin} onClick={() => pinFriend.mutate({ id: f.id, on: !f.favorite })} className="-ml-1.5" />
                 <Link to={`/friends/${f.id}`} className="min-w-0 flex-1 py-2 font-semibold">{f.username}</Link>
                 <Button tone="ghost" className="min-h-9 px-3 text-sm" onClick={() => { if (confirm(`${t.remove_friend} ${f.username} ?`)) removeFriend.mutate(f.id); }}>{t.remove_friend}</Button>
               </li>

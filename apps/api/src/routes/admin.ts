@@ -185,7 +185,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     const was = await dataService.shownState(key);
     if (!before) await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     else {
-      const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, updatedBy: c.get('user').id, updatedAt: new Date() };
+      const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, shinyReleased: before.shinyReleased ?? null, noEvolve: before.noEvolve ?? null, updatedBy: c.get('user').id, updatedAt: new Date() };
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();

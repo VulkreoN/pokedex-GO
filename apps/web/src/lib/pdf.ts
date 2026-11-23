@@ -28,6 +28,28 @@ export async function toDataUrl(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * A picture redrawn small enough for a PDF cell. Game pictures are large: embedded as they are, a list of a few
+ * hundred Pokémon made a PDF of several hundred megabytes that desktop browsers failed to produce.
+ */
+async function shrink(dataUrl: string, size = 160): Promise<string | null> {
+  const img = await new Promise<HTMLImageElement | null>((ok) => {
+    const i = new Image();
+    i.onload = () => ok(i);
+    i.onerror = () => ok(null);
+    i.src = dataUrl;
+  });
+  if (!img) return null;
+  const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}
+
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
@@ -49,6 +71,7 @@ const pdfText = (s: string) => s.replace(/♂/g, '(m)').replace(/♀/g, '(f)').r
 export interface PdfLabels {
   export_search_title: string;
   export_search_hint: string;
+  export_search_no_qr: string;
   caught: string;
   missing: string;
   shiny: string;
@@ -78,7 +101,8 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     .filter((x): x is NonNullable<typeof x> => !!x);
   const pictures = await mapLimit(rows, 8, async ({ e, v }) => {
     const url = imageUrl(idx, v, e.shiny) ?? imageUrl(idx, v, false);
-    return url ? toDataUrl(url) : null;
+    const data = url ? await toDataUrl(url) : null;
+    return data ? shrink(data) : null;
   });
 
   const done = list.entries.filter((e) => e.done).length;
@@ -100,12 +124,12 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   // The in-game search for what is missing: selectable text, and a QR code for phones that cannot copy from a PDF.
   if (opts.search) {
     const qr = qrModules(opts.search);
-    const qrSize = 30;
+    const qrSize = qr ? 30 : 0;
     const textW = W - 2 * M - qrSize - 6;
     doc.setFont('courier', 'normal');
     doc.setFontSize(8.5);
     const lines = doc.splitTextToSize(pdfText(opts.search), textW - 6) as string[];
-    const boxH = Math.max(qrSize + 6, 13 + lines.length * 3.6);
+    const boxH = Math.max(qr ? qrSize + 6 : 0, 13 + lines.length * 3.6);
     doc.setFillColor(233, 244, 234);
     doc.roundedRect(M, y, W - 2 * M, boxH, 3, 3, 'F');
     doc.setFont('helvetica', 'bold');
@@ -115,18 +139,20 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 110, 120);
-    doc.text(pdfText(t.export_search_hint), M + 4, y + 10);
+    doc.text(pdfText(qr ? t.export_search_hint : t.export_search_no_qr), M + 4, y + 10);
     doc.setFont('courier', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(30, 45, 55);
     doc.text(lines, M + 4, y + 15);
-    const cell = qrSize / (qr.length + 2);
-    const qx = W - M - qrSize - 3;
-    const qy = y + 3;
-    doc.setFillColor(255, 255, 255);
-    doc.rect(qx, qy, qrSize, qrSize, 'F');
-    doc.setFillColor(20, 35, 43);
-    qr.forEach((row, r) => row.forEach((dark, c) => { if (dark) doc.rect(qx + (c + 1) * cell, qy + (r + 1) * cell, cell + 0.02, cell + 0.02, 'F'); }));
+    if (qr) {
+      const cell = qrSize / (qr.length + 2);
+      const qx = W - M - qrSize - 3;
+      const qy = y + 3;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(qx, qy, qrSize, qrSize, 'F');
+      doc.setFillColor(20, 35, 43);
+      qr.forEach((row, r) => row.forEach((dark, c) => { if (dark) doc.rect(qx + (c + 1) * cell, qy + (r + 1) * cell, cell + 0.02, cell + 0.02, 'F'); }));
+    }
     y += boxH + 5;
   }
   rows.forEach(({ c, e, v, sp }, i) => {
@@ -142,7 +168,7 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     if (pic) {
       if (e.done) doc.setGState(doc.GState({ opacity: 0.3 }));
       try {
-        doc.addImage(pic, 'PNG', cx - img / 2, y + 1, img, img);
+        doc.addImage(pic, 'PNG', cx - img / 2, y + 1, img, img, undefined, 'FAST');
       } catch {}
       if (e.done) doc.setGState(doc.GState({ opacity: 1 }));
     }
