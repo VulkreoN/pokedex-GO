@@ -296,6 +296,34 @@
     "WORMADAM_TRASH": {
       "en": "Trash Cloak",
       "fr": "Cape Déchet"
+    },
+    "774.fRED": {
+      "en": "Red Core",
+      "fr": "Noyau Rouge"
+    },
+    "774.fORANGE": {
+      "en": "Orange Core",
+      "fr": "Noyau Orange"
+    },
+    "774.fYELLOW": {
+      "en": "Yellow Core",
+      "fr": "Noyau Jaune"
+    },
+    "774.fGREEN": {
+      "en": "Green Core",
+      "fr": "Noyau Vert"
+    },
+    "774.fBLUE": {
+      "en": "Blue Core",
+      "fr": "Noyau Bleu"
+    },
+    "774.fINDIGO": {
+      "en": "Indigo Core",
+      "fr": "Noyau Indigo"
+    },
+    "774.fVIOLET": {
+      "en": "Violet Core",
+      "fr": "Noyau Violet"
     }
   },
   "status": {
@@ -399,6 +427,14 @@
     "800.fULTRA": "800",
     "890.fETERNAMAX": "890",
     "718.fCOMPLETE_TEN_PERCENT": "718.fCOMPLETE",
-    "718.fCOMPLETE_FIFTY_PERCENT": "718.fCOMPLETE"
+    "718.fCOMPLETE_FIFTY_PERCENT": "718.fCOMPLETE",
+    "774.fMETEOR_RED": "774.fRED",
+    "774.fMETEOR_ORANGE": "774.fORANGE",
+    "774.fMETEOR_YELLOW": "774.fYELLOW",
+    "774.fMETEOR_GREEN": "774.fGREEN",
+    "774.fMETEOR_BLUE": "774.fBLUE",
+    "774.fMETEOR_INDIGO": "774.fINDIGO",
+    "774.fMETEOR_VIOLET": "774.fVIOLET",
+    "774.fMETEOR": "774.fBLUE"
   }
 }

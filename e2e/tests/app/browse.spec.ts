@@ -398,7 +398,8 @@ test('a species the game only knows as forms has no extra "Normal" one (Poltchag
 test('battle-only forms are not in the collection (Mimikyu Busted, Morpeko Hangry, Cramorant Gulping)', async ({ request }) => {
   const ds = await (await request.get('/api/data/pokedex.json')).json();
   const keys = new Set(ds.variants.map((v: { key: string }) => v.key));
-  for (const gone of ['778.fBUSTED', '877.fHANGRY', '845.fGULPING', '845.fGORGING', '681.fBLADE', '555.fZEN']) expect(keys.has(gone), gone).toBe(false);
+  for (const gone of ['778.fBUSTED', '877.fHANGRY', '845.fGULPING', '845.fGORGING', '681.fBLADE', '555.fZEN', '774.fMETEOR', '774.fMETEOR_GREEN']) expect(keys.has(gone), gone).toBe(false);
+  expect(ds.variants.filter((v: { dex: number }) => v.dex === 774).map((v: { label: { fr: string } }) => v.label.fr).sort()).toEqual(['Noyau Bleu', 'Noyau Indigo', 'Noyau Jaune', 'Noyau Orange', 'Noyau Rouge', 'Noyau Vert', 'Noyau Violet']);
   for (const kept of ['778.fDISGUISED', '877.fFULL_BELLY', '845', '681.fSHIELD']) expect(keys.has(kept), kept).toBe(true);
   for (const dup of ['854', '855', '888', '889', '877', '982', '1012']) expect(keys.has(dup), dup).toBe(false);
   expect(ds.aliases['778.fBUSTED']).toBe('778.fDISGUISED');
