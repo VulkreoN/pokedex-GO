@@ -7,6 +7,7 @@ import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.j
 import { cardDone, cardMissing, cardsOf } from './cards.js';
 import { localized } from './i18n.js';
 import { qrModules } from './qr.js';
+import { drawGender } from './genderGlyph.js';
 import type { Lang } from '@mydexpogo/shared';
 
 export async function toDataUrl(url: string): Promise<string | null> {
@@ -170,22 +171,22 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
       doc.text(lines, cx, dy, { align: 'center' });
       dy += 3.5;
     }
-    // Genders: "M" / "F", struck through and green once caught (standard PDF fonts cannot draw ♂ ♀).
+    // Genders as drawn ♂ / ♀ (standard PDF fonts cannot write them), green with a tick once caught.
     const genders = c.members.filter((m) => m.gender);
     if (genders.length) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      const gap = 5;
+      const gap = 7;
       let gx = cx - ((genders.length - 1) * gap) / 2;
+      doc.setLineWidth(0.3);
+      doc.setLineCap('round');
       for (const m of genders) {
-        const label = m.gender === 'm' ? 'M' : 'F';
-        if (m.done) doc.setTextColor(60, 150, 90);
-        else doc.setTextColor(30, 45, 55);
-        doc.text(label, gx, dy, { align: 'center' });
+        if (m.done) doc.setDrawColor(60, 150, 90);
+        else doc.setDrawColor(30, 45, 55);
+        const pen = { circle: (x: number, y: number, r: number) => doc.circle(x, y, r, 'S'), line: (x1: number, y1: number, x2: number, y2: number) => doc.line(x1, y1, x2, y2) };
+        const gy = dy - 1.2;
+        drawGender(pen, m.gender as 'm' | 'f', m.done ? gx - 1 : gx, gy, 3.2);
         if (m.done) {
-          doc.setDrawColor(60, 150, 90);
-          doc.setLineWidth(0.4);
-          doc.line(gx - 1.6, dy - 1, gx + 1.6, dy - 1);
+          doc.line(gx + 1.3, gy, gx + 1.9, gy + 0.7);
+          doc.line(gx + 1.9, gy + 0.7, gx + 3, gy - 0.8);
         }
         gx += gap;
       }

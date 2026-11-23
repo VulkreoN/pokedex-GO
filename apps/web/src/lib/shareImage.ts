@@ -4,7 +4,8 @@
  */
 import type { Lang, ListDetail } from '@mydexpogo/shared';
 import { cardDone, cardMissing, cardsOf } from './cards.js';
-import { entryVariant, genderSymbol, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
+import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
+import { canvasPen, drawGender } from './genderGlyph.js';
 import { localized } from './i18n.js';
 import { mapLimit, toDataUrl } from './pdf.js';
 import { qrModules } from './qr.js';
@@ -214,9 +215,14 @@ export async function renderListImage(idx: DatasetIndex, list: ListDetail, lang:
         roundRect(ctx, px, y + CARD_H - ph - 14, pw, ph, ph / 2);
         ctx.fillStyle = m.done ? C.go : C.paper;
         ctx.fill();
-        ctx.fillStyle = m.done ? '#fff' : C.ink2;
-        ctx.font = `700 22px ${FONT}`;
-        ctx.fillText(genderSymbol(m.gender) + (m.done ? ' ✓' : ''), px + pw / 2, y + CARD_H - 14 - 10);
+        const color = m.done ? '#fff' : C.ink2;
+        const pen = canvasPen(ctx, color, 2.6);
+        const my = y + CARD_H - 14 - ph / 2;
+        if (m.done) {
+          drawGender(pen, m.gender as 'm' | 'f', px + pw / 2 - 10, my, 20);
+          pen.line(px + pw / 2 + 6, my, px + pw / 2 + 10, my + 5);
+          pen.line(px + pw / 2 + 10, my + 5, px + pw / 2 + 18, my - 5);
+        } else drawGender(pen, m.gender as 'm' | 'f', px + pw / 2, my, 20);
         px += pw + 10;
       }
     }

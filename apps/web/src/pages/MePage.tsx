@@ -130,15 +130,18 @@ export function MePage() {
             <p className="tnum mt-2 text-xs text-ink-3">{t.admin_count(users.data?.total ?? 0)}</p>
             <ul className="mt-1 divide-y divide-line">
               {users.data?.users.map((u) => (
-                <li key={u.id} className="flex items-center gap-2 py-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{u.username}</span>
-                    <span className="tnum block text-xs text-ink-3">{fmtCode(u.friendCode)} · {new Date(u.createdAt).toLocaleDateString(lang)}</span>
-                  </span>
-                  {(['user', 'manager', 'admin'] as Role[]).map((r) => (
-                    <Chip key={r} active={u.role === r} disabled={u.id === me.data?.id} className="min-h-8 px-2 text-xs disabled:opacity-40" onClick={() => setRole.mutate({ id: u.id, role: r })}>{t[`role_${r}`]}</Chip>
-                  ))}
-                  <Chip className="min-h-8 px-2 text-xs" onClick={async () => { const r = await api<{ username: string; code: string }>(`/users/${u.id}/reset-code`, { method: 'POST' }); setIssued(t.reset_issued(r.username, r.code)); }}>{t.issue_reset}</Chip>
+                <li key={u.id} className="py-3">
+                  {/* Name and code on one line, actions below: a phone has no room for both side by side. */}
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{u.username}</span>
+                    <span className="tnum shrink-0 text-xs text-ink-3">{fmtCode(u.friendCode)} · {new Date(u.createdAt).toLocaleDateString(lang)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {(['user', 'manager', 'admin'] as Role[]).map((r) => (
+                      <Chip key={r} active={u.role === r} disabled={u.id === me.data?.id} className="min-h-8 px-2.5 text-xs" onClick={() => setRole.mutate({ id: u.id, role: r })}>{t[`role_${r}`]}</Chip>
+                    ))}
+                    <Chip className="ml-auto min-h-8 px-2.5 text-xs" onClick={async () => { const r = await api<{ username: string; code: string }>(`/users/${u.id}/reset-code`, { method: 'POST' }); setIssued(t.reset_issued(r.username, r.code)); }}>{t.issue_reset}</Chip>
+                  </div>
                 </li>
               ))}
               {users.data?.users.length === 0 && <li className="py-2 text-sm text-ink-3">{t.nothing_here}</li>}
