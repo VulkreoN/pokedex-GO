@@ -8,6 +8,9 @@ COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile --filter @mydexpogo/web...
 COPY packages/shared packages/shared
 COPY apps/web apps/web
+# The release (git commit) goes with each error the app reports.
+ARG APP_VERSION=dev
+ENV VITE_APP_VERSION=$APP_VERSION
 RUN pnpm --filter @mydexpogo/web build
 
 FROM caddy:2-alpine

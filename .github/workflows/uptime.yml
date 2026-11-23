@@ -1,0 +1,35 @@
+name: Uptime
+
+# Every 15 minutes, checks the live site (variable DOMAIN) answers: the app, the API, the Pokédex data.
+# A failed run is what alerts: GitHub emails it to whoever last changed this schedule (Settings > Notifications >
+# Actions decides how). Three tries a minute apart first, so a blip does not page anyone.
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: vars.DOMAIN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Site, API and data answer
+        env:
+          SITE: https://${{ vars.DOMAIN }}
+        run: |
+          check() {
+            curl -fsS --max-time 10 "$SITE/" | grep -q '<div id="root">' &&
+            curl -fsS --max-time 10 "$SITE/api/health" | grep -q '"ok":true' &&
+            curl -fsS --max-time 20 -o /dev/null "$SITE/api/data/pokedex.json"
+          }
+          for i in 1 2 3; do
+            if check; then echo "up: $SITE"; exit 0; fi
+            echo "try $i failed"; sleep 60
+          done
+          echo "::error::$SITE is down or broken"
+          exit 1

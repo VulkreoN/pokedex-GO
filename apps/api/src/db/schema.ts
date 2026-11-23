@@ -231,3 +231,17 @@ export const listUnfollows = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.listId] })],
 );
+
+/** JavaScript errors reported by the app in players' browsers, one row per distinct error (counted), for admins. */
+export const clientErrors = pgTable('client_errors', {
+  /** Hash of message + first stack frame: the same bug from many devices is one row. */
+  id: text('id').primaryKey(),
+  message: text('message').notNull(),
+  stack: text('stack'),
+  url: text('url'),
+  userAgent: text('user_agent'),
+  appVersion: text('app_version'),
+  count: integer('count').notNull().default(1),
+  firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+  lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
+});

@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Chip, Sheet, TextField, TopBar } from '../components/ui.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { InstallBanner } from '../components/InstallBanner.js';
+import { ClientErrors } from '../components/ClientErrors.js';
 import { Badge } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
@@ -155,6 +156,7 @@ export function MePage() {
             )}
           </section>
         )}
+        {isAdmin && <ClientErrors />}
       </main>
       <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>
         <div className="space-y-3">

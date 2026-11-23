@@ -199,3 +199,20 @@ test('a manager marks a datamined variant released from its card, for everyone',
   await adminCtx.close();
   await mgrCtx.close();
 });
+
+test("a crash in a player's browser reaches the admins' error list", async ({ browser }) => {
+  const playerCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.4.1' } });
+  const adminCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.4.2' } });
+  const player = await playerCtx.newPage();
+  const admin = await adminCtx.newPage();
+  const message = uniq('boom');
+  await player.goto('/dex');
+  await player.evaluate((m) => setTimeout(() => { throw new Error(m); }), message);
+  await adminLogin(admin.request);
+  await expect.poll(async () => (await admin.request.get('/api/client-errors')).text(), { timeout: 10_000 }).toContain(message);
+  await admin.goto('/me');
+  await expect(admin.getByRole('heading', { name: 'Erreurs chez les joueurs' })).toBeVisible();
+  await expect(admin.getByText(`Error: ${message}`, { exact: true })).toBeVisible();
+  await playerCtx.close();
+  await adminCtx.close();
+});

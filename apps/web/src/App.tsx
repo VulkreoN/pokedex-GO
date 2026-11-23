@@ -13,6 +13,7 @@ import { GamePage } from './pages/GamePage.js';
 import { PvpPage } from './pages/PvpPage.js';
 import { NotificationsPage } from './pages/NotificationsPage.js';
 import { useRealtime } from './lib/social.js';
+import { reportError } from './lib/errorReport.js';
 import { ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
 import { LoginPage } from './pages/LoginPage.js';
@@ -52,6 +53,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
+  }
+  componentDidCatch(error: Error) {
+    reportError(error, 'render');
   }
   render() {
     if (!this.state.error) return this.props.children;

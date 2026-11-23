@@ -19,6 +19,7 @@ import { pruneNotifications } from './notify/service.js';
 import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
 import { sql } from './db/index.js';
+import { clientErrorRoutes } from './routes/clientErrors.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
 
@@ -40,6 +41,7 @@ app.route('/game', gameRoutes);
 app.route('/notifications', notificationRoutes);
 app.route('/push', pushRoutes);
 app.route('/stream', streamRoutes);
+app.route('/client-errors', clientErrorRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

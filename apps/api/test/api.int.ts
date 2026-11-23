@@ -492,6 +492,24 @@ describe('game data', () => {
   });
 });
 
+describe('client errors', () => {
+  it('groups the same browser error, keeps only the path, and shows them to admins only', async () => {
+    const message = `TypeError: x is undefined ${Date.now()}`;
+    const stack = `${message}\n    at render (https://dex.example/assets/index-AbCd1234.js:1:2345)`;
+    const c = new Client();
+    expect((await c.post('/client-errors', { message, stack, url: 'https://dex.example/s/secret-token?x=1', appVersion: 'abc' })).status).toBe(200);
+    // Same bug in the next build: other line, other file hash, still one row.
+    expect((await c.post('/client-errors', { message, stack: stack.replace('AbCd1234.js:1:2345', 'Zz9Yy8Xx.js:1:99'), url: 'https://dex.example/dex' })).status).toBe(200);
+    expect((await c.post('/client-errors', { message: '' })).status).toBe(400);
+    expect((await anon.get('/client-errors')).status).toBe(401);
+    expect((await alice.get('/client-errors')).status).toBe(403);
+    const list = await admin.get('/client-errors');
+    const row = list.body.errors.find((e: any) => e.message === message);
+    expect(row).toMatchObject({ count: 2, url: '/dex' });
+    expect(JSON.stringify(list.body)).not.toContain('secret-token');
+  });
+});
+
 describe('abuse protection', () => {
   it('rate-limits login attempts per client', async () => {
     const c = new Client();
