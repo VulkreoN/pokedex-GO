@@ -4,7 +4,7 @@ import { LEAGUES, cpOf, cpmAt, ivSearch, levelSteps, levelsForCp, powerUpCost, r
 import { Sprite } from '../components/Sprite.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { PvpokeCard } from '../components/PvpokeCard.js';
-import { PVPOKE_URL, formOf, pvpokeRanks, usePvpRankings, type League, type RankedPokemon } from '../lib/pvpoke.js';
+import { LEAGUE_LIST, PVPOKE_URL, formOf, leagueName, moveName, pvpokeRanks, pvpokeUrl, usePvpDetails, usePvpRankings, type League, type RankedDetail, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
@@ -137,10 +137,10 @@ function PvpSearch() {
               <section>
                 <h2 className="mb-2 text-base font-bold">{t.pvp_top}</h2>
                 <div className="mb-2 flex gap-2">
-                  {(['great', 'ultra'] as League[]).map((l) => (
+                  {LEAGUE_LIST.map((l) => (
                     <Chip key={l} active={league === l} onClick={() => setLeague(l)}>
                       <LeagueIcon league={l} size={16} />
-                      {l === 'great' ? t.league_great : t.league_ultra}
+                      {leagueName(t, l)}
                     </Chip>
                   ))}
                 </div>
@@ -258,7 +258,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
                     {ranks.map((r) => (
                       <span key={`${r.league}${r.shadow}`} className="tnum inline-flex items-center gap-1">
                         <LeagueIcon league={r.league} size={13} />
-                        {t.pvp_rank_in(r.league === 'great' ? t.league_great : t.league_ultra, r.rank, r.shadow)}
+                        {t.pvp_rank_in(leagueName(t, r.league), r.rank, r.shadow)}
                       </span>
                     ))}
                   </a>
@@ -354,7 +354,12 @@ function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex;
   const { lang } = useLang();
   const [chosen, setChosen] = useState<string | null>(null);
   const p = line.find((x) => x.key === chosen) ?? line[line.length - 1] ?? me;
-  const masterCp = cpOf(p, iv, cpmAt(pvp.cpm, maxLevel));
+  const details = usePvpDetails(p.dex);
+  // PvPoke's view of this form per league (the normal one when Shadow is ranked too): its recommended moves.
+  const pvpokeIn = (l: League) => {
+    const mine = (details.data ?? []).filter((r) => r.league === l && formOf(pvp, r)?.key === p.key);
+    return mine.find((r) => !r.shadow) ?? mine[0];
+  };
   return (
     <section className="mt-4">
       {line.length > 1 && (
@@ -378,15 +383,11 @@ function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex;
         </div>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
-        <LeagueCard league="great" {...props} p={p} />
-        <LeagueCard league="ultra" {...props} p={p} />
-      </div>
-      <div className="card mt-3 px-3 py-2.5 text-sm">
-        <div>
-          <span className="font-semibold">{t.league_master}</span>
-          <span className="text-ink-2"> · {t.pvp_master_hint(maxLevel, masterCp)}</span>
+        <LeagueCard league="great" {...props} p={p} pvpoke={pvpokeIn('great')} />
+        <LeagueCard league="ultra" {...props} p={p} pvpoke={pvpokeIn('ultra')} />
+        <div className="sm:col-span-2">
+          <LeagueCard league="master" {...props} p={p} pvpoke={pvpokeIn('master')} />
         </div>
-        {level !== null && level < maxLevel && <Cost pvp={pvp} from={level} to={maxLevel} />}
       </div>
       {line.length > 1 && <p className="mt-2 text-xs text-ink-3">{t.pvp_evo_note}</p>}
     </section>
@@ -410,11 +411,12 @@ const VERDICT_STYLE: Record<Verdict, string> = {
   weak: 'bg-berry/10 text-berry',
 };
 
-function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { league: 'great' | 'ultra'; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number }) {
+function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, pvpoke }: { league: League; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; pvpoke?: RankedDetail }) {
   const t = useT();
   const { lang } = useLang();
-  const cap = LEAGUES[league];
-  const title = league === 'great' ? t.league_great : t.league_ultra;
+  // Master League has no CP cap: the best is simply the strongest at max level.
+  const cap = league === 'master' ? Infinity : LEAGUES[league];
+  const title = leagueName(t, league);
   const effFloor = Math.min(floor, iv.atk, iv.def, iv.sta);
   const r = useMemo(() => rankOf(pvp, p, iv, cap, maxLevel, effFloor), [pvp, p, iv.atk, iv.def, iv.sta, cap, maxLevel, effFloor]);
   const head = (
@@ -424,7 +426,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { leagu
     </div>
   );
   // Even the best IVs at max level stay under the cap: no ranking to speak of in this league.
-  if (r.best.level === maxLevel && r.best.cp < cap) {
+  if (league !== 'master' && r.best.level === maxLevel && r.best.cp < cap) {
     return (
       <div className="card p-3">
         {head}
@@ -453,7 +455,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { leagu
         {/* From 90 % (a poor pick) to 100 % (rank 1): the part where IVs make a difference. */}
         <div className="h-full rounded-full bg-go" style={{ width: `${Math.max(3, Math.min(100, (r.percent - 90) * 10))}%` }} />
       </div>
-      <p className="mt-1 text-xs text-ink-3">{t.pvp_percent_hint}</p>
+      <p className="mt-1 text-xs text-ink-3">{league === 'master' ? t.pvp_percent_hint_master : t.pvp_percent_hint}</p>
 
       <dl className="tnum mt-3 grid grid-cols-2 gap-2 text-sm">
         <div className="rounded-lg bg-paper-2 px-2.5 py-1.5">
@@ -465,7 +467,26 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { leagu
           <dd className="font-bold">{fmt(r.cp)} PC</dd>
         </div>
       </dl>
-      {r.level === maxLevel && r.cp < cap * 0.93 && <p className="mt-1 text-xs text-ink-3">{t.pvp_under_cap}</p>}
+      {league !== 'master' && r.level === maxLevel && r.cp < cap * 0.93 && <p className="mt-1 text-xs text-ink-3">{t.pvp_under_cap}</p>}
+
+      {/* PvPoke's recommended moves for this league. */}
+      {pvpoke && pvpoke.moveset.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-baseline gap-2">
+            <p className="flex-1 text-xs font-semibold text-ink-2">{t.pvpoke_moveset}</p>
+            <a href={pvpokeUrl(pvpoke)} target="_blank" rel="noreferrer" className="tnum text-[11px] font-semibold text-sky">PvPoke #{pvpoke.rank}</a>
+          </div>
+          <ul className="space-y-1">
+            {pvpoke.moveset.map((m, i) => (
+              <li key={m.id} className="flex items-center gap-2 text-sm">
+                <TypeBadge type={m.type} small />
+                <span className="min-w-0 flex-1 truncate font-semibold">{moveName(pvp, m, lang)}</span>
+                <span className="tnum shrink-0 text-[11px] text-ink-3">{i === 0 ? t.move_fast : t.move_energy(m.energy)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* What it takes from where it is now. */}
       <div className="mt-3">
@@ -505,7 +526,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { leagu
 }
 
 /** A search to paste in the game to find a better one in storage. */
-function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: 'great' | 'ultra'; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; maxLevel: number }) {
+function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: League; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; maxLevel: number }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -515,7 +536,7 @@ function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: 'great' | 'ul
   let root = idx.speciesByDex.get(p.dex);
   for (let i = 0; root?.parent && i < 3; i++) root = idx.speciesByDex.get(root.parent) ?? root;
   const family = root ? (gameLang === 'fr' ? root.name.fr ?? root.name.en : root.name.en) : undefined;
-  const s = useMemo(() => ivSearch(rankTable(pvp, p, LEAGUES[league], maxLevel), { top: wide ? 41 : 10, family, lang: gameLang }), [pvp, p, league, maxLevel, wide, family, gameLang]);
+  const s = useMemo(() => ivSearch(rankTable(pvp, p, league === 'master' ? Infinity : LEAGUES[league], maxLevel), { top: wide ? 41 : 10, family, lang: gameLang }), [pvp, p, league, maxLevel, wide, family, gameLang]);
   if (!s.text) return null;
   return (
     <div className="mt-3 rounded-xl bg-paper-2 p-2.5">

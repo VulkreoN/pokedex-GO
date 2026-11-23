@@ -9,7 +9,7 @@ import { Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
 import { normalize } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useMyPvp } from '../lib/myPvp.js';
-import { formOf, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
+import { LEAGUE_LIST, formOf, leagueName, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
 import { picture, usePvp } from './PvpPage.js';
 
 const SLOTS = 3;
@@ -20,7 +20,7 @@ export function PvpTeamPage() {
   const { lang } = useLang();
   const { ds, pvp, byKey } = usePvp();
   const [params, setParams] = useSearchParams();
-  const league: League = params.get('l') === 'ultra' ? 'ultra' : 'great';
+  const league: League = LEAGUE_LIST.find((l) => l === params.get('l')) ?? 'great';
   const keys = (params.get('p') ?? '').split(',').slice(0, SLOTS);
   const team = keys.map((k) => (k ? byKey.get(k) : undefined));
   const [picking, setPicking] = useState<number | null>(null);
@@ -73,10 +73,10 @@ export function PvpTeamPage() {
       <TopBar title={t.team_title} back />
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
         <div className="mb-3 flex gap-2">
-          {(['great', 'ultra'] as League[]).map((l) => (
+          {LEAGUE_LIST.map((l) => (
             <Chip key={l} active={league === l} onClick={() => setParams((prev) => { const n = new URLSearchParams(prev); n.set('l', l); return n; }, { replace: true })}>
               <LeagueIcon league={l} size={16} />
-              {l === 'great' ? t.league_great : t.league_ultra}
+              {leagueName(t, l)}
             </Chip>
           ))}
         </div>

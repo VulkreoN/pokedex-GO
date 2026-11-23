@@ -10,8 +10,9 @@ const TOP = 100;
 /** Best wins and worst losses kept per Pokémon. */
 const MATCHUPS = 5;
 
-export type League = 'great' | 'ultra';
-const FILES: Record<League, string> = { great: 'rankings-1500.json', ultra: 'rankings-2500.json' };
+export type League = 'great' | 'ultra' | 'master';
+export const LEAGUES: League[] = ['great', 'ultra', 'master'];
+const FILES: Record<League, string> = { great: 'rankings-1500.json', ultra: 'rankings-2500.json', master: 'rankings-10000.json' };
 /** Order of PvPoke's role scores. */
 export const ROLES = ['lead', 'closer', 'switch', 'charger', 'attacker', 'consistency'] as const;
 
@@ -51,6 +52,7 @@ export interface RankedDetail extends RankedPokemon {
 export interface PvpRankings {
   great: RankedPokemon[];
   ultra: RankedPokemon[];
+  master: RankedPokemon[];
 }
 
 type GmPokemon = { speciesId: string; speciesName: string; dex: number; baseStats: { atk: number; def: number; hp: number }; tags?: string[] };
@@ -107,18 +109,25 @@ export function rankLeague(league: League, rankings: Ranking[], byId: Map<string
   }));
 }
 
+/** One download at a time: pages opened while it runs wait for it instead of each starting their own. */
+let loading: Promise<Record<League, RankedDetail[]>> | null = null;
+
 async function load(now: number): Promise<Record<League, RankedDetail[]>> {
   if (cache && now - cache.at < 12 * 3600_000) return cache.leagues;
-  const [gm, moveList, great, ultra] = await Promise.all([
+  loading ??= download(now).finally(() => (loading = null));
+  return loading;
+}
+
+async function download(now: number): Promise<Record<League, RankedDetail[]>> {
+  const [gm, moveList, ...lists] = await Promise.all([
     getJson<GmPokemon[]>('gamemaster/pokemon.json'),
     getJson<GmMove[]>('gamemaster/moves.json'),
-    getJson<Ranking[]>(`rankings/all/overall/${FILES.great}`),
-    getJson<Ranking[]>(`rankings/all/overall/${FILES.ultra}`),
+    ...LEAGUES.map((l) => getJson<Ranking[]>(`rankings/all/overall/${FILES[l]}`)),
   ]);
   const byId = new Map(gm.map((p) => [p.speciesId, p]));
   const moves = new Map(moveList.map((m) => [m.moveId, m]));
-  const leagues = { great: rankLeague('great', great, byId, moves), ultra: rankLeague('ultra', ultra, byId, moves) };
-  if (!leagues.great.length || !leagues.ultra.length) throw new Error('pvpoke: empty rankings, format changed?');
+  const leagues = Object.fromEntries(LEAGUES.map((l, i) => [l, rankLeague(l, lists[i] as Ranking[], byId, moves)])) as Record<League, RankedDetail[]>;
+  if (LEAGUES.some((l) => !leagues[l].length)) throw new Error('pvpoke: empty rankings, format changed?');
   cache = { at: now, leagues };
   return leagues;
 }
@@ -128,11 +137,11 @@ const slim = ({ rank, speciesId, name, dex, atk, def, hp, shadow, score }: Ranke
 /** The top of each league, for the PvP start page. */
 export async function getPvpRankings(now = Date.now()): Promise<PvpRankings> {
   const l = await load(now);
-  return { great: l.great.slice(0, TOP).map(slim), ultra: l.ultra.slice(0, TOP).map(slim) };
+  return { great: l.great.slice(0, TOP).map(slim), ultra: l.ultra.slice(0, TOP).map(slim), master: l.master.slice(0, TOP).map(slim) };
 }
 
-/** Every ranked form of one species (normal, Shadow, regional...) in both leagues, for its PvP page. */
+/** Every ranked form of one species (normal, Shadow, regional...) in every league, for its PvP page. */
 export async function getPvpDetails(dex: number, now = Date.now()): Promise<RankedDetail[]> {
   const l = await load(now);
-  return [...l.great, ...l.ultra].filter((r) => r.dex === dex);
+  return LEAGUES.flatMap((league) => l[league]).filter((r) => r.dex === dex);
 }

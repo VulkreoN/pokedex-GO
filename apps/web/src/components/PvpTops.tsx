@@ -4,11 +4,11 @@ import { useLang, useT } from '../lib/i18n.js';
 
 /** League icons from the game files (PokeMiners), like the sprites. */
 const ICON = 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Images/Combat/';
-export const LEAGUE_ICONS = { great: `${ICON}pogo_great_league.png`, ultra: `${ICON}pogo_ultra_league.png` } as const;
+export const LEAGUE_ICONS = { great: `${ICON}pogo_great_league.png`, ultra: `${ICON}pogo_ultra_league.png`, master: `${ICON}pogo_master_league.png` } as const;
 
-export function LeagueIcon({ league, size = 14 }: { league: 'great' | 'ultra'; size?: number }) {
+export function LeagueIcon({ league, size = 14 }: { league: keyof typeof LEAGUE_ICONS; size?: number }) {
   const t = useT();
-  return <img src={LEAGUE_ICONS[league]} alt={league === 'great' ? t.league_great : t.league_ultra} width={size} height={size} className="shrink-0" loading="lazy" />;
+  return <img src={LEAGUE_ICONS[league]} alt={league === 'great' ? t.league_great : league === 'ultra' ? t.league_ultra : t.league_master} width={size} height={size} className="shrink-0" loading="lazy" />;
 }
 
 /**

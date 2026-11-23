@@ -475,7 +475,7 @@ describe('game data', () => {
     const r = await anon.get('/game/pvp-rankings');
     expect([200, 502]).toContain(r.status);
     if (r.status === 200) {
-      for (const league of ['great', 'ultra']) {
+      for (const league of ['great', 'ultra', 'master']) {
         expect(r.body[league].length).toBeGreaterThan(20);
         expect(r.body[league][0]).toMatchObject({ rank: 1, dex: expect.any(Number), atk: expect.any(Number) });
       }

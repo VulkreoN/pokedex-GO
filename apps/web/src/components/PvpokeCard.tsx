@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { PvpData, PvpPokemon } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { ROLES, formOf, moveName, pvpokeUrl, usePvpDetails, type FormRef, type League, type RankedDetail } from '../lib/pvpoke.js';
+import { LEAGUE_LIST, ROLES, formOf, leagueName, moveName, pvpokeUrl, usePvpDetails, type FormRef, type League, type RankedDetail } from '../lib/pvpoke.js';
 import { LeagueIcon } from './PvpTops.js';
 import { Sprite } from './Sprite.js';
 import { TypeBadge } from './TypeBadge.js';
@@ -21,7 +21,7 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
   const [shadow, setShadow] = useState<boolean | null>(null);
   if (q.isPending || q.isError) return null;
 
-  const leagues = (['great', 'ultra'] as League[]).filter((l) => mine.some((r) => r.league === l));
+  const leagues = LEAGUE_LIST.filter((l) => mine.some((r) => r.league === l));
   const l = league && leagues.includes(league) ? league : (best?.league ?? 'great');
   const inLeague = mine.filter((r) => r.league === l);
   const sh = shadow !== null && inLeague.some((r) => r.shadow === shadow) ? shadow : (inLeague.find((r) => r === best)?.shadow ?? inLeague[0]?.shadow ?? false);
@@ -41,7 +41,7 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
             {leagues.map((x) => (
               <Chip key={x} active={x === l} onClick={() => setLeague(x)}>
                 <LeagueIcon league={x} size={16} />
-                {x === 'great' ? t.league_great : t.league_ultra}
+                {leagueName(t, x)}
               </Chip>
             ))}
             {inLeague.length > 1 &&

@@ -87,6 +87,21 @@ test.describe('PvP', () => {
     await expect(great).not.toContainText('Trouver mieux'); // nothing better to look for
   });
 
+  test('Master League is rated too (15/15/15 at max level), and each league card shows its recommended moves', async ({ page }) => {
+    await page.goto('/pvp/809?a=15&d=15&s=15'); // Melmetal
+    const master = page.locator('[aria-label="Ligue Master"]');
+    await expect(master.getByText('#1', { exact: true })).toBeVisible();
+    await expect(master.getByText('Rang 1', { exact: true })).toBeVisible();
+    await expect(master).toContainText('Rang 1 : 15/15/15');
+    const rankings = await page.request.get('/api/game/pvp-rankings/809');
+    if (rankings.status() !== 200) return; // PvPoke unreachable: no moves to show
+    const great = page.locator('[aria-label="Ligue Super"]');
+    await expect(great.getByText('Attaques conseillées')).toBeVisible();
+    await expect(great.getByText('Éclair')).toBeVisible();
+    await expect(master.getByText('Attaques conseillées')).toBeVisible();
+    await expect(master.getByRole('link', { name: /^PvPoke #\d+$/ })).toHaveAttribute('href', /\/10000\/overall\/melmetal\/$/);
+  });
+
   test('a poor pick shows what rank 1 has more, and a search to find a better one', async ({ page }) => {
     await page.goto('/pvp/184?a=15&d=0&s=0');
     const great = page.locator('[aria-label="Ligue Super"]');

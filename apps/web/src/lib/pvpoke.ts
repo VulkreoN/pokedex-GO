@@ -4,8 +4,9 @@ import type { Lang, PvpData, PvpPokemon } from '@mydexpogo/shared';
 import { localized } from './i18n.js';
 
 export const PVPOKE_URL = 'https://pvpoke.com/rankings/';
-export type League = 'great' | 'ultra';
-export const LEAGUE_CP: Record<League, number> = { great: 1500, ultra: 2500 };
+export type League = 'great' | 'ultra' | 'master';
+export const LEAGUE_LIST: League[] = ['great', 'ultra', 'master'];
+export const LEAGUE_CP: Record<League, number> = { great: 1500, ultra: 2500, master: 10000 };
 
 export interface FormRef { speciesId: string; name: string; dex: number; atk: number; def: number; hp: number; shadow: boolean }
 export interface RankedPokemon extends FormRef { rank: number; score: number }
@@ -48,7 +49,7 @@ export function formOf(pvp: PvpData, r: FormRef): PvpPokemon | undefined {
 /** Every league rank PvPoke gives this form, the Shadow one apart. */
 export function pvpokeRanks(pvp: PvpData, rankings: Record<League, RankedPokemon[]> | undefined, key: string) {
   if (!rankings) return [];
-  return (['great', 'ultra'] as League[]).flatMap((league) => rankings[league].filter((r) => formOf(pvp, r)?.key === key).map((r) => ({ league, rank: r.rank, shadow: r.shadow })));
+  return LEAGUE_LIST.flatMap((league) => (rankings[league] ?? []).filter((r) => formOf(pvp, r)?.key === key).map((r) => ({ league, rank: r.rank, shadow: r.shadow })));
 }
 
 /**
@@ -62,3 +63,5 @@ export function moveName(pvp: PvpData, m: PvpokeMove, lang: Lang): string {
 }
 
 export const pvpokeUrl = (r: { league: League; speciesId: string }) => `https://pvpoke.com/rankings/all/${LEAGUE_CP[r.league]}/overall/${r.speciesId}/`;
+
+export const leagueName = (t: { league_great: string; league_ultra: string; league_master: string }, l: League) => (l === 'great' ? t.league_great : l === 'ultra' ? t.league_ultra : t.league_master);
