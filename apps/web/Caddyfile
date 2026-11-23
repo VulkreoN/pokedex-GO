@@ -1,5 +1,12 @@
 {
 	admin off
+	# Who may tell us the player's IP in X-Forwarded-For: nobody but ourselves when Caddy faces the internet,
+	# the cluster's private ranges behind a Kubernetes ingress (TRUSTED_PROXIES=private_ranges).
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
 }
 
 # SITE_ADDRESS is ":80" when DOMAIN is empty (local / behind your own proxy), or the domain itself:
@@ -9,7 +16,10 @@
 	root * /srv
 
 	handle /api/* {
-		reverse_proxy api:3000
+		# The API rate-limits on this header: one address, the real client's, never what the client wrote.
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	handle {

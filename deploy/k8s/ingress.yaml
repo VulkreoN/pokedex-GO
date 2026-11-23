@@ -1,0 +1,28 @@
+# The public address. Three lines to adapt to the cluster, marked À ADAPTER: the domain (twice), the cert-manager
+# issuer, and the ingress class if the cluster has no default one.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mydexpogo
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # À ADAPTER
+    # Live updates are a long-lived stream (SSE): ingress-nginx must not buffer or cut it. Ignored by Traefik.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  # ingressClassName: traefik # À ADAPTER si le cluster n'a pas de classe par défaut
+  tls:
+    - hosts:
+        - dex.example.com # À ADAPTER
+      secretName: mydexpogo-tls
+  rules:
+    - host: dex.example.com # À ADAPTER
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

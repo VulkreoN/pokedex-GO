@@ -1,5 +1,7 @@
 # Mise en production sur un VPS
 
+> Sur un cluster Kubernetes avec ArgoCD : voir plutôt [`k8s/README.md`](k8s/README.md).
+
 Chaque push sur `main` passe la batterie de tests complète sur GitHub Actions, construit les images Docker, les publie
 sur le registre de GitHub (`ghcr.io/vulkreon/pokedex-go-api` et `-web`), puis les déploie sur le VPS. Le déploiement
 sauvegarde la base, redémarre, attend que `https://<domaine>/api/health` annonce la nouvelle version et revient à la
@@ -33,7 +35,7 @@ sudo -u deploy nano /opt/mydexpogo/.env
 chmod 600 /opt/mydexpogo/.env
 ```
 
-`POSTGRES_PASSWORD` : une longue chaîne aléatoire (`openssl rand -base64 32`), à ne jamais changer ensuite.
+`POSTGRES_PASSWORD` : une longue chaîne aléatoire, lettres et chiffres seulement (`openssl rand -hex 32`), à ne jamais changer ensuite.
 
 ## 2. Le domaine
 

@@ -1,14 +1,13 @@
 name: CI / CD
 
 # Every push and pull request: the full test battery (types, unit, API integration on a real Postgres, browser).
-# Pushes to main, once green: Docker images to the GitHub Container Registry, then a deploy to the VPS over SSH,
-# then read-only checks against the live site.
-#
-# Repository settings needed for the deploy (Settings > Secrets and variables > Actions):
-#   secrets   VPS_HOST, VPS_USER (deploy), VPS_SSH_KEY (private key whose public half bootstrap.sh installed),
-#             VPS_KNOWN_HOSTS (output of `ssh-keyscan <host>`), optional VPS_PORT
-#   variables DOMAIN (e.g. dex.example.com)
-# Without VPS_HOST the deploy job is skipped, so forks and the first pushes stay green.
+# Pushes to main, once green: Docker images to the GitHub Container Registry, then a release, either way:
+#   Kubernetes + ArgoCD (deploy/k8s): the release commits the new image tag to deploy/k8s/kustomization.yaml and
+#     ArgoCD rolls it out. Variable K8S_RELEASE=true.
+#   A VPS with Docker Compose (deploy/README.md): over SSH. Secrets VPS_HOST, VPS_USER, VPS_SSH_KEY,
+#     VPS_KNOWN_HOSTS, optional VPS_PORT.
+# Either way, with the variable DOMAIN set, read-only checks then run against the live site once it serves the
+# new version. Without any of these settings the release jobs are skipped, so forks and first pushes stay green.
 
 on:
   push:
@@ -101,6 +100,64 @@ jobs:
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  release-k8s:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.K8S_RELEASE == 'true'
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    environment:
+      name: production
+      url: https://${{ vars.DOMAIN }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      # The only change a release makes in Git: both images to this commit. ArgoCD picks it up.
+      - name: Point deploy/k8s at this commit
+        id: tag
+        run: |
+          # A newer push is on main: its own run releases it, this one must not roll back to an older image.
+          if [ -n "$(git log --format=%s "${GITHUB_SHA}..HEAD" | grep -v '^release:' || true)" ]; then
+            echo "newer commits on main, leaving the release to their run"; exit 0
+          fi
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          sed -i -E "s/^(    newTag: ).*/\1${GITHUB_SHA}/" deploy/k8s/kustomization.yaml
+          git diff --quiet && { echo "already at ${GITHUB_SHA}"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "release: ${GITHUB_SHA::7} [skip ci]"
+          for i in 1 2 3; do git push && exit 0; git pull --rebase; done
+          exit 1
+      - name: Wait for the new version to answer
+        if: vars.DOMAIN != '' && steps.tag.outputs.released == 'true'
+        run: |
+          for i in $(seq 1 120); do
+            if curl -fsS --max-time 5 "https://${{ vars.DOMAIN }}/api/health" | grep -q "\"version\":\"${GITHUB_SHA}\""; then
+              echo "live: ${GITHUB_SHA}"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::https://${{ vars.DOMAIN }} still does not serve ${GITHUB_SHA} after 20 minutes: check the app in ArgoCD"
+          exit 1
+      - if: vars.DOMAIN != '' && steps.tag.outputs.released == 'true'
+        uses: pnpm/action-setup@v4
+      - if: vars.DOMAIN != '' && steps.tag.outputs.released == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: Checks against the live site (read-only)
+        if: vars.DOMAIN != '' && steps.tag.outputs.released == 'true'
+        run: |
+          pnpm install --frozen-lockfile --filter @mydexpogo/e2e
+          pnpm --filter @mydexpogo/e2e exec playwright install --with-deps chromium
+          DEPLOY_URL=https://${{ vars.DOMAIN }} pnpm --filter @mydexpogo/e2e e2e:deploy
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

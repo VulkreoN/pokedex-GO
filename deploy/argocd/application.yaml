@@ -1,0 +1,22 @@
+# The ArgoCD Application: syncs deploy/k8s of the public repo into the mydexpogo namespace.
+# kubectl apply -n argocd -f deploy/argocd/application.yaml (or the same fields in the ArgoCD UI).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mydexpogo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/VulkreoN/pokedex-GO.git
+    targetRevision: main
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mydexpogo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

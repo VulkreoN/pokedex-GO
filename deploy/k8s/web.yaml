@@ -1,0 +1,48 @@
+# The web app: Caddy serves the built PWA and forwards /api to the api Service. Plain HTTP on :80 here (DOMAIN
+# empty): the cluster's ingress does HTTPS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/vulkreon/pokedex-go-web
+          env:
+            - name: DOMAIN
+              value: ""
+            # Requests come through the ingress: trust its X-Forwarded-For to know each player's IP (rate limits).
+            - name: TRUSTED_PROXIES
+              value: private_ranges
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

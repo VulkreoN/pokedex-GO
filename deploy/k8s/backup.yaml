@@ -1,0 +1,51 @@
+# Nightly database dump at 03:30, the last 14 kept on their own volume. Copy them off the cluster now and then.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dump
+              image: postgres:17-alpine
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mydexpogo-secrets
+                      key: postgres-password
+              command:
+                - sh
+                - -c
+                - >-
+                  set -e;
+                  f=/backups/mydex-$(date +%Y%m%d-%H%M).sql.gz;
+                  pg_dump -h db -U mydex mydex | gzip > "$f.tmp" && mv "$f.tmp" "$f";
+                  ls -1t /backups/mydex-*.sql.gz | tail -n +15 | xargs -r rm --;
+                  ls -lh /backups
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups
