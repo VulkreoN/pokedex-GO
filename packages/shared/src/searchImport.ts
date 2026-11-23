@@ -6,15 +6,17 @@
  * Anything else (CP, types, age...) cannot be read from a collection: it is set aside and reported.
  */
 import { regionOfForm } from './search.js';
-import type { EntryGender, EntryTag, Gender, LocalizedText, Species, Variant } from './types.js';
+import type { EntryGender, EntryTag, Gender, LocalizedText, PokemonType, Species, Variant } from './types.js';
 
 type Term =
   | { kind: 'dex'; from: number; to: number }
   | { kind: 'dexes'; dex: Set<number> }
-  | { kind: 'key'; id: string };
+  | { kind: 'key'; id: string }
+  | { kind: 'type'; type: PokemonType };
 
 interface Mon {
   v: Variant;
+  sp?: Species;
   gender: Gender | null;
   shiny: boolean;
   tag: EntryTag;
@@ -27,11 +29,23 @@ const KEYWORDS: Record<string, string> = {
   lucky: 'lucky', chanceux: 'lucky',
   shadow: 'shadow', obscur: 'shadow',
   purified: 'purified', 'purifié': 'purified',
-  dynamax: 'dynamax', gigantamax: 'gigantamax',
+  dynamax: 'dynamax', gigantamax: 'gigantamax', gigamax: 'gigantamax', gmax: 'gigantamax',
   xxl: 'xxl', xxs: 'xxs',
   background: 'background',
   alola: 'alola', galar: 'galar', hisui: 'hisui', paldea: 'paldea',
-  mega: 'mega', 'méga': 'mega',
+  mega: 'mega', 'méga': 'mega', megaevolve: 'mega', mega1: 'mega', mega2: 'mega', mega3: 'mega', 'mega1-3': 'mega', 'mega0-3': 'mega',
+  legendary: 'legendary', legendaire: 'legendary',
+  mythical: 'mythic', fabuleux: 'mythic',
+  ultrabeasts: 'ultra_beast', ultrabeast: 'ultra_beast', 'ultra-chimere': 'ultra_beast', 'ultra-chimeres': 'ultra_beast', ultrachimere: 'ultra_beast',
+};
+
+/** Type names as the search bar takes them, English and French (accents folded). */
+const TYPES: Record<string, PokemonType> = {
+  normal: 'normal', fire: 'fire', feu: 'fire', water: 'water', eau: 'water', grass: 'grass', plante: 'grass',
+  electric: 'electric', electrik: 'electric', ice: 'ice', glace: 'ice', fighting: 'fighting', combat: 'fighting',
+  poison: 'poison', ground: 'ground', sol: 'ground', flying: 'flying', vol: 'flying', psychic: 'psychic', psy: 'psychic',
+  bug: 'bug', insecte: 'bug', rock: 'rock', roche: 'rock', ghost: 'ghost', spectre: 'ghost', dragon: 'dragon',
+  dark: 'dark', tenebres: 'dark', steel: 'steel', acier: 'steel', fairy: 'fairy', fee: 'fairy',
 };
 
 const TAG_TRIES: EntryTag[] = ['', 'lucky', 'shadow', 'purified', 'dynamax', 'xxl', 'xxs', 'background'];
@@ -42,6 +56,7 @@ function termMatches(t: Term, p: Mon): boolean {
   switch (t.kind) {
     case 'dex': return p.v.dex >= t.from && p.v.dex <= t.to;
     case 'dexes': return t.dex.has(p.v.dex);
+    case 'type': return (p.v.types ?? p.sp?.types ?? []).includes(t.type);
     case 'key':
       switch (t.id) {
         case 'shiny': return p.shiny;
@@ -50,6 +65,7 @@ function termMatches(t: Term, p: Mon): boolean {
         case 'female': return p.gender === 'f';
         case 'gigantamax': return p.v.kind === 'gmax';
         case 'mega': return p.v.kind === 'mega';
+        case 'legendary': case 'mythic': case 'ultra_beast': return p.sp?.rarity === t.id;
         case 'alola': case 'galar': case 'hisui': case 'paldea': return p.v.kind === 'regional' && regionOfForm(p.v.form) === t.id;
         default: return p.tag === t.id;
       }
@@ -65,6 +81,7 @@ export interface ParsedSearch {
   ignored: string[];
   /** Keywords the string asks for, so callers can tell "costume" from a plain range. */
   wants: Set<string>;
+  species: Map<number, Species>;
 }
 
 export function parseGameSearch(text: string, species: Species[]): ParsedSearch {
@@ -89,6 +106,7 @@ export function parseGameSearch(text: string, species: Species[]): ParsedSearch 
       if (positive) wants.add(kw);
       return { kind: 'key', id: kw };
     }
+    if (TYPES[r]) return { kind: 'type', type: TYPES[r] };
     if (r.startsWith('+')) {
       const dexes = byName.get(r.slice(1));
       if (dexes) return { kind: 'dexes', dex: new Set(dexes.flatMap((d) => families.get(familyOf.get(d)!) ?? [d])) };
@@ -127,7 +145,7 @@ export function parseGameSearch(text: string, species: Species[]): ParsedSearch 
         .filter((c): c is Clause => !!c),
     )
     .filter((s) => s.length > 0);
-  return { searches, ignored: [...ignored], wants };
+  return { searches, ignored: [...ignored], wants, species: new Map(species.map((s) => [s.dex, s])) };
 }
 
 const matches = (search: Clause[], p: Mon) => search.every((c) => (c.neg ? !c.terms.some((t) => termMatches(t, p)) : c.terms.some((t) => termMatches(t, p))));
@@ -156,7 +174,7 @@ export function importFromSearch(parsed: ParsedSearch, variants: Variant[]): Imp
         if (shiny && !v.hasShiny) continue;
         for (const tag of TAG_TRIES) {
           if (tag === 'background' && !v.backgrounds?.length) continue;
-          const p: Mon = { v, gender, shiny, tag };
+          const p: Mon = { v, sp: parsed.species.get(v.dex), gender, shiny, tag };
           if (parsed.searches.some((s) => matches(s, p))) {
             hit = p;
             break search;

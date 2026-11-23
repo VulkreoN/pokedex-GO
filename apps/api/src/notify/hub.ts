@@ -11,7 +11,8 @@ export const hub = {
     set.add(fn);
     return () => {
       set!.delete(fn);
-      if (!set!.size) listeners.delete(userId);
+      // Called again after a newer tab subscribed into a fresh set: only the emptied set may go, never that one.
+      if (!set!.size && listeners.get(userId) === set) listeners.delete(userId);
     };
   },
   emit(userIds: Iterable<string>, e: LiveEvent) {
