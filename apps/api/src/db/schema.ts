@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught'] as const;
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(
@@ -245,3 +245,15 @@ export const clientErrors = pgTable('client_errors', {
   firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
   lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Raid bosses a player was told about (raid alerts), so the same boss is not announced again while it lasts. */
+export const raidAlerts = pgTable(
+  'raid_alerts',
+  {
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** Variant key, "|shadow" for a Shadow raid. */
+    bossId: text('boss_id').notNull(),
+    alertedAt: timestamp('alerted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.bossId] })],
+);

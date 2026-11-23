@@ -29,7 +29,8 @@ function underCap(userId: string): boolean {
 export interface NotifyInput {
   userId: string;
   type: NotificationType;
-  actorId: string;
+  /** The friend behind it; null for what the app itself announces (raids). */
+  actorId: string | null;
   listId?: string | null;
   data?: Record<string, unknown>;
   /** Merges into an unread row of the same kind/actor/list instead of adding one. */
@@ -48,7 +49,7 @@ export async function notify(n: NotifyInput): Promise<void> {
           and(
             eq(schema.notifications.userId, n.userId),
             eq(schema.notifications.type, n.type),
-            eq(schema.notifications.actorId, n.actorId),
+            n.actorId ? eq(schema.notifications.actorId, n.actorId) : isNull(schema.notifications.actorId),
             n.listId ? eq(schema.notifications.listId, n.listId) : isNull(schema.notifications.listId),
             isNull(schema.notifications.readAt),
             gt(schema.notifications.createdAt, since),

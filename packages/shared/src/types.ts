@@ -190,7 +190,7 @@ export interface ListDetail extends ListSummary {
   entries: ListDetailEntry[];
 }
 
-export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught';
+export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid';
 
 export interface AppNotification {
   id: string;

@@ -5,7 +5,7 @@ import { disablePush, enablePush, pushState, useNotifyPrefs, useSetNotifyPrefs, 
 import { Button } from './ui.js';
 import { useToast } from './toast.js';
 
-const KINDS: NotificationType[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught'];
+const KINDS: NotificationType[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid'];
 
 export function PushSettings() {
   const t = useT();

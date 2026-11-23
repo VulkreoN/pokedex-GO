@@ -20,6 +20,7 @@ import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
 import { sql } from './db/index.js';
 import { clientErrorRoutes } from './routes/clientErrors.js';
+import { startRaidAlerts } from './notify/raidAlerts.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
 
@@ -78,7 +79,10 @@ dataService.onDataset(async () => {
   const variants = await dataService.variants();
   if (variants) await migrateStoredGenders(variants);
 });
-void dataService.start().then(() => feedService.start());
+void dataService.start().then(() => {
+  feedService.start();
+  if (!env.pushDryRun) startRaidAlerts();
+});
 setInterval(() => void pruneNotifications().catch(() => {}), 24 * 3600_000).unref();
 // Push keys exist from the first start, so the nightly backup always has them.
 void vapidKeys().catch((e) => console.error('push keys', e));

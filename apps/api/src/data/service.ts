@@ -5,7 +5,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
-import type { Dataset, Variant } from '@mydexpogo/shared';
+import type { Dataset, LocalizedText, Variant } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 
@@ -76,6 +76,11 @@ class DataService {
   }
   private async notifyDataset() {
     for (const fn of this.readyListeners) await Promise.resolve(fn()).catch((e) => console.error('dataset listener', e));
+  }
+
+  /** Species names by dex number (null until a dataset is loaded). */
+  speciesNames(): Map<number, LocalizedText> | null {
+    return this.raw ? new Map(this.raw.species.map((s) => [s.dex, s.name])) : null;
   }
 
   private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;

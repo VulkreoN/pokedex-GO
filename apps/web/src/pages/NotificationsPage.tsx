@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 import { Link } from 'react-router';
 import type { AppNotification } from '@mydexpogo/shared';
 import { Button, Empty, Spinner, TopBar } from '../components/ui.js';
-import { useLang, useT } from '../lib/i18n.js';
+import { localized, useLang, useT } from '../lib/i18n.js';
+import { useDataset } from '../lib/dataset.js';
 import { useMarkRead, useNotifications } from '../lib/social.js';
 
 function target(n: AppNotification): string {
+  if (n.type === 'raid') return '/game';
   if ((n.type === 'offer' || n.type === 'offer_caught') && n.list) return `/lists/${n.list.id}`;
   if (n.type === 'friend_accepted' && n.actor) return `/friends/${n.actor.id}`;
   return '/friends';
@@ -15,6 +17,7 @@ export function NotificationsPage() {
   const t = useT();
   const { lang } = useLang();
   const q = useNotifications();
+  const dataset = useDataset();
   const read = useMarkRead();
   const unread = q.data?.unread ?? 0;
   // Opening the inbox counts as seeing it; rows stay highlighted until the next visit.
@@ -29,8 +32,20 @@ export function NotificationsPage() {
     const who = n.actor?.username ?? '?';
     if (n.type === 'friend_request') return t.notif_friend_request(who);
     if (n.type === 'friend_accepted') return t.notif_friend_accepted(who);
+    if (n.type === 'raid') return t.notif_raid(raidNames(n));
     if (n.type === 'offer_caught') return t.notif_offer_caught(who, Number(n.data.count ?? 1), n.list?.name ?? '');
     return t.notif_offer(who, Number(n.data.count ?? 1), n.list?.name ?? '');
+  };
+  /** The bosses in the app language when the Pokédex is loaded, the server's French names otherwise. */
+  const raidNames = (n: AppNotification): string[] => {
+    const bosses = (n.data.bosses as { key: string; shadow: boolean }[] | undefined) ?? [];
+    const idx = dataset.data;
+    if (!idx || !bosses.length) return (n.data.names as string[] | undefined) ?? [];
+    return bosses.map((b) => {
+      const v = idx.variantByKey.get(b.key);
+      const name = localized(idx.speciesByDex.get(Number(b.key.split('.')[0]))?.name, lang);
+      return [name, v?.kind !== 'base' && v?.label ? localized(v.label, lang) : '', b.shadow ? t.tag_shadow.toLowerCase() : ''].filter(Boolean).join(' ');
+    });
   };
   const when = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
