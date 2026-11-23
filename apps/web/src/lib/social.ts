@@ -52,13 +52,10 @@ export function useRealtime(loggedIn: boolean) {
   useEffect(() => {
     if (!loggedIn || typeof EventSource === 'undefined') return;
     const es = new EventSource('/api/stream', { withCredentials: true });
-    let opened = false;
     es.addEventListener('ready', () => {
-      // Whatever happened between the page load and this connection would otherwise wait for the next refetch:
-      // re-read the cheap things every time, everything social after a reconnect.
-      const keys = opened ? ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists'] : ['notifications', 'friend-requests'];
-      for (const k of keys) void qc.invalidateQueries({ queryKey: [k] });
-      opened = true;
+      // Whatever happened between the page load and this connection (or during a reconnect) sent no event here:
+      // re-read everything social. Only what is on screen is fetched again, the rest is just marked stale.
+      for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
     });
     es.addEventListener('live', (msg) => {
       const e = JSON.parse((msg as MessageEvent<string>).data) as LiveEvent;
