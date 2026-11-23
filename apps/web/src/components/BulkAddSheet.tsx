@@ -63,16 +63,22 @@ export function BulkAddSheet({ open, picks, onApplyAll, onClose, onDone }: { ope
       return n.size ? n : new Set(['']);
     });
 
-  // The sheet's chips set every card at once; they light up while every card matches.
-  const sexesOf = (p: DexPick) => [...new Set(p.combos.map((c) => c.sex))];
-  const shiniesOf = (p: DexPick) => [...new Set(p.combos.map((c) => c.shiny))];
-  const same = (p: DexPick, sexes: EntryGender[], shinies: boolean[]) => {
-    const want = product(p.group, sexes, shinies).map(comboId).sort().join();
-    return want !== '' && want === p.combos.map(comboId).sort().join();
+  // The same four switches as under the cards, for every card at once. Lit while every card has it on.
+  const ALL: PickCombo[] = [{ sex: 'm', shiny: false }, { sex: 'f', shiny: false }, { sex: 'm', shiny: true }, { sex: 'f', shiny: true }];
+  // A genderless card follows the normal / shiny part of a switch.
+  const matches = (p: DexPick, c: PickCombo) => possibleCombos(p.group).filter((x) => x.shiny === c.shiny && (x.sex === c.sex || x.sex === ''));
+  const concerned = (c: PickCombo) => picks.filter((p) => matches(p, c).length > 0);
+  const allOn = (c: PickCombo) => concerned(c).length > 0 && concerned(c).every((p) => matches(p, c).every((x) => p.combos.some((y) => comboId(y) === comboId(x))));
+  const switchAll = (c: PickCombo) => {
+    const on = !allOn(c);
+    onApplyAll((p) => {
+      const ids = new Set(matches(p, c).map(comboId));
+      if (!ids.size) return p;
+      if (on) return { ...p, combos: [...p.combos.filter((x) => !ids.has(comboId(x))), ...matches(p, c)] };
+      const left = p.combos.filter((x) => !ids.has(comboId(x)));
+      return left.length ? { ...p, combos: left } : p; // a card always keeps one version
+    });
   };
-  const sexChoice = (g: 'all' | 'm' | 'f', p: DexPick): EntryGender[] => (g === 'all' ? possibleSexes(p.group) : possibleSexes(p.group).filter((x) => x === g || x === ''));
-  const versionChoice = (v: 'normal' | 'shiny' | 'both') => (v === 'normal' ? [false] : v === 'shiny' ? [true] : [false, true]);
-  const allMatch = (f: (p: DexPick) => boolean) => picks.length > 0 && picks.every(f);
   const count = entriesOf(picks, tags).length;
 
   return (
@@ -80,21 +86,11 @@ export function BulkAddSheet({ open, picks, onApplyAll, onClose, onDone }: { ope
       <p className="mb-3 text-xs text-ink-3">{t.bulk_per_card}</p>
       <p className="mb-1.5 text-xs font-medium text-ink-3">{t.bulk_versions_all}</p>
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {(['normal', 'shiny', 'both'] as const).map((v) => (
-          <Chip key={v} active={allMatch((p) => same(p, sexesOf(p), versionChoice(v)))} onClick={() => onApplyAll((p) => ({ ...p, combos: product(p.group, sexesOf(p).length ? sexesOf(p) : possibleSexes(p.group), versionChoice(v)) }))}>
-            {{ normal: t.bulk_normal, shiny: t.bulk_shiny, both: t.bulk_both }[v]}
-          </Chip>
-        ))}
-      </div>
-      <p className="mb-1.5 text-xs font-medium text-ink-3">{t.bulk_gender_all}</p>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {(['all', 'm', 'f'] as const).map((g) => (
-          <Chip
-            key={g}
-            active={allMatch((p) => same(p, sexChoice(g, p), shiniesOf(p)))}
-            onClick={() => onApplyAll((p) => ({ ...p, combos: product(p.group, sexChoice(g, p), shiniesOf(p).length ? shiniesOf(p) : [false]) }))}
-          >
-            {g === 'all' ? `♂ ♀ ${t.gender_both}` : g === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`}
+        {ALL.map((c) => (
+          <Chip key={comboId(c)} active={allOn(c)} disabled={!concerned(c).length} onClick={() => switchAll(c)}>
+            {c.sex === 'm' ? '♂' : '♀'}
+            {c.shiny ? '✨' : ''} {c.sex === 'm' ? t.male : t.female}
+            {c.shiny ? ` ${t.shiny}` : ''}
           </Chip>
         ))}
       </div>

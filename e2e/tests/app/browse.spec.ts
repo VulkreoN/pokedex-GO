@@ -428,3 +428,19 @@ test('multi-select: each ticked card chooses its genders and versions', async ({
   const basket = await page.evaluate(() => JSON.parse(sessionStorage.getItem('selection') ?? '[]') as { variantKey: string; gender: string; shiny: boolean }[]);
   expect(basket.map((b) => `${b.variantKey}${b.gender}${b.shiny ? '*' : ''}`).sort()).toEqual(['1f*', '4f', '4m']);
 });
+
+test('multi-select: the sheet switches a version on or off for every ticked card', async ({ page }) => {
+  await page.goto('/dex');
+  await page.evaluate(() => sessionStorage.removeItem('selection'));
+  await page.getByPlaceholder('Nom ou numéro').fill('salamèche');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  await page.getByRole('button', { name: 'Ajouter Salamèche', exact: true }).click();
+  await page.getByPlaceholder('Nom ou numéro').fill('carapuce');
+  await page.getByRole('button', { name: 'Ajouter Carapuce', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('button', { name: '♂ Mâle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await sheet.getByRole('button', { name: '♀✨ Femelle Shiny', exact: true }).click();
+  await sheet.getByRole('button', { name: '♂ Mâle', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: 'Mettre 4 entrées dans la sélection' })).toBeVisible();
+});
