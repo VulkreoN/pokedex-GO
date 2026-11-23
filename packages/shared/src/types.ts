@@ -222,6 +222,8 @@ export interface PublicUser {
   friendCode: string;
   role: Role;
   createdAt: string;
+  /** Finished or skipped the welcome tour. */
+  onboarded?: boolean;
 }
 
 export type FriendRequestStatus = 'pending' | 'accepted' | 'declined';

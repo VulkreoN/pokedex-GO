@@ -96,6 +96,11 @@ export const authRoutes = new Hono<AuthEnv>()
     const user = await userFromRequest(c);
     return c.json({ user: user ? publicUser(user) : null });
   })
+  /** Logged-in: the welcome tour is finished (or skipped); it is not shown again. */
+  .post('/onboarded', requireAuth, async (c) => {
+    await db.update(schema.users).set({ onboardedAt: new Date() }).where(eq(schema.users.id, c.get('user').id));
+    return c.json({ ok: true });
+  })
   /** Logged-in: change the password, every other session is closed. */
   .post('/password', requireAuth, zValidator('json', z.object({ current: z.string(), password: z.string().min(8).max(200) })), async (c) => {
     const me = c.get('user');

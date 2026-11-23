@@ -146,7 +146,7 @@ export function ThemeToggle() {
 export function BottomNav() {
   const t = useT();
   const { pathname } = useLocation();
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname === '/welcome') return null;
   const items = [
     { to: '/dex', label: t.nav_dex, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
     { to: '/lists', label: t.nav_lists, icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /> },

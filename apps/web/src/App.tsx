@@ -14,6 +14,7 @@ import { PvpPage } from './pages/PvpPage.js';
 import { PvpTeamPage } from './pages/PvpTeamPage.js';
 import { PvpBattlePage } from './pages/PvpBattlePage.js';
 import { AdminPage } from './pages/AdminPage.js';
+import { WelcomePage } from './pages/WelcomePage.js';
 import { AnnouncementBanner } from './components/AnnouncementBanner.js';
 import { NotificationsPage } from './pages/NotificationsPage.js';
 import { useRealtime } from './lib/social.js';
@@ -122,6 +123,7 @@ export function App() {
               <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
               <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+              <Route path="/welcome" element={<RequireAuth><WelcomePage /></RequireAuth>} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

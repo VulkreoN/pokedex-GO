@@ -21,6 +21,8 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Last authenticated request, updated at most once an hour. */
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /** When the player finished or skipped the welcome tour; null = show it. */
+    onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
     /** Set by an admin: the account cannot log in or use its sessions until lifted. */
     suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   },

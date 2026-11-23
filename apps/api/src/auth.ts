@@ -10,7 +10,7 @@ export const SESSION_COOKIE = 'sid';
 const SESSION_DAYS = 30;
 
 export type Role = 'user' | 'manager' | 'admin';
-export type AuthUser = { id: string; username: string; friendCode: string; role: Role; createdAt: Date };
+export type AuthUser = { id: string; username: string; friendCode: string; role: Role; createdAt: Date; onboardedAt?: Date | null };
 
 export async function hashPassword(password: string): Promise<string> {
   return hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
@@ -56,11 +56,11 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
   }
   // A suspended account's sessions stop working at once.
   if (row.user.suspendedAt) return null;
-  const { id, username, friendCode, role, createdAt, lastSeenAt } = row.user;
+  const { id, username, friendCode, role, createdAt, lastSeenAt, onboardedAt } = row.user;
   if (!lastSeenAt || Date.now() - lastSeenAt.getTime() > 3600_000) {
     void db.update(schema.users).set({ lastSeenAt: new Date() }).where(eq(schema.users.id, id)).catch(() => {});
   }
-  return { id, username, friendCode, role, createdAt };
+  return { id, username, friendCode, role, createdAt, onboardedAt };
 }
 
 export type AuthEnv = { Variables: { user: AuthUser } };
@@ -74,7 +74,7 @@ export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
 };
 
 export function publicUser(u: AuthUser) {
-  return { id: u.id, username: u.username, friendCode: u.friendCode, role: u.role, createdAt: u.createdAt.toISOString() };
+  return { id: u.id, username: u.username, friendCode: u.friendCode, role: u.role, createdAt: u.createdAt.toISOString(), onboarded: !!u.onboardedAt };
 }
 
 const RANK: Record<Role, number> = { user: 0, manager: 1, admin: 2 };

@@ -39,7 +39,8 @@ export function LoginPage() {
         qc.setQueryData(['me'], r.user);
         qc.invalidateQueries();
       } else await auth.mutateAsync({ username: username.trim(), password, ...(mode === 'register' && invite.trim() ? { invite: invite.trim() } : {}) });
-      navigate((location.state as { from?: string } | null)?.from ?? '/dex', { replace: true });
+      // A new account starts with the welcome tour.
+      navigate(mode === 'register' ? '/welcome' : ((location.state as { from?: string } | null)?.from ?? '/dex'), { replace: true });
     } catch (err) {
       setError(mode === 'reset' ? t.err_invalid_code_reset : errorMessage(t, err));
     }

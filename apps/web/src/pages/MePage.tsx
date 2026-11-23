@@ -52,6 +52,7 @@ export function MePage() {
               <Button tone="ghost" onClick={() => setChanging(true)}>{t.change_password}</Button>
               <Button tone="danger" onClick={() => setDeleting(true)}>{t.delete_account}</Button>
             </div>
+            <Link to="/welcome" className="mt-3 inline-block text-sm font-semibold text-sky">{t.welcome_replay}</Link>
           </section>
         ) : null}
         {isAdmin && <AdminCard />}

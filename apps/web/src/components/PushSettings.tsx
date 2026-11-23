@@ -53,7 +53,7 @@ export function PushSettings() {
             <label className="flex min-h-10 cursor-pointer items-center gap-3">
               <input
                 type="checkbox"
-                className="h-5 w-5 accent-go"
+                className="h-5 w-5 shrink-0 accent-go"
                 checked={local[k] ?? prefs.data?.[k] ?? true}
                 disabled={!prefs.data}
                 onChange={(e) => {

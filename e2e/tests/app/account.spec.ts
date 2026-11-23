@@ -18,6 +18,9 @@ test('a new player signs up, builds a list, copies it for the game and shares it
   await expect(page.getByRole('button', { name: 'Créer un compte' }).last()).toBeDisabled();
   await page.getByLabel('Confirme le mot de passe').fill(PASSWORD);
   await page.getByRole('button', { name: 'Créer un compte' }).click();
+  // A new account starts with the welcome tour; skipping it leads to the Pokédex.
+  await expect(page).toHaveURL(/\/welcome$/);
+  await page.getByRole('button', { name: 'Passer' }).click();
   await expect(page).toHaveURL(/\/dex$/);
 
   // Create a list.
@@ -275,4 +278,27 @@ test('admin panel: only for admins, an announcement reaches everyone, a report r
   await expect(admin.getByText(/a traité un signalement sur Pikachu/).first()).toBeVisible();
   await adminCtx.close();
   await playerCtx.close();
+});
+
+test('the welcome tour: game language, a first list, friends, notifications; not shown again', async ({ page }) => {
+  await apiRegister(page.request, uniq('new'));
+  // An account that has not done the tour is offered to finish it on the Pokédex.
+  await page.goto('/dex');
+  await page.getByRole('link', { name: 'Continuer' }).click();
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.getByRole('heading', { name: /^Bienvenue/ })).toBeVisible();
+  await page.getByRole('button', { name: 'C’est parti' }).click();
+  await page.getByRole('button', { name: 'English' }).click();
+  await page.getByRole('button', { name: 'Suivant' }).click();
+  expect(await page.evaluate(() => localStorage.getItem('gameLang'))).toBe('en');
+  await page.getByRole('radio', { name: /Chanceux à échanger/ }).click();
+  await page.getByRole('button', { name: 'Créer la liste' }).click();
+  await expect(page.getByRole('heading', { name: 'Ajoute tes amis' })).toBeVisible();
+  await page.getByRole('button', { name: 'Suivant' }).click();
+  await page.getByRole('button', { name: 'Terminer et ouvrir ma liste' }).click();
+  await expect(page).toHaveURL(/\/lists\//);
+  await expect(page.getByRole('heading', { name: 'Chanceux à échanger' })).toBeVisible();
+  expect((await (await page.request.get('/api/auth/me')).json()).user.onboarded).toBe(true);
+  await page.goto('/dex');
+  await expect(page.getByRole('link', { name: 'Continuer' })).toHaveCount(0);
 });

@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '../lib/api.js';
+import { useMe } from '../lib/auth.js';
 import { isIos, isStandalone } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
 import { Button, IconButton } from './ui.js';
@@ -80,6 +84,26 @@ export function InstallBanner({ dismissible = true }: { dismissible?: boolean })
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </IconButton>
       )}
+    </aside>
+  );
+}
+
+/** A new account that left the welcome tour halfway: a way back in, or done with it. */
+export function WelcomeResume() {
+  const t = useT();
+  const me = useMe();
+  const qc = useQueryClient();
+  if (!me.data || me.data.onboarded !== false) return null;
+  return (
+    <aside className="card my-2 flex items-center gap-3 p-3" aria-label={t.welcome_resume_title}>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{t.welcome_resume_title}</p>
+        <p className="text-sm text-ink-2">{t.welcome_resume_text}</p>
+      </div>
+      <Link to="/welcome" className="inline-flex min-h-9 shrink-0 items-center rounded-xl bg-go px-3 text-sm font-semibold text-white">{t.welcome_resume}</Link>
+      <IconButton label={t.welcome_later} className="-mr-2 h-9 w-9" onClick={async () => { await api('/auth/onboarded', { method: 'POST' }).catch(() => {}); qc.setQueryData(['me'], { ...me.data, onboarded: true }); }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </IconButton>
     </aside>
   );
 }

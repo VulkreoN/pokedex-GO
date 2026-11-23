@@ -8,7 +8,7 @@ import { VariantCard, variantForGender, type GenderFilter } from '../components/
 import { Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
 import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
-import { InstallBanner } from '../components/InstallBanner.js';
+import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 /** Appeared in the last 45 days. */
@@ -191,6 +191,7 @@ export function PokedexPage() {
       <main className="mx-auto max-w-3xl px-3 pb-28">
         {dataset.isPending && <Spinner />}
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
+        <WelcomeResume />
         <InstallBanner />
         {dataset.data && (
           <>
