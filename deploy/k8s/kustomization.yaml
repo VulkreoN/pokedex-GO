@@ -23,6 +23,6 @@ configMapGenerator:
       - VAPID_SUBJECT=https://dex.example.com
 images:
   - name: ghcr.io/vulkreon/pokedex-go-api
-    newTag: 186b9f37b7d979d925d19012c63bc30eae559060
+    newTag: dc14c3178ee6d1a8369ff07ed07b1c7ca13f60c7
   - name: ghcr.io/vulkreon/pokedex-go-web
-    newTag: 186b9f37b7d979d925d19012c63bc30eae559060
+    newTag: dc14c3178ee6d1a8369ff07ed07b1c7ca13f60c7
