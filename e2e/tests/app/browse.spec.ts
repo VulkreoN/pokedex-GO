@@ -313,3 +313,20 @@ test('my PvP Pokémon: saved from the PvP page, listed by their best league rank
   await page.goto('/pvp');
   await expect(page.getByRole('heading', { name: /^Mes Pokémon/ })).toHaveCount(0);
 });
+
+test('a team of three: picked from a search, shared weaknesses, and it lives in the URL', async ({ page }) => {
+  await page.goto('/pvp');
+  await page.getByRole('link', { name: /Composer une équipe/ }).click();
+  await expect(page).toHaveURL(/\/pvp\/team/);
+  await page.getByRole('button', { name: 'Ajouter' }).first().click();
+  await page.locator('dialog[open]').getByPlaceholder('Chercher un Pokémon').fill('azumarill');
+  await page.locator('dialog[open]').getByRole('button', { name: /Azumarill/ }).click();
+  await expect(page).toHaveURL(/p=184/);
+
+  await page.goto('/pvp/team?l=great&p=184,308,227'); // Azumarill, Medicham, Skarmory
+  const weak = page.locator('section', { has: page.getByRole('heading', { name: 'Faiblesses' }) });
+  await expect(weak.getByText(/Au moins deux membres/)).toBeVisible();
+  await expect(weak.getByText('Électrik').first()).toBeVisible(); // Azumarill and Skarmory, Medicham does not resist it
+  await page.getByRole('button', { name: /Ligue Hyper/ }).click();
+  await expect(page).toHaveURL(/l=ultra/);
+});

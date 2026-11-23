@@ -18,14 +18,14 @@ import { localized, useLang, useT } from '../lib/i18n.js';
 /** IV floors by how the Pokémon was obtained: they shrink the pool a rank is computed against. */
 const FLOORS = [0, 4, 5, 10, 12] as const;
 
-function usePvp() {
+export function usePvp() {
   const ds = useDataset();
   const pvp = ds.data?.ds.pvp;
   const byKey = useMemo(() => new Map((pvp?.pokemon ?? []).map((p) => [p.key, p])), [pvp]);
   return { ds, pvp, byKey };
 }
 
-function picture(idx: DatasetIndex, p: PvpPokemon): Variant | undefined {
+export function picture(idx: DatasetIndex, p: PvpPokemon): Variant | undefined {
   return idx.variantByKey.get(p.key) ?? idx.coverOf.get(p.dex);
 }
 
@@ -117,6 +117,15 @@ function PvpSearch() {
         {pvp && !query && (
           <>
             <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
+            <Link to="/pvp/team" className="card mb-5 flex items-center gap-3 p-3 hover:brightness-[0.98]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-go-soft text-go-ink">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{t.team_open}</span>
+                <span className="block text-xs text-ink-3">{t.team_intro}</span>
+              </span>
+            </Link>
             {ds.data && <MyPokemon idx={ds.data} pvp={pvp} byKey={byKey} />}
             {picks.recent.length > 0 && (
               <section className="mb-5">
