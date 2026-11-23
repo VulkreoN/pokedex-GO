@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { errorMessage } from '../pages/FriendsPage.js';
 import { useLocation } from 'react-router';
 import { entryVariant, genderSymbol, tagLabel, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
@@ -22,18 +23,30 @@ export function SelectionBar() {
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const idx = dataset.data;
+    if (idx) selection.tidy((k) => idx.variantByKey.has(k), idx.ds.aliases);
+  }, [dataset.data]);
   if (items.length === 0 || pathname === '/login') return null;
   const idx = dataset.data;
 
   const submit = async () => {
-    const ids = [...selected];
-    if (newName.trim()) {
-      const r = await create.mutateAsync({ name: newName.trim() });
-      ids.push(r.list.id);
+    setError(null);
+    try {
+      const ids = [...selected];
+      if (newName.trim()) {
+        const r = await create.mutateAsync({ name: newName.trim() });
+        ids.push(r.list.id);
+      }
+      const entries = items.map((i) => ({ variantKey: i.variantKey, ...(i.gender !== undefined ? { gender: i.gender } : {}), shiny: i.shiny, tag: i.tag, done: false }));
+      // Big baskets (a whole Pokédex) go in parts, under the server's limit per request.
+      for (const id of ids) for (let k = 0; k < entries.length; k += 1000) await upsert.mutateAsync({ id, entries: entries.slice(k, k + 1000) });
+      toast(t.added_to(ids.length));
+    } catch (e) {
+      setError(errorMessage(t, e));
+      return;
     }
-    const entries = items.map((i) => ({ variantKey: i.variantKey, ...(i.gender !== undefined ? { gender: i.gender } : {}), shiny: i.shiny, tag: i.tag, done: false }));
-    await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
-    toast(t.added_to(ids.length));
     selection.clear();
     setSelected(new Set());
     setNewName('');
@@ -97,6 +110,7 @@ export function SelectionBar() {
         <Button tone="primary" className="mt-3 w-full" disabled={(selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
           {t.add} · {t.selected_count(items.length)}
         </Button>
+        {error && <p className="mt-3 text-center text-sm text-berry">{error}</p>}
         {lists.isError && <p className="mt-3 text-center text-sm text-sky">{t.login_required}</p>}
       </Sheet>
     </>

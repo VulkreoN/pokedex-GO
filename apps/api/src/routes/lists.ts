@@ -213,7 +213,10 @@ export const listRoutes = new Hono<AuthEnv>()
     if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
     let entries;
     try {
-      entries = normalizeEntries(c.req.valid('json').entries, await dataService.variants());
+      // Keys of forms the dataset folded away (an older page, a saved basket) go to the form that replaced them.
+      const aliases = dataService.aliases() ?? {};
+      const incoming = c.req.valid('json').entries.map((e) => (aliases[neutralKey(e.variantKey)] ? { ...e, variantKey: aliases[neutralKey(e.variantKey)]! } : e));
+      entries = normalizeEntries(incoming, await dataService.variants());
     } catch (e) {
       if (e instanceof GenderError) return c.json({ error: e.code, variantKey: e.variantKey }, 400);
       throw e;

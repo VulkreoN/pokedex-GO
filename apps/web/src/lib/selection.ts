@@ -47,6 +47,17 @@ export const selection = {
   clear() {
     commit([]);
   },
+  /** After a data update: keys of folded forms move to their replacement, keys that are gone leave. */
+  tidy(known: (key: string) => boolean, aliases: Record<string, string> = {}) {
+    const byId = new Map<string, SelectionItem>();
+    for (const i of items) {
+      const variantKey = aliases[i.variantKey] ?? i.variantKey;
+      if (!known(variantKey)) continue;
+      const id = selectionId(variantKey, i.shiny, i.tag, i.gender);
+      byId.set(id, { ...i, variantKey, id });
+    }
+    if (byId.size !== items.length || [...byId.values()].some((x, k) => x.id !== items[k]?.id)) commit([...byId.values()]);
+  },
 };
 
 export function useSelection(): SelectionItem[] {

@@ -1,3 +1,4 @@
+import { errorMessage } from '../pages/FriendsPage.js';
 import { useEffect, useState } from 'react';
 import { ENTRY_TAGS, neutralKey, type EntryGender, type EntryTag, type Variant } from '@mydexpogo/shared';
 import { Link } from 'react-router';
@@ -108,12 +109,17 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
   const submit = async () => {
     if (!group || chosen.length === 0) return;
     const ids = [...selected];
-    if (newName.trim()) {
-      const r = await create.mutateAsync({ name: newName.trim() });
-      ids.push(r.list.id);
+    try {
+      if (newName.trim()) {
+        const r = await create.mutateAsync({ name: newName.trim() });
+        ids.push(r.list.id);
+      }
+      const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag, done: false })));
+      await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
+    } catch (e) {
+      toast(errorMessage(t, e));
+      return;
     }
-    const entries = chosen.flatMap((o) => effectiveTags().map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag, done: false })));
-    await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
     toast(t.added_to(ids.length));
     setSelected(new Set());
     setNewName('');

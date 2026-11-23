@@ -530,6 +530,18 @@ describe('client errors', () => {
   });
 });
 
+describe('folded forms', () => {
+  it("takes the key of a form the dataset folded away and files it under the form that replaced it", async () => {
+    const [from, to] = Object.entries(ds.aliases ?? {})[0] ?? [];
+    if (!from) return;
+    const list = (await alice.post('/lists', { name: name('alias'), visibility: 'private' })).body.list;
+    const r = await alice.put(`/lists/${list.id}/entries`, { entries: [{ variantKey: from, shiny: false }] });
+    expect(r.status).toBe(200);
+    expect(r.body.list.entries.map((e: any) => e.variantKey)).toContain(to);
+    expect(r.body.list.entries.map((e: any) => e.variantKey)).not.toContain(from);
+  });
+});
+
 describe('admin panel', () => {
   it('shows the dashboard and the health of the sources to admins only', async () => {
     expect((await alice.get('/admin/stats')).status).toBe(403);

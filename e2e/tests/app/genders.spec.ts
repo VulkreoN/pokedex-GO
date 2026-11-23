@@ -175,3 +175,23 @@ test('search strings use the game language: mâle / femelle in a French game', a
   await expect(code).toContainText('female');
   await sheet.getByRole('button', { name: 'Français' }).click();
 });
+
+test('a basket saved before a data update still goes to a list (folded forms follow, gone ones leave)', async ({ page }) => {
+  await apiRegister(page.request);
+  await page.goto('/dex');
+  await page.evaluate(() => {
+    const item = (variantKey: string, gender: string) => ({ id: `${variantKey}:${gender}:0:`, variantKey, gender, shiny: false, tag: '' });
+    sessionStorage.setItem('selection', JSON.stringify([item('1', 'm'), item('778.fBUSTED', 'f'), item('9999.fNOPE', '')]));
+  });
+  await page.reload();
+  // The stale key is gone, the folded one follows: 2 left.
+  await page.getByRole('button', { name: /^2 sélectionnés/ }).click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByText('Bulbizarre ♂')).toBeVisible();
+  await expect(sheet.getByText('Mimiqui ♀')).toBeVisible(); // Busted -> Disguised
+  await sheet.getByPlaceholder('Nouvelle liste').fill('Depuis le panier');
+  await sheet.getByRole('button', { name: /^Ajouter · 2/ }).click();
+  await expect(page.getByText(/Ajouté à 1 liste/)).toBeVisible();
+  const lists = (await (await page.request.get('/api/lists')).json()).lists;
+  expect(lists.find((l: { name: string }) => l.name === 'Depuis le panier').entryCount).toBe(2);
+});

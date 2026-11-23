@@ -24,6 +24,8 @@ export function errorMessage(t: T, e: unknown): string {
       self: t.err_self,
       validation: t.err_validation,
       suspended: t.err_suspended,
+      unknown_variant: t.err_unknown_variant,
+      invalid_gender: t.err_invalid_gender,
       signups_closed: t.err_signups_closed,
       signups_full: t.err_signups_full,
       invite_required: t.err_invite_required,
