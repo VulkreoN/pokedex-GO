@@ -63,6 +63,9 @@ interface GmTemplate {
       pokemonClass?: string;
       parentPokemonId?: string;
       tempEvoOverrides?: { tempEvoId?: string }[];
+      evolutionBranch?: { evolution?: string; temporaryEvolution?: string }[];
+      /** "_NOEVOLVE" costumes this species may evolve with all the same. */
+      allowNoevolveEvolution?: string[];
     };
     formSettings?: { pokemon: string; forms?: { form: string; isCostume?: boolean }[] };
   };
@@ -151,13 +154,19 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   /* Game master: species, form lists, per-form types, megas */
   const speciesByDex = new Map<number, Species & { gmForms: Map<string, boolean>; tempEvos: Set<string> }>();
   const formTypes = new Map<string, PokemonType[]>(); // `${dex}:${token}`
+  /** What a species or one of its forms can do: evolve, Mega Evolve. `${dex}` for the species, `${dex}:${token}` for a form. */
+  const abilities = new Map<string, { evolves: boolean; megas: boolean }>();
+  const noevolveAllowed = new Map<number, Set<string>>();
   for (const t of gm) {
     const m = /^V(\d{4})_POKEMON_(.+)$/.exec(t.templateId);
     const ps = t.data.pokemonSettings;
     if (!m || !ps) continue;
     const dex = Number(m[1]);
     const types = [typeOf(ps.type), typeOf(ps.type2)].filter((x): x is PokemonType => !!x);
+    const can = { evolves: (ps.evolutionBranch ?? []).some((b) => b.evolution), megas: (ps.evolutionBranch ?? []).some((b) => b.temporaryEvolution) || !!ps.tempEvoOverrides?.length };
     if (!ps.form) {
+      abilities.set(`${dex}`, can);
+      if (ps.allowNoevolveEvolution?.length) noevolveAllowed.set(dex, new Set(ps.allowNoevolveEvolution));
       const nameKey = `pokemon_name_${String(dex).padStart(4, '0')}`;
       const en = texts.en.get(nameKey) ?? humanizeToken(ps.pokemonId);
       const fr = texts.fr.get(nameKey);
@@ -177,6 +186,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       });
     } else {
       const token = ps.form.startsWith(`${ps.pokemonId}_`) ? ps.form.slice(ps.pokemonId.length + 1) : ps.form;
+      abilities.set(`${dex}:${token}`, can);
       if (types.length) {
         formTypes.set(`${dex}:${token}`, types);
         formTypes.set(`${dex}:${ps.form}`, types);
@@ -326,7 +336,18 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (g?.shiny && /^https?:/.test(g.shiny)) v.shinyImg = g.shiny;
     const types = form ? formTypes.get(`${sp.dex}:${form}`) : undefined;
     if (types && types.join() !== sp.types.join()) v.types = types;
-    if ((costume && (costumeByProto.get(costume)?.noEvolve || /NOEVOLVE/.test(costume))) || (form && /NOEVOLVE/.test(form))) v.noEvolve = true;
+    // Only costumes are marked, and only when the plain Pokémon evolves (or Mega Evolves) and this one cannot:
+    // a last stage "not evolving" says nothing. A costume form has its own game master entry; a "_NOEVOLVE" costume
+    // is blocked unless the species lists it in allowNoevolveEvolution.
+    if (kind === 'costume') {
+      const plain = abilities.get(`${sp.dex}:NORMAL`) ?? abilities.get(`${sp.dex}`);
+      const own = form ? abilities.get(`${sp.dex}:${form}`) : undefined;
+      const blockedCostume = !!costume && (costumeByProto.get(costume)?.noEvolve || /NOEVOLVE/.test(costume)) && !noevolveAllowed.get(sp.dex)?.has(costume);
+      const evolves = (own ? own.evolves : !!plain?.evolves) && !blockedCostume && !(form && /NOEVOLVE/.test(form));
+      if (plain?.evolves && !evolves) v.noEvolve = true;
+      // The game master says it only for costume forms (Clone Charizard); a plain costume has nothing to read.
+      if (plain?.megas && own && !own.megas) v.noMega = true;
+    }
     variants.push(v);
   };
 

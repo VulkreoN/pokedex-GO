@@ -59,8 +59,10 @@ export interface Variant {
   inGameMaster: boolean;
   /** Type override for this form, when the game master gives one. */
   types?: PokemonType[];
-  /** Evolving is blocked for this costume. */
+  /** Evolving is blocked for this costume (only set when the plain Pokémon evolves). */
   noEvolve?: boolean;
+  /** This costume cannot Mega Evolve though the plain Pokémon can. */
+  noMega?: boolean;
   /** Ids of special backgrounds this picture can carry (see Dataset.backgrounds). */
   backgrounds?: string[];
   /** When this variant first appeared (ISO date). Estimated from the costume name for the initial baseline, exact afterwards. */

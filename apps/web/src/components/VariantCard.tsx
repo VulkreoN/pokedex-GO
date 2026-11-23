@@ -54,6 +54,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
           {datamined && <Badge tone="datamined">{t.datamined}</Badge>}
           {shinyMissing && <Badge tone="muted">{t.no_shiny}</Badge>}
           {v.noEvolve && <Badge tone="muted">{t.no_evolve}</Badge>}
+          {v.noMega && <Badge tone="muted">{t.no_mega}</Badge>}
           {v.backgrounds?.length ? <Badge tone="muted">{t.backgrounds_count(v.backgrounds.length)}</Badge> : null}
         </span>
       </button>
