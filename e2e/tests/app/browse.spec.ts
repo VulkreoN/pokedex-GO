@@ -287,3 +287,29 @@ test('PvP mode shows the rank 1 IVs per league on the cards', async ({ page }) =
   await page.goto('/dex');
   await expect(page.getByRole('button', { name: 'Afficher les meilleurs IV PvP' })).toHaveAttribute('aria-pressed', 'true'); // remembered
 });
+
+test('my PvP Pokémon: saved from the PvP page, listed by their best league rank, updated and removed', async ({ page }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+  await page.goto('/pvp/183?a=0&d=15&s=15&l=20'); // Marill, rank 1 IVs for a Great League Azumarill
+  await page.getByRole('button', { name: 'Enregistrer dans mes Pokémon' }).click();
+  await expect(page.getByText('Ajouté à tes Pokémon')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dans mes Pokémon' })).toBeDisabled();
+  await expect(page).toHaveURL(/m=/);
+
+  await page.goto('/pvp');
+  const mine = page.locator('section', { has: page.getByRole('heading', { name: /^Mes Pokémon/ }) });
+  const row = mine.getByRole('link', { name: /Marill/ });
+  await expect(row).toContainText('0/15/15');
+  await expect(row).toContainText('#1');
+  await expect(row).toContainText('en Azumarill');
+
+  await row.click();
+  await page.locator('input[type=range]').first().fill('3');
+  await page.getByRole('button', { name: 'Enregistrer les changements' }).click();
+  await expect(page.getByText('Modifié', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Retirer', exact: true }).click();
+  await expect(page.getByText('Retiré de tes Pokémon')).toBeVisible();
+  await page.goto('/pvp');
+  await expect(page.getByRole('heading', { name: /^Mes Pokémon/ })).toHaveCount(0);
+});

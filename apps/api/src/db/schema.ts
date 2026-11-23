@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -256,4 +256,23 @@ export const raidAlerts = pgTable(
     alertedAt: timestamp('alerted_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.bossId] })],
+);
+
+/** A player's own Pokémon kept for PvP: which form, its IVs, its level if known. */
+export const pvpPokemon = pgTable(
+  'pvp_pokemon',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** PvP form key ("184", "105.fALOLA"). */
+    formKey: text('form_key').notNull(),
+    atk: integer('atk').notNull(),
+    def: integer('def').notNull(),
+    sta: integer('sta').notNull(),
+    level: real('level'),
+    shadow: boolean('shadow').notNull().default(false),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('pvp_pokemon_user_idx').on(t.userId)],
 );

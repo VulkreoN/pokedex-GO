@@ -20,6 +20,7 @@ import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
 import { sql } from './db/index.js';
 import { clientErrorRoutes } from './routes/clientErrors.js';
+import { pvpPokemonRoutes } from './routes/pvpPokemon.js';
 import { startRaidAlerts } from './notify/raidAlerts.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
@@ -43,6 +44,7 @@ app.route('/notifications', notificationRoutes);
 app.route('/push', pushRoutes);
 app.route('/stream', streamRoutes);
 app.route('/client-errors', clientErrorRoutes);
+app.route('/pvp-pokemon', pvpPokemonRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {

@@ -10,6 +10,8 @@ import { Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { copyText } from '../lib/api.js';
 import { savedGameLang } from '../lib/searchString.js';
+import { useMe } from '../lib/auth.js';
+import { useDeleteMyPvp, useMyPvp, useSaveMyPvp, type MyPvpPokemon } from '../lib/myPvp.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
@@ -115,6 +117,7 @@ function PvpSearch() {
         {pvp && !query && (
           <>
             <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
+            {ds.data && <MyPokemon idx={ds.data} pvp={pvp} byKey={byKey} />}
             {picks.recent.length > 0 && (
               <section className="mb-5">
                 <h2 className="mb-2 text-base font-bold">{t.pvp_recent}</h2>
@@ -315,6 +318,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
               {t.pvp_buddy}
             </label>
           </details>
+          <SaveMine me={me} iv={iv} level={level} mineId={params.get('m')} onSaved={(id) => set({ m: id })} onRemoved={() => set({ m: null })} />
         </section>
 
         <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} />
@@ -534,5 +538,101 @@ function Cost({ pvp, from, to }: { pvp: PvpData; from: number; to: number }) {
       </span>
       {buddyOnly && <span className="mt-1 block text-xs text-ink-3">* {t.pvp_buddy_needed}</span>}
     </span>
+  );
+}
+
+/** Save the Pokémon as entered to "My Pokémon", or update / remove the saved one this page was opened from. */
+function SaveMine({ me, iv, level, mineId, onSaved, onRemoved }: { me: PvpPokemon; iv: Ivs; level: number | null; mineId: string | null; onSaved: (id: string) => void; onRemoved: () => void }) {
+  const t = useT();
+  const toast = useToast();
+  const user = useMe();
+  const mine = useMyPvp();
+  const save = useSaveMyPvp();
+  const del = useDeleteMyPvp();
+  if (!user.data) return null;
+  const saved = mineId ? mine.data?.find((p) => p.id === mineId) : undefined;
+  const same = saved && saved.atk === iv.atk && saved.def === iv.def && saved.sta === iv.sta && saved.level === level;
+  return (
+    <div className="mt-3 flex gap-2">
+      <Button
+        tone={saved ? 'quiet' : 'primary'}
+        className="flex-1"
+        disabled={save.isPending || !!same}
+        onClick={async () => {
+          const r = await save.mutateAsync({ id: saved?.id, formKey: me.key, atk: iv.atk, def: iv.def, sta: iv.sta, level });
+          toast(saved ? t.pvp_mine_updated : t.pvp_mine_saved);
+          if (!saved) onSaved(r.pokemon.id);
+        }}
+      >
+        {saved ? (same ? t.pvp_mine_is_saved : t.pvp_mine_update) : t.pvp_mine_save}
+      </Button>
+      {saved && (
+        <Button tone="danger" disabled={del.isPending} onClick={async () => { await del.mutateAsync(saved.id); toast(t.pvp_mine_removed); onRemoved(); }}>
+          {t.pvp_mine_remove}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Best league rank of a saved Pokémon over its evolution line: what it is worth once evolved. */
+function bestUse(pvp: PvpData, byKey: Map<string, PvpPokemon>, m: MyPvpPokemon) {
+  const start = byKey.get(m.formKey);
+  if (!start) return null;
+  const iv = { atk: m.atk, def: m.def, sta: m.sta };
+  let best: { form: PvpPokemon; league: 'great' | 'ultra'; r: RankInfo } | null = null;
+  for (const form of evolutionLine(start, byKey))
+    for (const league of ['great', 'ultra'] as const) {
+      const r = rankOf(pvp, form, iv, LEAGUES[league], pvp.maxLevel);
+      // A league it cannot reach the cap of does not count.
+      if (r.best.level === pvp.maxLevel && r.best.cp < LEAGUES[league]) continue;
+      if (!best || r.rank < best.r.rank) best = { form, league, r };
+    }
+  return best && { start, ...best };
+}
+
+function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey: Map<string, PvpPokemon> }) {
+  const t = useT();
+  const { lang } = useLang();
+  const q = useMyPvp();
+  const [all, setAll] = useState(false);
+  const rows = useMemo(
+    () => (q.data ?? []).flatMap((m) => { const b = bestUse(pvp, byKey, m); return b ? [{ m, ...b }] : []; }).sort((a, b) => a.r.rank - b.r.rank),
+    [q.data, pvp, byKey],
+  );
+  if (!rows.length) return null;
+  const shown = all ? rows : rows.slice(0, 6);
+  return (
+    <section className="mb-5">
+      <h2 className="mb-2 text-base font-bold">{t.pvp_mine_title} <span className="tnum font-normal text-ink-3">{rows.length}</span></h2>
+      <ul className="space-y-2">
+        {shown.map(({ m, start, form, league, r }) => {
+          const v = picture(idx, start);
+          const qs = new URLSearchParams({ a: String(m.atk), d: String(m.def), s: String(m.sta), m: m.id, ...(m.level ? { l: String(m.level) } : {}) });
+          return (
+            <li key={m.id}>
+              <Link to={`/pvp/${encodeURIComponent(start.key)}?${qs}`} className="card flex items-center gap-3 p-2 hover:brightness-[0.98]">
+                {v && <Sprite idx={idx} variant={v} size={48} />}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold">{localized(start.name, lang)}</div>
+                  <div className="tnum text-xs text-ink-3">
+                    {m.atk}/{m.def}/{m.sta}{m.level ? ` · ${t.pvp_level} ${m.level.toLocaleString(lang)}` : ''}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="tnum flex items-center justify-end gap-1 text-lg font-extrabold leading-none">
+                    <LeagueIcon league={league} size={16} />#{r.rank.toLocaleString(lang)}
+                  </div>
+                  {form.key !== start.key && <div className="mt-0.5 text-[11px] text-ink-3">{t.pvp_mine_as(localized(form.name, lang))}</div>}
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {rows.length > 6 && (
+        <button type="button" className="mt-2 text-sm font-semibold text-sky" onClick={() => setAll((x) => !x)}>{all ? t.pvp_mine_less : t.pvp_mine_all(rows.length)}</button>
+      )}
+    </section>
   );
 }

@@ -492,6 +492,26 @@ describe('game data', () => {
   });
 });
 
+describe('my PvP Pokémon', () => {
+  it('saves, edits and removes them, privately', async () => {
+    expect((await anon.get('/pvp-pokemon')).status).toBe(401);
+    const created = await alice.post('/pvp-pokemon', { formKey: '184', atk: 0, def: 15, sta: 15, level: 20, note: 'raid' });
+    expect(created.status).toBe(201);
+    const id = created.body.pokemon.id;
+    expect((await alice.post('/pvp-pokemon', { formKey: 'nope', atk: 0, def: 0, sta: 0 })).status).toBe(400);
+    expect((await alice.post('/pvp-pokemon', { formKey: '184', atk: 16, def: 0, sta: 0 })).status).toBe(400);
+    expect((await alice.post('/pvp-pokemon', { formKey: '184', atk: 1, def: 1, sta: 1, level: 20.3 })).status).toBe(400);
+    expect((await alice.patch(`/pvp-pokemon/${id}`, { level: 21.5 })).body.pokemon).toMatchObject({ level: 21.5, atk: 0, note: 'raid' });
+    // Someone else's: not visible, not editable.
+    expect((await bob.get('/pvp-pokemon')).body.pokemon.map((p: any) => p.id)).not.toContain(id);
+    expect((await bob.patch(`/pvp-pokemon/${id}`, { level: 30 })).status).toBe(404);
+    expect((await bob.del(`/pvp-pokemon/${id}`)).status).toBe(404);
+    expect((await alice.get('/pvp-pokemon')).body.pokemon[0]).toMatchObject({ id, formKey: '184', level: 21.5 });
+    expect((await alice.del(`/pvp-pokemon/${id}`)).status).toBe(200);
+    expect((await alice.get('/pvp-pokemon')).body.pokemon).toEqual([]);
+  });
+});
+
 describe('client errors', () => {
   it('groups the same browser error, keeps only the path, and shows them to admins only', async () => {
     const message = `TypeError: x is undefined ${Date.now()}`;

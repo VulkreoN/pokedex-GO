@@ -78,6 +78,13 @@
       "when": 1795455341288,
       "tag": "0010_raid_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795455554891,
+      "tag": "0011_pvp_pokemon",
+      "breakpoints": true
     }
   ]
 }
