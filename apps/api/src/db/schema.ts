@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid'] as const;
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'account'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(
@@ -19,6 +19,10 @@ export const users = pgTable(
     /** Push notification switches per kind; a missing key means on. */
     notifyPrefs: jsonb('notify_prefs').$type<Partial<Record<NotificationType, boolean>>>().notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Last authenticated request, updated at most once an hour. */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /** Set by an admin: the account cannot log in or use its sessions until lifted. */
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_username_lower_idx').on(sql`lower(${t.username})`),
@@ -276,3 +280,69 @@ export const pvpPokemon = pgTable(
   },
   (t) => [index('pvp_pokemon_user_idx').on(t.userId)],
 );
+
+/** Instance settings an admin changes from the app (sign-up mode...), one JSON value per key. */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').$type<unknown>().notNull(),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Invitation codes for sign-ups by invitation (sha256 of the code; the code is shown once). */
+export const inviteCodes = pgTable('invite_codes', {
+  id: text('id').primaryKey(),
+  codeHash: text('code_hash').notNull().unique(),
+  note: text('note'),
+  maxUses: integer('max_uses').notNull().default(1),
+  uses: integer('uses').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** What admins and managers changed, and when; `data.before` lets some changes be undone. */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: text('id').primaryKey(),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id'),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    undoneAt: timestamp('undone_at', { withTimezone: true }),
+  },
+  (t) => [index('audit_log_created_idx').on(t.createdAt)],
+);
+
+/** Players' reports of a data mistake on a Pokémon page, for managers to handle. */
+export const reports = pgTable(
+  'reports',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+    variantKey: text('variant_key').notNull(),
+    kind: text('kind', { enum: ['name', 'released', 'gender', 'picture', 'other'] }).notNull(),
+    message: text('message'),
+    status: text('status', { enum: ['open', 'resolved', 'dismissed'] }).notNull().default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    handledBy: text('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+  },
+  (t) => [index('reports_status_idx').on(t.status, t.createdAt)],
+);
+
+/** A message shown to everyone in a banner (maintenance, news), optionally pushed once. */
+export const announcements = pgTable('announcements', {
+  id: text('id').primaryKey(),
+  message: text('message').notNull(),
+  level: text('level', { enum: ['info', 'warning'] }).notNull().default('info'),
+  link: text('link'),
+  active: boolean('active').notNull().default(true),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  pushedAt: timestamp('pushed_at', { withTimezone: true }),
+  pushCount: integer('push_count'),
+});

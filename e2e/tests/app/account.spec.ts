@@ -129,20 +129,21 @@ test('an admin issues a reset code that lets a player choose a new password', as
   await player.request.post('/api/auth/logout');
 
   await admin.goto('/me');
-  await expect(admin.getByRole('heading', { name: 'Administration' })).toBeVisible();
+  await admin.getByRole('link', { name: /Panneau admin/ }).click();
+  await admin.getByRole('tab', { name: 'Comptes' }).click();
   await admin.getByPlaceholder('Chercher un pseudo').fill(target.username);
-  const row = admin.locator('li', { hasText: target.username });
-  await expect(row).toHaveCount(1);
-  // Promote to manager and back, from the same row.
-  await row.getByRole('button', { name: 'Gérant' }).click();
-  await expect(row.getByRole('button', { name: 'Gérant' })).toHaveAttribute('aria-pressed', 'true');
-  await row.getByRole('button', { name: 'Dresseur' }).click();
-  await expect(row.getByRole('button', { name: 'Dresseur' })).toHaveAttribute('aria-pressed', 'true');
+  await admin.getByRole('button', { name: new RegExp(target.username) }).click();
+  const sheet = admin.locator('dialog[open]');
+  // Promote to manager and back, from the account's sheet.
+  await sheet.getByRole('button', { name: 'Gérant' }).click();
+  await expect(sheet.getByRole('button', { name: 'Gérant' })).toHaveAttribute('aria-pressed', 'true');
+  await sheet.getByRole('button', { name: 'Dresseur' }).click();
+  await expect(sheet.getByRole('button', { name: 'Dresseur' })).toHaveAttribute('aria-pressed', 'true');
 
-  await row.getByRole('button', { name: 'Code de réinit.' }).click();
-  const issued = admin.getByText(/Code pour .* : [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/);
-  await expect(issued).toBeVisible();
-  const code = /([0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4})/.exec((await issued.textContent())!)![1]!;
+  await sheet.getByRole('button', { name: 'Code de réinit.' }).click();
+  const issued = sheet.locator('code');
+  await expect(issued).toHaveText(/[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/);
+  const code = (await issued.textContent())!.trim();
 
   await player.goto('/login');
   await player.getByRole('button', { name: 'Mot de passe oublié ?' }).click();
@@ -210,9 +211,57 @@ test("a crash in a player's browser reaches the admins' error list", async ({ br
   await player.evaluate((m) => setTimeout(() => { throw new Error(m); }), message);
   await adminLogin(admin.request);
   await expect.poll(async () => (await admin.request.get('/api/client-errors')).text(), { timeout: 10_000 }).toContain(message);
-  await admin.goto('/me');
+  await admin.goto('/admin?tab=errors');
   await expect(admin.getByRole('heading', { name: 'Erreurs chez les joueurs' })).toBeVisible();
   await expect(admin.getByText(`Error: ${message}`, { exact: true })).toBeVisible();
   await playerCtx.close();
   await adminCtx.close();
+});
+
+test('admin panel: only for admins, an announcement reaches everyone, a report reaches the managers', async ({ browser }) => {
+  const adminCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.5.1' } });
+  const playerCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.5.2' } });
+  const admin = await adminCtx.newPage();
+  const player = await playerCtx.newPage();
+  await adminLogin(admin.request);
+  await apiRegister(player.request, uniq('rep'));
+
+  // Not for players.
+  await player.goto('/admin');
+  await expect(player).toHaveURL(/\/me$/);
+  await expect(player.getByRole('link', { name: /Panneau admin/ })).toHaveCount(0);
+
+  await admin.goto('/admin');
+  await expect(admin.getByText('comptes', { exact: true })).toBeVisible();
+  await admin.getByRole('tab', { name: 'Santé' }).click();
+  await expect(admin.getByText('Version en ligne')).toBeVisible();
+
+  // An announcement shows on everyone's pages, and can be closed.
+  await admin.getByRole('tab', { name: 'Annonces' }).click();
+  const message = `Test ${uniq('annonce')}`;
+  await admin.getByLabel('Message').fill(message);
+  await admin.getByRole('button', { name: 'Publier' }).click();
+  await player.goto('/dex');
+  await expect(player.getByRole('status').getByText(message)).toBeVisible();
+  await player.getByRole('button', { name: 'Fermer l’annonce' }).click();
+  await expect(player.getByText(message)).toHaveCount(0);
+  await admin.getByRole('button', { name: 'Retirer' }).first().click();
+
+  // A player reports a mistake; it waits on the admin panel, gets handled, and the journal keeps it.
+  await player.goto('/dex/25');
+  await player.getByRole('button', { name: 'Signaler une erreur' }).click();
+  const sheet = player.locator('dialog[open]');
+  await sheet.getByRole('button', { name: 'Image' }).click();
+  await sheet.getByLabel('Précise (facultatif)').fill('la casquette est floue');
+  await sheet.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(player.getByText('Merci ! Un gérant va regarder.')).toBeVisible();
+  await admin.goto('/admin?tab=reports');
+  const report = admin.locator('li', { hasText: 'la casquette est floue' });
+  await expect(report).toBeVisible();
+  await report.getByRole('button', { name: 'Traité' }).click();
+  await expect(report).toHaveCount(0);
+  await admin.getByRole('tab', { name: 'Journal' }).click();
+  await expect(admin.getByText(/a traité un signalement sur Pikachu/).first()).toBeVisible();
+  await adminCtx.close();
+  await playerCtx.close();
 });

@@ -193,6 +193,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     const parent = speciesById.get(ps.parentPokemonId);
     if (sp && parent && parent.dex !== sp.dex) sp.parent = parent.dex;
   }
+  /** Species whose form list has a NORMAL form: their formless picture is that form. */
+  const withNormalForm = new Set<number>();
   for (const t of gm) {
     const fs = t.data.formSettings;
     if (!t.templateId.startsWith('FORMS_V') || !fs) continue;
@@ -200,7 +202,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (!sp) continue;
     for (const f of fs.forms ?? []) {
       const token = f.form.startsWith(`${fs.pokemon}_`) ? f.form.slice(fs.pokemon.length + 1) : f.form;
-      if (token === 'NORMAL') continue;
+      if (token === 'NORMAL') {
+        withNormalForm.add(sp.dex);
+        continue;
+      }
       sp.gmForms.set(token, !!f.isCostume);
       if (token !== f.form) sp.gmForms.set(f.form, !!f.isCostume);
     }
@@ -261,6 +266,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const femaleKeys = new Set([...groups.values()].filter((g) => g.female).map((g) => makeVariantKey({ dex: g.dex, form: g.form, costume: g.costume, gender: null })));
   // Read at build time (not a static import) so a long-running job picks up edits without restarting.
   const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as {
+    speciesNames?: Record<string, { fr?: string }>;
     labels: Record<string, LocalizedText>;
     status: Record<string, 'released' | 'datamined'>;
     megas?: string[];
@@ -268,6 +274,11 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     genders?: Record<string, Gender[]>;
   };
   const labelOverrides = overrides.labels;
+  // Species the game texts do not name in French yet.
+  for (const [dex, n] of Object.entries(overrides.speciesNames ?? {})) {
+    const sp = speciesByDex.get(Number(dex));
+    if (sp && n.fr && !sp.name.fr) sp.name = { ...sp.name, fr: n.fr };
+  }
   const statusOverrides = overrides.status;
 
   const labelFor = (sp: Species, form: string | null, costume: string | null): LocalizedText | null => {
@@ -277,7 +288,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       return localizeHumanized(e ? e.name.replace(/\s*Noevolve$/i, '') : humanizeToken(costume));
     }
     if (!form) return null;
-    return labelOverrides[form] ?? gameFormLabel(texts, sp.id, form) ?? localizeHumanized(humanizeToken(form));
+    // A label for this species' form first ("351.fSUNNY": Castform, not Cherrim), then for the form name anywhere.
+    return labelOverrides[`${sp.dex}.f${form}`] ?? labelOverrides[form] ?? gameFormLabel(texts, sp.id, form) ?? localizeHumanized(humanizeToken(form));
   };
 
   const push = (sp: Species & { gmForms: Map<string, boolean>; tempEvos: Set<string> }, g: AssetGroup | null, form: string | null, costume: string | null, gender: 'm' | 'f' | null) => {
@@ -327,6 +339,24 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (hasFemale && !g.form && !g.costume) sp.genderDiff = true;
     push(sp, g, g.form, g.costume, hasFemale ? 'm' : null);
   }
+  // Species the game only knows as forms (Poltchageist: Counterfeit / Artisan; Dudunsparce: Two / Three-Segment):
+  // the formless picture is one of those forms again, not a variant of its own. Entries saved on it go to the first one.
+  const aliases: Record<string, string> = {};
+  for (const sp of speciesByDex.values()) {
+    if (withNormalForm.has(sp.dex)) continue;
+    const forms = [...sp.gmForms].filter(([token, costume]) => !costume && !token.startsWith(`${sp.id}_`)).map(([token]) => makeVariantKey({ dex: sp.dex, form: token, costume: null, gender: null }));
+    const target = forms.find((k) => variants.some((v) => v.key === k && v.img));
+    if (!target) continue;
+    for (let i = variants.length - 1; i >= 0; i--) {
+      const v = variants[i]!;
+      if (v.dex === sp.dex && v.kind === 'base') {
+        aliases[v.key] = target;
+        variants.splice(i, 1);
+      }
+    }
+  }
+  if (Object.keys(aliases).length) log(`forms: ${Object.keys(aliases).length} formless duplicates folded into their first form`);
+
   // Game-master costume forms that have no picture yet
   for (const sp of speciesByDex.values()) {
     for (const [token, isCostume] of sp.gmForms) {
@@ -493,6 +523,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     variants,
     ...(Object.keys(backgrounds).length ? { backgrounds } : {}),
     ...(pvp ? { pvp } : {}),
+    ...(Object.keys(aliases).length ? { aliases } : {}),
   };
   const byKind = variants.reduce<Record<string, number>>((acc, v) => ((acc[v.kind] = (acc[v.kind] ?? 0) + 1), acc), {});
   const stats = {

@@ -5,7 +5,10 @@ import { ManagerSheet } from '../components/ManagerSheet.js';
 import { useMe } from '../lib/auth.js';
 import { Sparkle } from '../components/Sprite.js';
 import { VariantCard } from '../components/VariantCard.js';
-import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
+import { useToast } from '../components/toast.js';
+import { api } from '../lib/api.js';
+import { neutralKey } from '@mydexpogo/shared';
 import { normalize, useDataset } from '../lib/dataset.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
@@ -21,6 +24,7 @@ export function SpeciesPage() {
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [managing, setManaging] = useState<VariantGroup | null>(null);
   const [query, setQuery] = useState('');
+  const [reporting, setReporting] = useState(false);
   const me = useMe();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const idx = dataset.data;
@@ -121,9 +125,60 @@ export function SpeciesPage() {
           ) : null,
         )}
         {variants.some((v) => v.datamined) && <p className="text-xs text-ink-3">{t.datamined_hint}</p>}
+        {me.data && (
+          <button type="button" onClick={() => setReporting(true)} className="mt-4 text-sm font-semibold text-ink-3 underline hover:text-ink-2">{t.report_button}</button>
+        )}
       </main>
       <AddToListSheet idx={idx} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />
+      <ReportSheet open={reporting} onClose={() => setReporting(false)} groups={sections.flatMap(([title, g]) => g.map((x) => ({ key: x.variants[0]!.key, label: x.label ? localized(x.label, lang) : title })))} />
       {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
     </>
+  );
+}
+
+/** A player tells the managers something is off on this page: which form, what kind of mistake, a few words. */
+function ReportSheet({ open, onClose, groups }: { open: boolean; onClose: () => void; groups: { key: string; label: string }[] }) {
+  const t = useT();
+  const toast = useToast();
+  const [key, setKey] = useState('');
+  const [kind, setKind] = useState<'name' | 'released' | 'gender' | 'picture' | 'other'>('name');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const chosen = key || groups[0]?.key || '';
+  const send = async () => {
+    setSending(true);
+    try {
+      await api('/reports', { body: { variantKey: neutralKey(chosen), kind, message: message.trim() || undefined } });
+      toast(t.report_sent);
+      setMessage('');
+      onClose();
+    } catch {
+      toast(t.err_generic);
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title={t.report_title}>
+      <div className="space-y-3">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-ink-2">{t.report_variant}</span>
+          <select value={chosen} onChange={(e) => setKey(e.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] text-ink">
+            {groups.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+          </select>
+        </label>
+        <div>
+          <p className="mb-1 text-sm font-medium text-ink-2">{t.report_kind}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['name', 'released', 'gender', 'picture', 'other'] as const).map((k) => <Chip key={k} active={kind === k} onClick={() => setKind(k)}>{t.report_kinds[k]}</Chip>)}
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-ink-2">{t.report_message}</span>
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={300} rows={3} className="w-full rounded-xl border border-line bg-card px-3 py-2 text-[16px]" />
+        </label>
+        <Button tone="primary" className="w-full" disabled={sending || !chosen} onClick={send}>{t.report_send}</Button>
+      </div>
+    </Sheet>
   );
 }

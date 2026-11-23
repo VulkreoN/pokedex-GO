@@ -2,6 +2,7 @@
  * Dataset job: builds the Pokédex dataset from PokeMiners & co on a schedule, keeps the event
  * archive, and serves everything from memory with manager overrides merged in.
  */
+import { recordSource } from '../lib/health.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
@@ -76,6 +77,11 @@ class DataService {
   }
   private async notifyDataset() {
     for (const fn of this.readyListeners) await Promise.resolve(fn()).catch((e) => console.error('dataset listener', e));
+  }
+
+  /** Variant keys the dataset folded into others. */
+  aliases(): Record<string, string> | undefined {
+    return this.raw?.aliases;
   }
 
   /** Species names by dex number (null until a dataset is loaded). */
@@ -187,6 +193,7 @@ class DataService {
       this.status.stats = stats;
       this.status.pipelineVersion = PIPELINE_VERSION;
       this.status.lastError = null;
+      recordSource('dataset');
       this.status.sources = await this.probeSources();
       await writeFile(path.join(env.dataDir, FILES.dataset), JSON.stringify(dataset));
       await writeFile(path.join(env.dataDir, FILES.events), this.eventsBody);
@@ -195,6 +202,7 @@ class DataService {
       return true;
     } catch (e) {
       this.status.lastError = (e as Error).message;
+      recordSource('dataset', e);
       console.error('dataset refresh failed:', e);
       return false;
     } finally {

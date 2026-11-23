@@ -1,4 +1,5 @@
 import { GenderReview } from '../components/GenderReview.js';
+import { Reports } from './AdminPage.js';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -69,6 +70,12 @@ export function ReviewPage() {
         </div>
       </TopBar>
       <main className="mx-auto max-w-3xl space-y-3 px-3 pb-24">
+        {status === 'new' && (
+          <section>
+            <h2 className="mb-2 text-base font-bold">{t.admin_tabs.reports}</h2>
+            <Reports />
+          </section>
+        )}
         {status === 'new' && idx && <GenderReview idx={idx} />}
         {q.data && (
           <p className="text-xs text-ink-3">

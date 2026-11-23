@@ -54,7 +54,12 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, row.sid));
     return null;
   }
-  const { id, username, friendCode, role, createdAt } = row.user;
+  // A suspended account's sessions stop working at once.
+  if (row.user.suspendedAt) return null;
+  const { id, username, friendCode, role, createdAt, lastSeenAt } = row.user;
+  if (!lastSeenAt || Date.now() - lastSeenAt.getTime() > 3600_000) {
+    void db.update(schema.users).set({ lastSeenAt: new Date() }).where(eq(schema.users.id, id)).catch(() => {});
+  }
   return { id, username, friendCode, role, createdAt };
 }
 

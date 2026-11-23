@@ -58,3 +58,34 @@ export function relativeTime(iso: string | null, lang: string): string {
   if (abs < 86400 * 2) return rtf.format(Math.round(diff / 3600), 'hour');
   return rtf.format(Math.round(diff / 86400), 'day');
 }
+
+/* ---------- Admin panel ---------- */
+
+export interface AdminStats { users: number; active7: number; active30: number; lists: number; entries: number; friendships: number; pushDevices: number; raidAlerts7: number; errorsToday: number; openReports: number; signupsByWeek: { week: string; n: number }[] }
+export interface SourceHealth { okAt: string | null; errorAt: string | null; error: string | null }
+export interface AdminHealth { version: string; startedAt: string; dataset: DataStatus; sources: Partial<Record<'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'feed', SourceHealth>> }
+export interface AdminUserDetail { user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
+export interface SignupSettings { mode: 'open' | 'invite' | 'closed'; dailyCap: number | null }
+export interface Invite { id: string; note: string | null; maxUses: number; uses: number; expiresAt: string | null; createdAt: string }
+export interface AuditEntry { id: string; actor: string | null; action: string; targetType: string; targetId: string | null; data: Record<string, unknown>; createdAt: string; undoneAt: string | null; undoable: boolean }
+export interface Report { id: string; variantKey: string; kind: 'name' | 'released' | 'gender' | 'picture' | 'other'; message: string | null; status: 'open' | 'resolved' | 'dismissed'; by: string | null; createdAt: string; handledAt: string | null }
+export interface Announcement { id: string; message: string; level: 'info' | 'warning'; link: string | null; active: boolean; createdAt: string; pushedAt: string | null; pushCount: number | null }
+
+export const useAdminStats = () => useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api<AdminStats>('/admin/stats') });
+export const useAdminHealth = () => useQuery({ queryKey: ['admin', 'health'], queryFn: () => api<AdminHealth>('/admin/health'), refetchInterval: (q) => (q.state.data?.dataset.running ? 5000 : false) });
+export const useAdminUser = (id: string | null) => useQuery({ queryKey: ['admin', 'user', id], queryFn: () => api<AdminUserDetail>(`/admin/users/${id}`), enabled: !!id });
+export const useSignups = () => useQuery({ queryKey: ['admin', 'signups'], queryFn: () => api<{ settings: SignupSettings; invites: Invite[] }>('/admin/signups') });
+export const useAudit = (offset: number) => useQuery({ queryKey: ['admin', 'audit', offset], queryFn: () => api<{ entries: AuditEntry[]; offset: number }>(`/admin/audit?offset=${offset}`), placeholderData: (p) => p });
+export const useReports = (status: 'open' | 'handled', enabled = true) => useQuery({ queryKey: ['reports', status], queryFn: () => api<{ reports: Report[] }>(`/reports?status=${status}`).then((r) => r.reports), enabled });
+export const useAdminAnnouncements = () => useQuery({ queryKey: ['admin', 'announcements'], queryFn: () => api<{ announcements: Announcement[]; pushAccounts: number }>('/admin/announcements') });
+
+/** Any admin call; refreshes the panel (and the user list) afterwards. */
+export function useAdminAction<V>(call: (v: V) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: call,
+    onSuccess: () => {
+      for (const k of [['admin'], ['users'], ['reports'], ['data-status'], ['announcement'], ['overrides'], ['dataset']]) void qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}

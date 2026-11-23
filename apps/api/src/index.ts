@@ -18,9 +18,11 @@ import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js
 import { pruneNotifications } from './notify/service.js';
 import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
+import { migrateAliases } from './lists/aliases.js';
 import { sql } from './db/index.js';
 import { clientErrorRoutes } from './routes/clientErrors.js';
 import { pvpPokemonRoutes } from './routes/pvpPokemon.js';
+import { adminRoutes, announcementRoutes, reportRoutes } from './routes/admin.js';
 import { startRaidAlerts } from './notify/raidAlerts.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
@@ -45,6 +47,9 @@ app.route('/push', pushRoutes);
 app.route('/stream', streamRoutes);
 app.route('/client-errors', clientErrorRoutes);
 app.route('/pvp-pokemon', pvpPokemonRoutes);
+app.route('/admin', adminRoutes);
+app.route('/announcements', announcementRoutes);
+app.route('/reports', reportRoutes);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -80,6 +85,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 dataService.onDataset(async () => {
   const variants = await dataService.variants();
   if (variants) await migrateStoredGenders(variants);
+  const moved = await migrateAliases(dataService.aliases());
+  if (moved) console.log(`lists: ${moved} entries moved off folded variants`);
 });
 void dataService.start().then(() => {
   feedService.start();

@@ -14,7 +14,7 @@ export function useMe() {
 export function useAuthMutation(kind: 'login' | 'register') {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { username: string; password: string }) => api<{ user: PublicUser }>(`/auth/${kind}`, { body }),
+    mutationFn: (body: { username: string; password: string; invite?: string }) => api<{ user: PublicUser }>(`/auth/${kind}`, { body }),
     onSuccess: (r) => {
       qc.setQueryData(['me'], r.user);
       qc.invalidateQueries();

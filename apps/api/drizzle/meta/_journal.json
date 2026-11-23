@@ -85,6 +85,13 @@
       "when": 1795455554891,
       "tag": "0011_pvp_pokemon",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795458158765,
+      "tag": "0012_admin_panel",
+      "breakpoints": true
     }
   ]
 }

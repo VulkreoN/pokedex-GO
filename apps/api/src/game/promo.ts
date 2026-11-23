@@ -1,3 +1,4 @@
+import { tracked } from '../lib/health.js';
 /** Promo codes from Leek Duck's promo page, cached for an hour. */
 
 export interface PromoCode {
@@ -9,12 +10,16 @@ export interface PromoCode {
 }
 
 let cache: { at: number; codes: PromoCode[] } | null = null;
+/** Admin: fetch again on the next request. */
+export const resetPromoCache = () => void (cache = null);
 
 export async function getPromoCodes(): Promise<PromoCode[]> {
   if (cache && Date.now() - cache.at < 3600_000) return cache.codes;
-  const res = await fetch('https://leekduck.com/promo-codes/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' } });
-  if (!res.ok) throw new Error(`promo: HTTP ${res.status}`);
-  const html = await res.text();
+  const html = await tracked('promo', async () => {
+    const res = await fetch('https://leekduck.com/promo-codes/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' } });
+    if (!res.ok) throw new Error(`promo: HTTP ${res.status}`);
+    return res.text();
+  });
   const codes: PromoCode[] = [];
   for (const card of html.split('class="promo-card"').slice(1)) {
     // Prefer the redemption link, fall back to the displayed code (attributes may vary).

@@ -530,6 +530,105 @@ describe('client errors', () => {
   });
 });
 
+describe('admin panel', () => {
+  it('shows the dashboard and the health of the sources to admins only', async () => {
+    expect((await alice.get('/admin/stats')).status).toBe(403);
+    const stats = await admin.get('/admin/stats');
+    expect(stats.body.users).toBeGreaterThanOrEqual(3);
+    expect(stats.body.active7).toBeGreaterThanOrEqual(1); // the admin, at least
+    expect(stats.body.signupsByWeek).toHaveLength(8);
+    const health = await admin.get('/admin/health');
+    expect(health.body).toMatchObject({ version: expect.any(String), dataset: expect.any(Object), sources: expect.any(Object) });
+    expect((await admin.post('/admin/health/nope/refresh')).status).toBe(404);
+  });
+
+  it('suspends an account (login refused, sessions cut), shows its details, logs it out, deletes it', async () => {
+    const u = await register(name('susp'));
+    const detail = await admin.get(`/admin/users/${u.user.id}`);
+    expect(detail.body.counts).toMatchObject({ lists: 0, sessions: 1 });
+    expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: true })).status).toBe(200);
+    expect((await u.get('/auth/me')).body.user).toBeNull();
+    expect((await new Client().post('/auth/login', { username: u.user.username, password: PASSWORD })).body.error).toBe('suspended');
+    expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: false })).status).toBe(200);
+    const again = new Client();
+    expect((await again.post('/auth/login', { username: u.user.username, password: PASSWORD })).status).toBe(200);
+    expect((await admin.post(`/admin/users/${u.user.id}/logout`)).body.sessions).toBe(1);
+    expect((await again.get('/auth/me')).body.user).toBeNull();
+    expect((await admin.post(`/admin/users/${admin.user.id}/suspend`, { suspended: true })).status).toBe(400);
+    expect((await admin.del(`/admin/users/${u.user.id}`)).status).toBe(200);
+    expect((await admin.get(`/admin/users/${u.user.id}`)).status).toBe(404);
+  });
+
+  it("tells a player when an admin changes their account, even with every notification switched off", async () => {
+    const u = await register(name('acct'));
+    await u.put('/notifications/prefs', { friend_request: false, friend_accepted: false, offer: false, offer_caught: false, raid: false, announcement: false });
+    await admin.patch(`/users/${u.user.id}/role`, { role: 'manager' });
+    await admin.post(`/users/${u.user.id}/reset-code`);
+    expect((await u.get('/notifications/prefs')).body.prefs).toMatchObject({ raid: false, announcement: false });
+    const items = (await u.get('/notifications')).body.items.filter((n: any) => n.type === 'account');
+    expect(items.map((n: any) => n.data.change).sort()).toEqual(['reset_code', 'role']);
+    expect(items.find((n: any) => n.data.change === 'role').data).toMatchObject({ role: 'manager', before: 'user' });
+    expect(items[0].actor.username).toBe(admin.user.username);
+  });
+
+  it('closes sign-ups, opens them by invitation, caps them per day', async () => {
+    try {
+      await admin.put('/admin/signups', { mode: 'closed', dailyCap: null });
+      expect((await new Client().get('/auth/signup-mode')).body.mode).toBe('closed');
+      expect((await new Client().post('/auth/register', { username: name('closed'), password: PASSWORD })).body.error).toBe('signups_closed');
+
+      await admin.put('/admin/signups', { mode: 'invite', dailyCap: null });
+      expect((await new Client().post('/auth/register', { username: name('noinv'), password: PASSWORD })).body.error).toBe('invite_required');
+      expect((await new Client().post('/auth/register', { username: name('badinv'), password: PASSWORD, invite: 'AAAA-BBBB-CCCC' })).body.error).toBe('invalid_invite');
+      const { code } = (await admin.post('/admin/invites', { note: 'test', maxUses: 1, days: 1 })).body;
+      expect((await new Client().post('/auth/register', { username: name('inv'), password: PASSWORD, invite: code.toLowerCase() })).status).toBe(201);
+      expect((await new Client().post('/auth/register', { username: name('inv2'), password: PASSWORD, invite: code })).body.error).toBe('invalid_invite'); // used up
+      expect((await admin.get('/admin/signups')).body.invites[0]).toMatchObject({ uses: 1, maxUses: 1 });
+
+      await admin.put('/admin/signups', { mode: 'open', dailyCap: 1 });
+      expect((await new Client().post('/auth/register', { username: name('capped'), password: PASSWORD })).body.error).toBe('signups_full');
+    } finally {
+      await admin.put('/admin/signups', { mode: 'open', dailyCap: null });
+    }
+    expect((await new Client().post('/auth/register', { username: name('reopened'), password: PASSWORD })).status).toBe(201);
+  });
+
+  it("journals changes and undoes a manager's correction", async () => {
+    const key = ds.variants.find((v) => v.kind === 'costume')!.key;
+    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: true });
+    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: false });
+    const log = (await admin.get('/admin/audit')).body.entries;
+    const last = log.find((e: any) => e.targetId === key && e.action === 'override.set');
+    expect(last).toMatchObject({ actor: admin.user.username, undoable: true, data: { before: { released: true }, after: { released: false } } });
+    expect((await admin.post(`/admin/audit/${last.id}/undo`)).status).toBe(200);
+    const o = (await anon.get('/overrides')).body.overrides.find((x: any) => x.variantKey === key);
+    expect(o.released).toBe(true);
+    expect((await admin.post(`/admin/audit/${last.id}/undo`)).status).toBe(400); // once
+    await admin.del(`/overrides/${encodeURIComponent(key)}`);
+    expect((await admin.get('/admin/audit')).body.entries.map((e: any) => e.action)).toContain('override.reset');
+  });
+
+  it('takes players reports for managers, and shows one announcement banner to everyone', async () => {
+    expect((await anon.post('/reports', { variantKey: '25', kind: 'name' })).status).toBe(401);
+    const r = await alice.post('/reports', { variantKey: '25', kind: 'name', message: 'wrong costume name' });
+    expect(r.status).toBe(201);
+    expect((await alice.get('/reports')).status).toBe(403);
+    const open = (await admin.get('/reports')).body.reports;
+    expect(open.find((x: any) => x.id === r.body.id)).toMatchObject({ by: alice.user.username, message: 'wrong costume name' });
+    expect((await admin.patch(`/reports/${r.body.id}`, { status: 'resolved' })).status).toBe(200);
+    expect((await admin.get('/reports')).body.reports.map((x: any) => x.id)).not.toContain(r.body.id);
+
+    expect((await alice.post('/admin/announcements', { message: 'nope' })).status).toBe(403);
+    const a = await admin.post('/admin/announcements', { message: 'Maintenance ce soir à 22 h', level: 'warning' });
+    expect(a.status).toBe(201);
+    expect((await anon.get('/announcements')).body.announcement).toMatchObject({ message: 'Maintenance ce soir à 22 h', level: 'warning' });
+    await admin.post('/admin/announcements', { message: 'Nouveau : simulateur de combat', link: '/pvp/battle' });
+    expect((await anon.get('/announcements')).body.announcement.message).toBe('Nouveau : simulateur de combat'); // one at a time
+    await admin.patch(`/admin/announcements/${(await anon.get('/announcements')).body.announcement.id}`, { active: false });
+    expect((await anon.get('/announcements')).body.announcement).toBeNull();
+  });
+});
+
 describe('abuse protection', () => {
   it('rate-limits login attempts per client', async () => {
     const c = new Client();

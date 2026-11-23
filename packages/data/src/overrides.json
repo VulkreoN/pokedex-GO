@@ -100,6 +100,194 @@
     "GALARIAN_ZEN": {
       "en": "Galarian Zen",
       "fr": "de Galar (Mode Transe)"
+    },
+    "COUNTERFEIT": {
+      "en": "Counterfeit",
+      "fr": "Contrefaçon"
+    },
+    "ARTISAN": {
+      "en": "Artisan",
+      "fr": "Authentique"
+    },
+    "UNREMARKABLE": {
+      "en": "Unremarkable",
+      "fr": "Médiocre"
+    },
+    "MASTERPIECE": {
+      "en": "Masterpiece",
+      "fr": "Exceptionnelle"
+    },
+    "ATTACK": {
+      "en": "Attack Forme",
+      "fr": "Forme Attaque"
+    },
+    "DEFENSE": {
+      "en": "Defense Forme",
+      "fr": "Forme Défense"
+    },
+    "SPEED": {
+      "en": "Speed Forme",
+      "fr": "Forme Vitesse"
+    },
+    "TEN_PERCENT": {
+      "en": "10% Forme",
+      "fr": "Forme 10 %"
+    },
+    "FIFTY_PERCENT": {
+      "en": "50% Forme",
+      "fr": "Forme 50 %"
+    },
+    "COMPLETE": {
+      "en": "Complete Forme",
+      "fr": "Forme Parfaite"
+    },
+    "RAINY": {
+      "en": "Rainy Form",
+      "fr": "Forme Eau de Pluie"
+    },
+    "SNOWY": {
+      "en": "Snowy Form",
+      "fr": "Forme Blizzard"
+    },
+    "AMPED": {
+      "en": "Amped Form",
+      "fr": "Forme Aigüe"
+    },
+    "LOW_KEY": {
+      "en": "Low Key Form",
+      "fr": "Forme Grave"
+    },
+    "DISGUISED": {
+      "en": "Disguised Form",
+      "fr": "Forme Déguisée"
+    },
+    "BUSTED": {
+      "en": "Busted Form",
+      "fr": "Forme Démasquée"
+    },
+    "GULPING": {
+      "en": "Gulping Form",
+      "fr": "Forme Gobe-Tout"
+    },
+    "GORGING": {
+      "en": "Gorging Form",
+      "fr": "Forme Gobe-Chu"
+    },
+    "UNOWN_A": {
+      "en": "A",
+      "fr": "A"
+    },
+    "UNOWN_B": {
+      "en": "B",
+      "fr": "B"
+    },
+    "UNOWN_C": {
+      "en": "C",
+      "fr": "C"
+    },
+    "UNOWN_D": {
+      "en": "D",
+      "fr": "D"
+    },
+    "UNOWN_E": {
+      "en": "E",
+      "fr": "E"
+    },
+    "UNOWN_F": {
+      "en": "F",
+      "fr": "F"
+    },
+    "UNOWN_G": {
+      "en": "G",
+      "fr": "G"
+    },
+    "UNOWN_H": {
+      "en": "H",
+      "fr": "H"
+    },
+    "UNOWN_I": {
+      "en": "I",
+      "fr": "I"
+    },
+    "UNOWN_J": {
+      "en": "J",
+      "fr": "J"
+    },
+    "UNOWN_K": {
+      "en": "K",
+      "fr": "K"
+    },
+    "UNOWN_L": {
+      "en": "L",
+      "fr": "L"
+    },
+    "UNOWN_M": {
+      "en": "M",
+      "fr": "M"
+    },
+    "UNOWN_N": {
+      "en": "N",
+      "fr": "N"
+    },
+    "UNOWN_O": {
+      "en": "O",
+      "fr": "O"
+    },
+    "UNOWN_P": {
+      "en": "P",
+      "fr": "P"
+    },
+    "UNOWN_Q": {
+      "en": "Q",
+      "fr": "Q"
+    },
+    "UNOWN_R": {
+      "en": "R",
+      "fr": "R"
+    },
+    "UNOWN_S": {
+      "en": "S",
+      "fr": "S"
+    },
+    "UNOWN_T": {
+      "en": "T",
+      "fr": "T"
+    },
+    "UNOWN_U": {
+      "en": "U",
+      "fr": "U"
+    },
+    "UNOWN_V": {
+      "en": "V",
+      "fr": "V"
+    },
+    "UNOWN_W": {
+      "en": "W",
+      "fr": "W"
+    },
+    "UNOWN_X": {
+      "en": "X",
+      "fr": "X"
+    },
+    "UNOWN_Y": {
+      "en": "Y",
+      "fr": "Y"
+    },
+    "UNOWN_Z": {
+      "en": "Z",
+      "fr": "Z"
+    },
+    "UNOWN_EXCLAMATION_POINT": {
+      "en": "!",
+      "fr": "!"
+    },
+    "UNOWN_QUESTION_MARK": {
+      "en": "?",
+      "fr": "?"
+    },
+    "351.fSUNNY": {
+      "en": "Sunny Form",
+      "fr": "Forme Solaire"
     }
   },
   "status": {
@@ -178,5 +366,19 @@
       "f"
     ]
   },
-  "gendersNotes": "Genders checked by hand for costumes the published game master does not describe yet (key: gender-neutral variant key). Managers can also set them from the app. 2026-11-22: Crobat Halloween 2026 only comes from Golbat Halloween 2026, which has a female picture (gender is kept on evolution), so both genders."
+  "gendersNotes": "Genders checked by hand for costumes the published game master does not describe yet (key: gender-neutral variant key). Managers can also set them from the app. 2026-11-22: Crobat Halloween 2026 only comes from Golbat Halloween 2026, which has a female picture (gender is kept on evolution), so both genders.",
+  "speciesNames": {
+    "1011": {
+      "fr": "Pomdramour"
+    },
+    "1012": {
+      "fr": "Théffroi"
+    },
+    "1013": {
+      "fr": "Théffroyable"
+    },
+    "1019": {
+      "fr": "Pomdorochi"
+    }
+  }
 }

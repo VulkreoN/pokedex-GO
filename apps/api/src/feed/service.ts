@@ -2,6 +2,7 @@
  * Feed job: polls the official news, stores every article with its candidate variants,
  * and leaves them to managers in the review queue.
  */
+import { recordSource } from '../lib/health.js';
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { Species } from '@mydexpogo/shared';
 import { dataService } from '../data/service.js';
@@ -39,6 +40,7 @@ class FeedService {
         await this.pollNews(locale).catch((e: Error) => errors.push(`news:${locale}: ${e.message}`));
       }
       this.status.lastError = errors.length ? errors.join(' | ') : null;
+      if (env.newsLocales.length) recordSource('feed', errors.length ? new Error(errors.join(' | ')) : undefined);
       if (errors.length) console.warn(`feed (${reason}):`, errors.join(' | '));
     } catch (e) {
       this.status.lastError = (e as Error).message;

@@ -10,6 +10,11 @@ import { db, schema } from '../db/index.js';
 import { hashToken } from '../lib/ids.js';
 import { migrateStoredGenders } from '../lists/genders.js';
 import { randomBytes } from 'node:crypto';
+import { audit } from '../lib/audit.js';
+import { notifyAccount } from '../notify/service.js';
+
+/** An override as the journal keeps it, to show it and to put it back. */
+export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders });
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
 export const dataRoutes = new Hono<AuthEnv>()
@@ -56,6 +61,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
     const key = c.req.param('key');
     if (!isValidVariantKey(key)) return c.json({ error: 'invalid_variant_key' }, 400);
     const body = c.req.valid('json');
+    const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key)).limit(1);
     const values = {
       variantKey: key,
       released: body.released ?? null,
@@ -71,6 +77,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();
+    await audit(c.get('user').id, 'override.set', 'variant', key, { before: before ? overrideState(before) : null, after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders } });
     // Entries now listed under a gender this variant does not have move to the right one.
     if (body.genders) {
       const variants = await dataService.variants();
@@ -79,8 +86,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
     return c.json({ ok: true });
   })
   .delete('/:key', requireRole('manager'), async (c) => {
-    await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, c.req.param('key')));
+    const key = c.req.param('key');
+    const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key)).limit(1);
+    await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     dataService.invalidateOverrides();
+    if (before) await audit(c.get('user').id, 'override.reset', 'variant', key, { before: overrideState(before), after: null });
     return c.json({ ok: true });
   });
 
@@ -107,13 +117,18 @@ export const userRoutes = new Hono<AuthEnv>()
     const code = randomBytes(6).toString('hex').toUpperCase().match(/.{1,4}/g)!.join('-'); // XXXX-XXXX-XXXX
     const [u] = await db.update(schema.users).set({ resetHash: hashToken(code.replace(/-/g, '')), resetExpiresAt: new Date(Date.now() + 24 * 3600_000) }).where(eq(schema.users.id, id)).returning({ username: schema.users.username });
     if (!u) return c.json({ error: 'not_found' }, 404);
+    await audit(c.get('user').id, 'user.reset_code', 'user', id, { username: u.username });
+    await notifyAccount(id, c.get('user').id, 'reset_code');
     return c.json({ username: u.username, code, expiresInHours: 24 });
   })
   .patch('/:id/role', zValidator('json', z.object({ role: z.enum(['user', 'manager', 'admin']) })), async (c) => {
     const me = c.get('user');
     const id = c.req.param('id');
     if (id === me.id) return c.json({ error: 'self' }, 400);
+    const [prev] = await db.select({ role: schema.users.role }).from(schema.users).where(eq(schema.users.id, id)).limit(1);
     const [u] = await db.update(schema.users).set({ role: c.req.valid('json').role }).where(eq(schema.users.id, id)).returning();
     if (!u) return c.json({ error: 'not_found' }, 404);
+    await audit(me.id, 'user.role', 'user', id, { username: u.username, before: prev?.role, after: u.role });
+    if (prev?.role !== u.role) await notifyAccount(id, me.id, 'role', { role: u.role, before: prev?.role });
     return c.json({ ok: true, role: u.role });
   });

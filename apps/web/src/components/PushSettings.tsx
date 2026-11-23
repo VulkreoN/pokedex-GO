@@ -5,7 +5,8 @@ import { disablePush, enablePush, pushState, useNotifyPrefs, useSetNotifyPrefs, 
 import { Button } from './ui.js';
 import { useToast } from './toast.js';
 
-const KINDS: NotificationType[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid'];
+/** Account changes are not here: they always reach the player. */
+const KINDS: Exclude<NotificationType, 'account'>[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement'];
 
 export function PushSettings() {
   const t = useT();
@@ -66,7 +67,7 @@ export function PushSettings() {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-ink-3">{t.push_quiet}</p>
+      <p className="mt-2 text-xs text-ink-3">{t.push_quiet} {t.push_account_always}</p>
     </section>
   );
 }

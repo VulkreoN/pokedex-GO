@@ -68,6 +68,8 @@ export function useRealtime(loggedIn: boolean) {
         for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
       } else if (e.type === 'notification') {
         void qc.invalidateQueries({ queryKey: ['notifications'] });
+      } else if (e.type === 'announcement') {
+        void qc.invalidateQueries({ queryKey: ['announcement'] });
       }
     });
     return () => es.close();

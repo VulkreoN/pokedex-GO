@@ -68,12 +68,29 @@ export async function notify(n: NotifyInput): Promise<void> {
   hub.emit([n.userId], { type: 'notification' });
 
   const [user] = await db.select({ prefs: schema.users.notifyPrefs }).from(schema.users).where(eq(schema.users.id, n.userId)).limit(1);
-  if (user?.prefs[n.type] === false) return;
-  if (!underCap(n.userId)) return;
+  // What happens to your own account always reaches you, whatever the switches and the daily cap.
+  if (n.type !== 'account') {
+    if (user?.prefs[n.type] === false) return;
+    if (!underCap(n.userId)) return;
+  }
   await pushToUser(n.userId, n.push(data)).catch((e) => console.error('push', e));
 }
 
 /** Keeps the inbox small: read notifications older than 60 days go away. */
 export async function pruneNotifications() {
   await db.delete(schema.notifications).where(sql`${schema.notifications.readAt} is not null and ${schema.notifications.createdAt} < now() - interval '60 days'`);
+}
+
+export type AccountChange = 'role' | 'reset_code' | 'logout_all' | 'unsuspended';
+const ROLE_FR = { user: 'dresseur', manager: 'gérant', admin: 'admin' } as const;
+
+/** Tells a player what an admin did to their account: in the inbox and as a push, never switched off. */
+export async function notifyAccount(userId: string, adminId: string, change: AccountChange, data: Record<string, unknown> = {}) {
+  const role = data.role as keyof typeof ROLE_FR | undefined;
+  const body =
+    change === 'role' ? `Ton compte est maintenant ${role ? ROLE_FR[role] : data.role}.` :
+    change === 'reset_code' ? 'Un admin a créé un code pour réinitialiser ton mot de passe. Si tu ne l’as pas demandé, préviens-le.' :
+    change === 'logout_all' ? 'Un admin a fermé toutes tes sessions : reconnecte-toi.' :
+    'Ton compte est de nouveau actif.';
+  await notify({ userId, type: 'account', actorId: adminId === userId ? null : adminId, data: { change, ...data }, push: () => ({ title: 'Ton compte MyDexPoGo', body, url: '/me', tag: `account-${change}` }) });
 }

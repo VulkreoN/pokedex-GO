@@ -381,3 +381,13 @@ test('PvP pages fit a phone screen: no sideways scrolling', async ({ page }) => 
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
 });
+
+test('a species the game only knows as forms has no extra "Normal" one (Poltchageist, Dudunsparce)', async ({ page }) => {
+  await page.goto('/dex/1012');
+  await expect(page.getByRole('heading', { name: /Théffroi/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Contrefaçon/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Authentique/ }).first()).toBeVisible();
+  await page.goto('/dex/982');
+  await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
+});

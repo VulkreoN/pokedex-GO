@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { Button, TextField } from '../components/ui.js';
 import { useAuthMutation } from '../lib/auth.js';
 import { api } from '../lib/api.js';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useT } from '../lib/i18n.js';
 import { errorMessage } from './FriendsPage.js';
 
@@ -17,6 +17,9 @@ export function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [invite, setInvite] = useState('');
+  // How sign-ups work now: open, by invitation, or closed.
+  const signup = useQuery({ queryKey: ['signup-mode'], queryFn: () => api<{ mode: 'open' | 'invite' | 'closed' }>('/auth/signup-mode'), enabled: mode === 'register' });
   const auth = useAuthMutation(mode === 'reset' ? 'login' : mode);
 
   const submit = async (e: FormEvent) => {
@@ -27,7 +30,7 @@ export function LoginPage() {
         const r = await api<{ user: unknown }>('/auth/reset', { body: { username: username.trim(), code: code.trim(), password } });
         qc.setQueryData(['me'], r.user);
         qc.invalidateQueries();
-      } else await auth.mutateAsync({ username: username.trim(), password });
+      } else await auth.mutateAsync({ username: username.trim(), password, ...(mode === 'register' && invite.trim() ? { invite: invite.trim() } : {}) });
       navigate((location.state as { from?: string } | null)?.from ?? '/dex', { replace: true });
     } catch (err) {
       setError(mode === 'reset' ? t.err_invalid_code_reset : errorMessage(t, err));
@@ -42,6 +45,8 @@ export function LoginPage() {
         <form onSubmit={submit} className="space-y-3">
           <TextField label={t.username} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" required minLength={3} maxLength={20} />
           {mode === 'reset' && <TextField label={t.reset_code} value={code} onChange={(e) => setCode(e.target.value)} autoCapitalize="characters" required />}
+          {mode === 'register' && signup.data?.mode === 'invite' && <TextField label={t.invite_code} value={invite} onChange={(e) => setInvite(e.target.value)} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" required />}
+          {mode === 'register' && signup.data?.mode === 'closed' && <p className="rounded-lg bg-paper-2 p-2 text-sm text-ink-2">{t.err_signups_closed}</p>}
           <TextField label={mode === 'reset' ? t.new_password : t.password} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} />
           {error && <p className="text-sm text-berry">{error}</p>}
           <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>

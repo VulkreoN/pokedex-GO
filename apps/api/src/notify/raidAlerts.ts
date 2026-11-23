@@ -8,6 +8,7 @@ import type { LocalizedText, Variant } from '@mydexpogo/shared';
 import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
 import { notify } from './service.js';
+import { tracked } from '../lib/health.js';
 
 const RAIDS_URL = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/raids.json';
 const EVERY_MS = 3 * 3600_000;
@@ -69,7 +70,9 @@ function nameOf(b: Boss, names: Map<number, LocalizedText>, variants: Map<string
   return `${base}${b.key.includes('.') && label ? ` ${label.fr ?? label.en}` : ''}${b.shadow ? ' obscur' : ''}`;
 }
 
-export async function runRaidAlerts(): Promise<number> {
+export const runRaidAlerts = (): Promise<number> => tracked('raids', alertOnce);
+
+async function alertOnce(): Promise<number> {
   const res = await fetch(RAIDS_URL);
   if (!res.ok) throw new Error(`raids: HTTP ${res.status}`);
   const raids = (await res.json()) as { name: string; image: string; canBeShiny?: boolean }[];

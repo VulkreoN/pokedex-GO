@@ -2,6 +2,7 @@
  * Field research from Leek Duck's research page, cached for an hour. Unlike ScrapedDuck's research.json, it keeps
  * event tasks apart (with their end) and the item rewards (balls, berries, stardust, candy...).
  */
+import { tracked } from '../lib/health.js';
 
 export interface ResearchReward {
   kind: 'encounter' | 'item' | 'resource';
@@ -22,13 +23,18 @@ export interface ResearchCategory {
 }
 
 let cache: { at: number; categories: ResearchCategory[] } | null = null;
+/** Admin: fetch again on the next request. */
+export const resetResearchCache = () => void (cache = null);
 
 export async function getResearch(now = Date.now()): Promise<ResearchCategory[]> {
   if (!cache || now - cache.at >= 3600_000) {
-    const res = await fetch('https://leekduck.com/research/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' } });
-    if (!res.ok) throw new Error(`research: HTTP ${res.status}`);
-    const categories = parseResearch(await res.text());
-    if (categories.length === 0) throw new Error('research: no task parsed, markup changed?');
+    const categories = await tracked('research', async () => {
+      const res = await fetch('https://leekduck.com/research/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' } });
+      if (!res.ok) throw new Error(`research: HTTP ${res.status}`);
+      const parsed = parseResearch(await res.text());
+      if (parsed.length === 0) throw new Error('research: no task parsed, markup changed?');
+      return parsed;
+    });
     cache = { at: now, categories };
   }
   // Event tasks stay on Leek Duck for a while after the event.

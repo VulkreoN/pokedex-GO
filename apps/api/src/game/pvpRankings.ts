@@ -3,6 +3,7 @@
  * for 12 hours. Their files are big (megabytes): only what the app shows is kept. Each entry carries what it takes to
  * find the same form in our data (dex number and base stats; a Shadow form has the stats of its normal one).
  */
+import { tracked } from '../lib/health.js';
 
 const BASE = 'https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/data';
 /** On the PvP start page. */
@@ -76,6 +77,8 @@ interface Loaded {
   analysis: Record<League, Analysis>;
 }
 let cache: { at: number; data: Loaded } | null = null;
+/** Admin: download again on the next request. */
+export const resetPvpokeCache = () => void (cache = null);
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}/${path}`, { headers: { 'user-agent': 'mydexpogo/1.0' } });
@@ -122,7 +125,7 @@ let loading: Promise<Loaded> | null = null;
 
 async function loadAll(now: number): Promise<Loaded> {
   if (cache && now - cache.at < 12 * 3600_000) return cache.data;
-  loading ??= download(now).finally(() => (loading = null));
+  loading ??= tracked('pvpoke', () => download(now)).finally(() => (loading = null));
   return loading;
 }
 const load = async (now: number) => (await loadAll(now)).leagues;

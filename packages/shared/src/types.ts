@@ -89,6 +89,8 @@ export interface Dataset {
   backgrounds?: Record<string, BackgroundInfo>;
   /** Base stats, level multipliers and power-up costs for the PvP rank checker. */
   pvp?: PvpData;
+  /** Variant keys that are gone, and the one that replaces each (a formless duplicate of a form). */
+  aliases?: Record<string, string>;
 }
 
 export type PvpTop = [atk: number, def: number, sta: number, level: number, cp: number];
@@ -190,7 +192,8 @@ export interface ListDetail extends ListSummary {
   entries: ListDetailEntry[];
 }
 
-export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid';
+/** 'account': changes made to your account by an admin; always sent, cannot be switched off. */
+export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid' | 'announcement' | 'account';
 
 export interface AppNotification {
   id: string;
@@ -207,7 +210,9 @@ export interface AppNotification {
 export type LiveEvent =
   | { type: 'list'; listId: string; ownerId: string; deleted?: boolean }
   | { type: 'friends' }
-  | { type: 'notification' };
+  | { type: 'notification' }
+  /** The banner everyone sees changed. */
+  | { type: 'announcement' };
 
 export type Role = 'user' | 'manager' | 'admin';
 
