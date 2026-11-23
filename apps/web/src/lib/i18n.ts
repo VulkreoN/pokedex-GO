@@ -483,6 +483,8 @@ const fr = {
   import_add_none: 'Rien de nouveau à ajouter',
   import_added: (n: number) => `${n} Pokémon ajouté${n > 1 ? 's' : ''}`,
   history: 'Historique',
+  sort_title: 'Trier',
+  card_sort: { recent: 'Ajoutés récemment', added: 'Ordre d’ajout', dex: 'Ordre du Pokédex', name: 'Nom (A → Z)', changed: 'Modifiés récemment' },
   history_empty: 'Rien pour l’instant. Les ajouts, les Pokémon cochés et les « je l’ai » de tes amis apparaîtront ici.',
   history_more: 'Plus ancien',
   history_line: (e: ListEvent, mine: boolean) => {
@@ -1216,6 +1218,8 @@ const en: Dict = {
   import_add_none: 'Nothing new to add',
   import_added: (n: number) => `${n} Pokémon added`,
   history: 'History',
+  sort_title: 'Sort',
+  card_sort: { recent: 'Recently added', added: 'Order added', dex: 'Pokédex order', name: 'Name (A → Z)', changed: 'Recently changed' },
   history_empty: 'Nothing yet. Additions, ticked Pokémon and your friends’ “I have it” will show here.',
   history_more: 'Older',
   history_line: (e: ListEvent, mine: boolean) => {

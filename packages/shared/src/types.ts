@@ -184,6 +184,8 @@ export interface ListOffer {
 }
 
 export interface ListDetailEntry extends ListEntry {
+  /** Last change (added, ticked, unticked), for sorting. */
+  updatedAt?: string;
   /** Owner view: every friend who has it. Friend view: absent. */
   offers?: ListOffer[];
   /** Friend view: whether I said I have it. */

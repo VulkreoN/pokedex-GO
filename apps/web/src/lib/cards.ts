@@ -26,3 +26,23 @@ export function cardsOf(entries: ListDetailEntry[]): EntryCard[] {
 
 export const cardDone = (c: EntryCard) => c.members.every((m) => m.done);
 export const cardMissing = (c: EntryCard) => c.members.some((m) => !m.done);
+
+export type CardSort = 'added' | 'recent' | 'dex' | 'name' | 'changed';
+export const CARD_SORTS: CardSort[] = ['recent', 'added', 'dex', 'name', 'changed'];
+
+/**
+ * Cards in the chosen order. Entries come in the order they were added; the Pokédex order follows the dataset's
+ * variants (species, then forms and costumes); "changed" puts the last ticked / unticked first.
+ */
+export function sortCards(cards: EntryCard[], sort: CardSort, order: { rank: (key: string) => number; name: (key: string) => string }): EntryCard[] {
+  if (sort === 'added') return cards;
+  if (sort === 'recent') return [...cards].reverse();
+  const out = [...cards];
+  if (sort === 'dex') out.sort((a, b) => order.rank(a.variantKey) - order.rank(b.variantKey) || Number(a.shiny) - Number(b.shiny) || a.tag.localeCompare(b.tag));
+  else if (sort === 'name') out.sort((a, b) => order.name(a.variantKey).localeCompare(order.name(b.variantKey)) || order.rank(a.variantKey) - order.rank(b.variantKey) || Number(a.shiny) - Number(b.shiny));
+  else {
+    const last = (c: EntryCard) => c.members.reduce((m, e) => (e.updatedAt && e.updatedAt > m ? e.updatedAt : m), '');
+    out.sort((a, b) => last(b).localeCompare(last(a)));
+  }
+  return out;
+}

@@ -68,3 +68,23 @@ test('shinies can be kept in the game string by unticking the exclusion', async 
   expect(codes).toMatch(/(^|[&,])chromatique/);
   expect(codes).not.toContain('!chromatique&!costume');
 });
+
+test('a collection sorts by Pokédex order, recently added or name, and remembers it', async ({ page }) => {
+  await apiRegister(page.request);
+  const id = await apiCreateList(page.request, 'Tri', ['25:m']);
+  await page.request.put(`/api/lists/${id}/entries`, { data: { entries: [{ variantKey: '4', gender: 'm', shiny: false }] } });
+  await page.request.put(`/api/lists/${id}/entries`, { data: { entries: [{ variantKey: '1', gender: 'm', shiny: false }] } });
+  await page.goto(`/lists/${id}`);
+  const names = () => page.locator('main ul > li button[aria-pressed]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? '').filter((l) => !/^[♂♀]/.test(l)));
+  const sort = page.getByRole('combobox', { name: 'Trier' });
+  await sort.selectOption({ label: 'Ordre d’ajout' });
+  expect(await names()).toEqual(['Pikachu', 'Salamèche', 'Bulbizarre']);
+  await sort.selectOption({ label: 'Ajoutés récemment' });
+  expect(await names()).toEqual(['Bulbizarre', 'Salamèche', 'Pikachu']);
+  await sort.selectOption({ label: 'Ordre du Pokédex' });
+  expect(await names()).toEqual(['Bulbizarre', 'Salamèche', 'Pikachu']);
+  await sort.selectOption({ label: 'Nom (A → Z)' });
+  expect(await names()).toEqual(['Bulbizarre', 'Pikachu', 'Salamèche']);
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Trier' })).toHaveValue('name');
+});

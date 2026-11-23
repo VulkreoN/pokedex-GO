@@ -15,7 +15,7 @@ import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, us
 import { useUpsertEntries } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
 import { useFollowList, useOffer } from '../lib/social.js';
-import { cardDone, cardMissing, cardsOf, type EntryCard } from '../lib/cards.js';
+import { CARD_SORTS, cardDone, cardMissing, cardsOf, sortCards, type CardSort, type EntryCard } from '../lib/cards.js';
 import { exportListPdf, fileSlug } from '../lib/pdf.js';
 import { renderListImage, shareOrDownload } from '../lib/shareImage.js';
 import { exportSearchText } from '../lib/searchString.js';
@@ -89,8 +89,33 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const copy = useCopyList();
 
   // One card per target; ♂ / ♀ are tracked inside it. A card is "missing" while one of its genders is.
+  const [sort, setSortState] = useState<CardSort>(() => {
+    try {
+      const saved = localStorage.getItem('listSort') as CardSort | null;
+      if (saved && CARD_SORTS.includes(saved)) return saved;
+    } catch {}
+    return 'added';
+  });
+  const setSort = (v: CardSort) => {
+    setSortState(v);
+    try {
+      localStorage.setItem('listSort', v);
+    } catch {}
+  };
+  const rank = useMemo(() => new Map(idx.ds.variants.map((v, i) => [v.key, i])), [idx]);
   const allCards = useMemo(() => cardsOf(list.entries), [list.entries]);
-  const cards = useMemo(() => allCards.filter((c) => view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c))), [allCards, view]);
+  const cards = useMemo(
+    () =>
+      sortCards(
+        allCards.filter((c) => view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c))),
+        sort,
+        {
+          rank: (k) => rank.get(k) ?? Number.MAX_SAFE_INTEGER,
+          name: (k) => localized(idx.speciesByDex.get(idx.variantByKey.get(k)?.dex ?? 0)?.name, lang) ?? '',
+        },
+      ),
+    [allCards, view, sort, rank, idx, lang],
+  );
   const done = list.entries.filter((e) => e.done).length;
 
   const setDone = (members: ListDetailEntry[], value: boolean) =>
@@ -218,6 +243,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
               <Chip key={v} active={view === v} onClick={() => setView(v)}>{{ missing: t.missing, caught: t.caught, all: t.filter_all }[v]}</Chip>
             ))}
+
           </div>
 <div className="mt-2 flex gap-2">
           <Button tone="ghost" className="flex-1 gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
@@ -248,8 +274,22 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         )}
         {list.entries.length > 0 && cards.length === 0 && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
         {cards.length > 0 && (owner || (loggedIn && list.entries.length > 0)) && (
-          <div className="flex items-center gap-3 py-2 text-xs text-ink-3">
-            <span className="flex-1">{picking ? t.pick_hint : owner ? t.list_owner_hint : ''}</span>
+          <div className="flex items-center gap-3 pt-2 text-xs text-ink-3">
+            {list.entries.length > 1 ? (
+              <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3" /></svg>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as CardSort)}
+                  aria-label={t.sort_title}
+                  className="min-h-8 min-w-0 max-w-full rounded-full border border-line bg-card py-0 pl-2.5 pr-7 text-sm font-semibold text-ink"
+                >
+                  {CARD_SORTS.map((k) => <option key={k} value={k}>{t.card_sort[k]}</option>)}
+                </select>
+              </label>
+            ) : (
+              <span className="flex-1" />
+            )}
             {loggedIn && (
               <button type="button" aria-pressed={picking} onClick={() => (picking ? stopPicking() : setPicking(true))} className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${picking ? 'bg-sky text-white' : 'bg-paper-2 text-ink'}`}>
                 {picking ? t.pick_done : t.pick_mode}
@@ -257,6 +297,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             )}
           </div>
         )}
+        {cards.length > 0 && (picking || owner) && <p className="pb-2 pt-1.5 text-xs text-ink-3">{picking ? t.pick_hint : t.list_owner_hint}</p>}
+        {cards.length > 0 && !picking && !owner && <div className="pb-2" />}
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {cards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');

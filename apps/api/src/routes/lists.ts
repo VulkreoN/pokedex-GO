@@ -99,7 +99,7 @@ async function listDetail(id: string, viewerIsOwner: boolean, viewerId: string |
     shareToken: viewerIsOwner ? summary.shareToken : null,
     entries: entries.map((e) => {
       const mine = byEntry.get(entryId(e));
-      const base = { variantKey: e.variantKey, gender: e.gender as EntryGender, shiny: e.shiny, tag: e.tag as EntryTag, done: e.done, note: e.note };
+      const base = { variantKey: e.variantKey, gender: e.gender as EntryGender, shiny: e.shiny, tag: e.tag as EntryTag, done: e.done, note: e.note, updatedAt: e.updatedAt.toISOString() };
       if (!viewerId) return base;
       return viewerIsOwner ? { ...base, ...(mine?.length ? { offers: mine } : {}) } : { ...base, offeredByMe: !!mine?.length };
     }),
