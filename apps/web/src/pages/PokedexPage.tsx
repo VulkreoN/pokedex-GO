@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { Species, Variant, VariantKind } from '@mydexpogo/shared';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
-import { BulkAddSheet } from '../components/BulkAddSheet.js';
+import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSheet.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { VariantCard, variantForGender, type GenderFilter } from '../components/VariantCard.js';
 import { Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
@@ -47,7 +47,7 @@ export function PokedexPage() {
       localStorage.setItem('dexPvp', on ? '1' : '0');
     } catch {}
   };
-  const [ticked, setTicked] = useState<Map<string, VariantGroup>>(new Map());
+  const [ticked, setTicked] = useState<Map<string, DexPick>>(new Map());
   const [bulkOpen, setBulkOpen] = useState(false);
   const q = useDeferredValue(normalize(query));
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
@@ -115,7 +115,7 @@ export function PokedexPage() {
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
       const n = new Map(m);
-      n.has(id) ? n.delete(id) : n.set(id, g);
+      n.has(id) ? n.delete(id) : n.set(id, defaultPick(g, gender, shiny));
       return n;
     });
   const reset = () => {
@@ -199,7 +199,7 @@ export function PokedexPage() {
               {resultCount}
               {multi && cards.length > 0 && (
                 <>
-                  <button type="button" className="ml-auto text-sky" onClick={() => setTicked(new Map(cards.map((c) => [c.id, c.group])))}>{t.select_all_visible}</button>
+                  <button type="button" className="ml-auto text-sky" onClick={() => setTicked((m) => new Map(cards.map((c) => [c.id, m.get(c.id) ?? defaultPick(c.group, gender, shiny)])))}>{t.select_all_visible}</button>
                   <button type="button" className="text-ink-3" onClick={() => setTicked(new Map())}>{t.clear}</button>
                 </>
               )}
@@ -219,6 +219,8 @@ export function PokedexPage() {
                       showSpecies
                       selectable={multi}
                       selected={ticked.has(id)}
+                      pick={ticked.get(id)}
+                      onPick={(p) => setTicked((m) => new Map(m).set(id, p))}
                       showPvp={pvpMode}
                       onAdd={(g) => (multi ? toggleTick(id, g) : setAdding(g))}
                     />
@@ -323,7 +325,13 @@ export function PokedexPage() {
       </Sheet>
 
       {dataset.data && <AddToListSheet idx={dataset.data} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />}
-      <BulkAddSheet open={bulkOpen} groups={[...ticked.values()]} gender={gender} onClose={() => setBulkOpen(false)} onDone={() => { setTicked(new Map()); setMulti(false); }} />
+      <BulkAddSheet
+        open={bulkOpen}
+        picks={[...ticked.values()]}
+        onApplyAll={(change) => setTicked((m) => new Map([...m].map(([k, p]) => [k, change(p)])))}
+        onClose={() => setBulkOpen(false)}
+        onDone={() => { setTicked(new Map()); setMulti(false); }}
+      />
     </>
   );
 }

@@ -404,3 +404,25 @@ test('battle-only forms are not in the collection (Mimikyu Busted, Morpeko Hangr
   for (const dup of ['854', '855', '888', '889', '877', '982', '1012']) expect(keys.has(dup), dup).toBe(false);
   expect(ds.aliases['778.fBUSTED']).toBe('778.fDISGUISED');
 });
+
+test('multi-select: each ticked card chooses its genders and versions', async ({ page }) => {
+  await page.goto('/dex');
+  await page.evaluate(() => sessionStorage.removeItem('selection'));
+  await page.getByPlaceholder('Nom ou numéro').fill('bulbizarre');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  await page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true }).click();
+  // Starts as both genders, normal: only the female shiny is wanted here.
+  const card = page.locator('li', { has: page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true }) });
+  await card.getByRole('button', { name: 'Mâle' }).click();
+  await card.getByRole('button', { name: 'Shiny' }).click();
+  await card.getByRole('button', { name: 'Normal' }).click();
+  await expect(card.getByRole('button', { name: 'Mâle' })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByPlaceholder('Nom ou numéro').fill('salamèche');
+  await page.getByRole('button', { name: 'Ajouter Salamèche', exact: true }).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('button', { name: 'Mettre 3 entrées dans la sélection' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Mettre 3 entrées dans la sélection' }).click();
+  const basket = await page.evaluate(() => JSON.parse(sessionStorage.getItem('selection') ?? '[]') as { variantKey: string; gender: string; shiny: boolean }[]);
+  expect(basket.map((b) => `${b.variantKey}${b.gender}${b.shiny ? '*' : ''}`).sort()).toEqual(['1f*', '4f', '4m']);
+});
