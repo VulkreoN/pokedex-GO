@@ -179,6 +179,23 @@ export const posts = pgTable(
 );
 
 /** "I have this one": a friend tells the list owner they own an entry they are hunting. */
+/** What happened in a collection, newest first. Close actions by the same person merge into one line. */
+export const listEvents = pgTable(
+  'list_events',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    listId: text('list_id').notNull().references(() => lists.id, { onDelete: 'cascade' }),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: text('kind').$type<import('@mydexpogo/shared').ListEventKind>().notNull(),
+    count: integer('count').notNull().default(1),
+    /** A few of the Pokémon concerned, to show their sprites. */
+    items: jsonb('items').$type<import('@mydexpogo/shared').ListEventItem[]>().notNull().default([]),
+    data: jsonb('data').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('list_events_list_idx').on(t.listId, t.createdAt)],
+);
+
 export const listOffers = pgTable(
   'list_offers',
   {

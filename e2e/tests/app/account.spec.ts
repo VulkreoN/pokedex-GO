@@ -24,8 +24,8 @@ test('a new player signs up, builds a list, copies it for the game and shares it
   await expect(page).toHaveURL(/\/dex$/);
 
   // Create a list.
-  await page.getByRole('link', { name: 'Listes' }).click();
-  await page.getByRole('button', { name: 'Nouvelle liste' }).first().click();
+  await page.getByRole('link', { name: 'Collections' }).click();
+  await page.getByRole('button', { name: 'Nouvelle collection' }).first().click();
   await page.getByLabel('Nom').fill('Shinies à chasser');
   await page.getByRole('button', { name: 'Créer' }).click();
   await expect(page.getByText('Shinies à chasser')).toBeVisible();
@@ -37,7 +37,7 @@ test('a new player signs up, builds a list, copies it for the game and shares it
   await sheet.getByRole('button', { name: /^Normal \+ shiny|^Les deux|Normal ♂♀/ }).first().click().catch(() => {});
   await sheet.getByRole('checkbox').first().check();
   await sheet.getByRole('button', { name: /^Ajouter · / }).click();
-  await expect(page.getByText(/Ajouté à 1 liste/)).toBeVisible();
+  await expect(page.getByText(/Ajouté à 1 collection/)).toBeVisible();
 
   // The list shows the entries and builds the in-game search.
   await page.goto('/lists');
@@ -107,7 +107,7 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   for (const p of [pa, pb]) p.on('dialog', (d) => void d.accept());
   const ua = await apiRegister(pa.request, uniq('ash'));
   const ub = await apiRegister(pb.request, uniq('misty'));
-  await apiCreateList(pa.request, 'Ma liste Kanto', ['1:m', '4:m', '7:m']);
+  await apiCreateList(pa.request, 'Ma collection Kanto', ['1:m', '4:m', '7:m']);
 
   await pb.goto('/friends');
   await pb.getByPlaceholder('Code ami à 12 chiffres').fill(ua.friendCode);
@@ -120,13 +120,13 @@ test('friends add each other by code and see each other’s lists', async ({ bro
 
   await pb.reload();
   await pb.getByText(ua.username).click();
-  await pb.getByText('Ma liste Kanto').click();
+  await pb.getByText('Ma collection Kanto').click();
   await expect(pb.getByText('0 / 3 attrapés')).toBeVisible();
-  await expect(pb.getByRole('button', { name: 'Copier cette liste chez moi' })).toBeVisible();
+  await expect(pb.getByRole('button', { name: 'Copier cette collection chez moi' })).toBeVisible();
 
   await pb.goto('/friends');
   await pb.getByRole('button', { name: 'Retirer' }).click();
-  await expect(pb.getByText("Pas encore d'amis. Échange ton code pour voir leurs listes.")).toBeVisible();
+  await expect(pb.getByText("Pas encore d'amis. Échange ton code pour voir leurs collections.")).toBeVisible();
   await a.close();
   await b.close();
 });
@@ -292,10 +292,10 @@ test('the welcome tour: game language, a first list, friends, notifications; not
   await page.getByRole('button', { name: 'Suivant' }).click();
   expect(await page.evaluate(() => localStorage.getItem('gameLang'))).toBe('en');
   await page.getByRole('radio', { name: /Chanceux à échanger/ }).click();
-  await page.getByRole('button', { name: 'Créer la liste' }).click();
+  await page.getByRole('button', { name: 'Créer la collection' }).click();
   await expect(page.getByRole('heading', { name: 'Ajoute tes amis' })).toBeVisible();
   await page.getByRole('button', { name: 'Suivant' }).click();
-  await page.getByRole('button', { name: 'Terminer et ouvrir ma liste' }).click();
+  await page.getByRole('button', { name: 'Terminer et ouvrir ma collection' }).click();
   await expect(page).toHaveURL(/\/lists\//);
   await expect(page.getByRole('heading', { name: 'Chanceux à échanger' })).toBeVisible();
   expect((await (await page.request.get('/api/auth/me')).json()).user.onboarded).toBe(true);

@@ -4,7 +4,7 @@ test.describe('without an account', () => {
   test('home sends visitors to the login page, which lets them browse anyway', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole('heading', { name: 'Tes listes de chasse Pokémon GO' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tes collections de chasse Pokémon GO' })).toBeVisible();
     await page.getByRole('link', { name: 'Parcourir le Pokédex sans compte' }).click();
     await expect(page).toHaveURL(/\/dex$/);
   });

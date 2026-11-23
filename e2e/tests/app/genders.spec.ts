@@ -77,20 +77,20 @@ test("unfollowing a friend's list hides it from Friends' lists, following brings
   await me.request.post('/api/friends/requests', { data: { friendCode: uo.friendCode } });
   const req = (await (await owner.request.get('/api/friends/requests')).json()).requests[0];
   await owner.request.post(`/api/friends/requests/${req.id}/accept`);
-  const listId = await apiCreateList(owner.request, 'Liste suivie', ['150']);
+  const listId = await apiCreateList(owner.request, 'Collection suivie', ['150']);
 
   await me.goto(`/lists/${listId}`);
   await me.getByRole('button', { name: 'Ne plus suivre' }).click();
   await expect(me.getByRole('button', { name: 'Suivre', exact: true })).toBeVisible();
   await me.goto('/lists?tab=friends');
-  await expect(me.getByText('Liste suivie')).toHaveCount(0);
+  await expect(me.getByText('Collection suivie')).toHaveCount(0);
 
   await me.goto(`/friends/${uo.id}`);
-  await expect(me.getByText('Liste suivie')).toBeVisible();
+  await expect(me.getByText('Collection suivie')).toBeVisible();
   await me.getByRole('button', { name: 'Suivre', exact: true }).click();
   await expect(me.getByRole('button', { name: 'Ne plus suivre' })).toBeVisible();
   await me.goto('/lists?tab=friends');
-  await expect(me.getByText('Liste suivie')).toBeVisible();
+  await expect(me.getByText('Collection suivie')).toBeVisible();
   await a.close();
   await b.close();
 });
@@ -98,7 +98,7 @@ test("unfollowing a friend's list hides it from Friends' lists, following brings
 test('lists are mine or my friends’: no "anyone with the link" choice any more', async ({ page }) => {
   await apiRegister(page.request);
   await page.goto('/lists');
-  await page.getByRole('button', { name: 'Nouvelle liste' }).first().click();
+  await page.getByRole('button', { name: 'Nouvelle collection' }).first().click();
   const sheet = page.locator('dialog[open]');
   await expect(sheet.getByText('Moi seulement')).toBeVisible();
   await expect(sheet.getByText('Mes amis')).toBeVisible();
@@ -189,9 +189,9 @@ test('a basket saved before a data update still goes to a list (folded forms fol
   const sheet = page.locator('dialog[open]');
   await expect(sheet.getByText('Bulbizarre ♂')).toBeVisible();
   await expect(sheet.getByText('Mimiqui ♀')).toBeVisible(); // Busted -> Disguised
-  await sheet.getByPlaceholder('Nouvelle liste').fill('Depuis le panier');
+  await sheet.getByPlaceholder('Nouvelle collection').fill('Depuis le panier');
   await sheet.getByRole('button', { name: /^Ajouter · 2/ }).click();
-  await expect(page.getByText(/Ajouté à 1 liste/)).toBeVisible();
+  await expect(page.getByText(/Ajouté à 1 collection/)).toBeVisible();
   const lists = (await (await page.request.get('/api/lists')).json()).lists;
   expect(lists.find((l: { name: string }) => l.name === 'Depuis le panier').entryCount).toBe(2);
 });

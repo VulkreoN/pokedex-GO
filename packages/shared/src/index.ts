@@ -7,3 +7,4 @@ export * from './pvpSearch.js';
 export * from './typeChart.js';
 export * from './battle.js';
 export * from './battleData.js';
+export * from './searchImport.js';

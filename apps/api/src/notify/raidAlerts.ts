@@ -110,8 +110,8 @@ async function alertOnce(): Promise<number> {
       listId: listIds.length === 1 ? listIds[0]! : null,
       data: { bosses: found.map((f) => ({ key: f.boss.key, shadow: f.boss.shadow })), names: bossNames },
       push: () => ({
-        title: bossNames.length > 1 ? `${bossNames.length} Pokémon de tes listes sont en raid` : `${bossNames[0]} est en raid`,
-        body: bossNames.length > 1 ? bossNames.join(', ') : 'Il manque dans une de tes listes.',
+        title: bossNames.length > 1 ? `${bossNames.length} Pokémon de tes collections sont en raid` : `${bossNames[0]} est en raid`,
+        body: bossNames.length > 1 ? bossNames.join(', ') : 'Il manque dans une de tes collections.',
         url: '/game',
         tag: 'raid',
       }),

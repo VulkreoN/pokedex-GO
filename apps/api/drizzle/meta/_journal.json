@@ -99,6 +99,13 @@
       "when": 1795462977064,
       "tag": "0013_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795463534192,
+      "tag": "0014_list_events",
+      "breakpoints": true
     }
   ]
 }

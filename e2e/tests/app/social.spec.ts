@@ -20,15 +20,15 @@ async function friends(browser: Browser, ip: number) {
 
 test("my lists and my friends' lists live in separate tabs", async ({ browser }) => {
   const s = await friends(browser, 1);
-  await apiCreateList(s.friend.request, 'Ma liste à moi', ['150']);
+  await apiCreateList(s.friend.request, 'Ma collection à moi', ['150']);
   await s.friend.goto('/lists');
-  await expect(s.friend.getByText('Ma liste à moi')).toBeVisible();
+  await expect(s.friend.getByText('Ma collection à moi')).toBeVisible();
   await expect(s.friend.getByText('Recherche Kanto')).toHaveCount(0);
-  await s.friend.getByRole('button', { name: 'Listes de mes amis' }).click();
+  await s.friend.getByRole('button', { name: 'Collections de mes amis' }).click();
   await expect(s.friend).toHaveURL(/tab=friends/);
   await expect(s.friend.getByRole('link', { name: s.uo.username })).toBeVisible();
   await expect(s.friend.getByText('Recherche Kanto')).toBeVisible();
-  await expect(s.friend.getByText('Ma liste à moi')).toHaveCount(0);
+  await expect(s.friend.getByText('Ma collection à moi')).toHaveCount(0);
   await s.close();
 });
 
@@ -61,8 +61,8 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await s.owner.goto('/dex');
   await expect(s.owner.getByRole('link', { name: 'Notifications (1)' })).toBeVisible();
   await s.owner.getByRole('link', { name: 'Notifications (1)' }).click();
-  await expect(s.owner.getByText(`${s.uf.username} a un Pokémon de ta liste « Recherche Kanto »`)).toBeVisible();
-  await s.owner.getByText(`${s.uf.username} a un Pokémon de ta liste « Recherche Kanto »`).click();
+  await expect(s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`)).toBeVisible();
+  await s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`).click();
   await expect(s.owner).toHaveURL(new RegExp(`/lists/${s.listId}$`));
   await s.owner.goto('/dex'); // the bell lives on top-level pages
   await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible({ timeout: 10_000 }); // read
@@ -144,12 +144,12 @@ test('notification settings: one switch per kind, saved on the account', async (
   await apiRegister(page.request);
   await page.goto('/me');
   await expect(page.getByRole('heading', { name: 'Notifications sur cet appareil' })).toBeVisible();
-  const offer = page.getByLabel('un ami a un Pokémon de mes listes');
+  const offer = page.getByLabel('un ami a un Pokémon de mes collections');
   await expect(offer).toBeChecked();
   await offer.uncheck();
   await expect(offer).not.toBeChecked();
   await page.reload();
-  await expect(page.getByLabel('un ami a un Pokémon de mes listes')).not.toBeChecked();
+  await expect(page.getByLabel('un ami a un Pokémon de mes collections')).not.toBeChecked();
   const prefs = await (await page.request.get('/api/notifications/prefs')).json();
   expect(prefs.prefs.offer).toBe(false);
 });

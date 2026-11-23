@@ -15,7 +15,7 @@ const notifyAccepted = (requesterId: string, accepter: { id: string; username: s
     userId: requesterId,
     type: 'friend_accepted',
     actorId: accepter.id,
-    push: () => ({ title: `${accepter.username} a accepté ta demande`, body: 'Vous pouvez voir vos listes.', url: `/friends/${accepter.id}`, tag: `friend-${accepter.id}` }),
+    push: () => ({ title: `${accepter.username} a accepté ta demande`, body: 'Vous pouvez voir vos collections.', url: `/friends/${accepter.id}`, tag: `friend-${accepter.id}` }),
   });
 
 const pub = (u: typeof schema.users.$inferSelect) => ({ id: u.id, username: u.username, friendCode: u.friendCode, createdAt: u.createdAt.toISOString() });
@@ -82,7 +82,7 @@ export const friendRoutes = new Hono<AuthEnv>()
       userId: target.id,
       type: 'friend_request',
       actorId: me.id,
-      push: () => ({ title: `${me.username} veut être ton ami`, body: 'Accepte pour voir vos listes.', url: '/friends', tag: `friend-request-${me.id}` }),
+      push: () => ({ title: `${me.username} veut être ton ami`, body: 'Accepte pour voir vos collections.', url: '/friends', tag: `friend-request-${me.id}` }),
     });
     hub.emit([me.id, target.id], { type: 'friends' });
     return c.json({ accepted: false, to: pub(target) }, 201);

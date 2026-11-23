@@ -188,6 +188,23 @@ export interface ListDetailEntry extends ListEntry {
   offeredByMe?: boolean;
 }
 
+export type ListEventKind = 'created' | 'added' | 'removed' | 'caught' | 'uncaught' | 'renamed' | 'visibility' | 'offer';
+export interface ListEventItem {
+  variantKey: string;
+  gender: EntryGender;
+  shiny: boolean;
+  tag: string;
+}
+export interface ListEvent {
+  id: number;
+  kind: ListEventKind;
+  actorName: string | null;
+  count: number;
+  items: ListEventItem[];
+  data?: Record<string, unknown> | null;
+  at: string;
+}
+
 export interface ListDetail extends ListSummary {
   entries: ListDetailEntry[];
 }

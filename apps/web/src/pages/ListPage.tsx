@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
+import { ImportSearch } from '../components/ImportSearch.js';
+import { ListHistory } from '../components/ListHistory.js';
 import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
@@ -17,6 +19,7 @@ import { cardDone, cardMissing, cardsOf, type EntryCard } from '../lib/cards.js'
 import { exportListPdf, fileSlug } from '../lib/pdf.js';
 import { renderListImage, shareOrDownload } from '../lib/shareImage.js';
 import { exportSearchText } from '../lib/searchString.js';
+import { selection } from '../lib/selection.js';
 
 export function ListPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,12 +51,12 @@ function ListView({ query, id, token }: { query: Q; id?: string; token?: string 
       </>
     );
   }
-  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} following={query.data.following} id={id} token={token} loggedIn={!!me.data} />;
+  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} following={query.data.following} id={id} token={token} loggedIn={!!me.data} meName={me.data?.username} />;
 }
 
 type View = 'missing' | 'caught' | 'all';
 
-function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; following?: boolean; id?: string; token?: string; loggedIn: boolean }) {
+function ListBody({ idx, list, access, following, id, token, loggedIn, meName }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; following?: boolean; id?: string; token?: string; loggedIn: boolean; meName?: string }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -69,6 +72,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<EntryCard | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  // Several cards at once: tapping a card picks it instead of ticking it.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const upsert = useUpsertEntries();
   const remove = useRemoveEntries();
   const update = useUpdateList(list.id);
@@ -100,6 +109,38 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
     } else if (owner) setDone(c.members, cardMissing(c));
   };
   const search = useMemo(() => exportSearchText(idx, list.entries, lang), [idx, list.entries, lang]);
+
+  const pickedCards = allCards.filter((c) => picked.has(c.id));
+  const togglePick = (c: EntryCard) => setPicked((p) => { const n = new Set(p); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; });
+  const stopPicking = () => { setPicking(false); setPicked(new Set()); };
+  const bulk = async (run: () => Promise<unknown>) => {
+    setBulkBusy(true);
+    try {
+      await run();
+      stopPicking();
+    } catch {
+      toast(t.err_generic);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const members = (cs: EntryCard[]) => cs.flatMap((c) => c.members);
+  const inParts = async <T,>(items: T[], send: (part: T[]) => Promise<unknown>) => {
+    for (let k = 0; k < items.length; k += 1000) await send(items.slice(k, k + 1000));
+  };
+  const bulkDone = (value: boolean) =>
+    bulk(() => inParts(members(pickedCards).filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
+  const bulkRemove = () => {
+    if (!confirm(t.pick_confirm_remove(pickedCards.length))) return;
+    void bulk(() => inParts(pickedCards, (part) => remove.mutateAsync({ id: list.id, entries: part.map((c) => ({ variantKey: c.variantKey, shiny: c.shiny, tag: c.tag })) })));
+  };
+  const bulkOffer = () => bulk(async () => { for (const m of members(pickedCards).filter((m) => !m.done && !m.offeredByMe)) await offer.mutateAsync({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on: true }); });
+  const toBasket = () => {
+    const entries = members(pickedCards).map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag }));
+    selection.add(entries);
+    toast(t.added_to_selection(entries.length));
+    stopPicking();
+  };
   const exportAs = async (kind: 'image' | 'pdf') => {
     setExporting(kind);
     try {
@@ -124,15 +165,22 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
         title={list.name}
         back
         actions={
-          owner ? (
-            <IconButton label={t.edit} onClick={() => setEditing(true)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-            </IconButton>
-          ) : friend && following !== undefined ? (
-            <Button tone="ghost" className="min-h-9 shrink-0 px-3 text-sm" disabled={follow.isPending} onClick={() => follow.mutate(!following)}>
-              {following ? t.unfollow : t.follow}
-            </Button>
-          ) : null
+          <>
+            {(owner || friend) && id && (
+              <IconButton label={t.history} onClick={() => setHistoryOpen(true)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>
+              </IconButton>
+            )}
+            {owner ? (
+              <IconButton label={t.edit} onClick={() => setEditing(true)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+              </IconButton>
+            ) : friend && following !== undefined ? (
+              <Button tone="ghost" className="min-h-9 shrink-0 px-3 text-sm" disabled={follow.isPending} onClick={() => follow.mutate(!following)}>
+                {following ? t.unfollow : t.follow}
+              </Button>
+            ) : null}
+          </>
         }
       >
         <div className="mx-auto max-w-3xl px-3 pb-2">
@@ -166,11 +214,29 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}
-            {owner && <><br /><Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link></>}
+            {owner && (
+              <>
+                <br />
+                <Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link>
+                <br />
+                <button type="button" onClick={() => setImporting(true)} className="mt-2 inline-block font-semibold text-sky">{t.import_title}</button>
+              </>
+            )}
           </Empty>
         )}
         {list.entries.length > 0 && cards.length === 0 && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
-        {owner && cards.length > 0 && <p className="py-2 text-xs text-ink-3">{t.list_owner_hint}</p>}
+        {cards.length > 0 && (owner || (loggedIn && list.entries.length > 0)) && (
+          <div className="flex items-center gap-3 py-2 text-xs text-ink-3">
+            <span className="flex-1">{picking ? t.pick_hint : owner ? t.list_owner_hint : ''}</span>
+            {picking && <button type="button" className="font-semibold text-sky" onClick={() => setPicked(new Set(cards.map((c) => c.id)))}>{t.pick_all}</button>}
+            {picking && <button type="button" className="font-semibold text-sky" onClick={() => setPicked(new Set())}>{t.pick_none}</button>}
+            {loggedIn && (
+              <button type="button" aria-pressed={picking} onClick={() => (picking ? stopPicking() : setPicking(true))} className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${picking ? 'bg-sky text-white' : 'bg-paper-2 text-ink'}`}>
+                {picking ? t.pick_done : t.pick_mode}
+              </button>
+            )}
+          </div>
+        )}
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {cards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
@@ -180,21 +246,31 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
             const gendered = c.members.some((m) => m.gender);
             const myOffers = c.members.some((m) => m.offeredByMe);
             const offerLines = owner ? c.members.filter((m) => !m.done && m.offers?.length) : [];
+            const isPicked = picking && picked.has(c.id);
             return (
               <li key={c.id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 150px' }}>
-                <div className={`card relative flex h-full flex-col items-center px-1 pb-2 pt-1 ${allDone ? 'ring-2 ring-go' : ''} ${myOffers ? 'ring-2 ring-sky' : ''}`}>
-                  {owner && (
+                <div className={`card relative flex h-full flex-col items-center px-1 pb-2 pt-1 ${isPicked ? 'ring-[3px] ring-sky' : allDone ? 'ring-2 ring-go' : myOffers ? 'ring-2 ring-sky' : ''}`}>
+                  {picking && (
+                    <span className={`pointer-events-none absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isPicked ? 'border-sky bg-sky text-white' : 'border-line bg-card'}`} aria-hidden="true">
+                      {isPicked && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
+                    </span>
+                  )}
+                  {owner && !picking && (
                     <button type="button" onClick={() => setSelected(c)} className="absolute left-0.5 top-0.5 z-10 flex h-8 w-8 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                     </button>
                   )}
                   <button
                     type="button"
-                    onClick={() => toggleCard(c)}
-                    onContextMenu={(ev) => { ev.preventDefault(); setSelected(c); }}
-                    aria-pressed={friend ? c.members.filter((m) => !m.done).every((m) => m.offeredByMe) : allDone}
+                    onClick={() => (picking ? togglePick(c) : toggleCard(c))}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      // A long press starts picking several cards.
+                      if (!picking && loggedIn) { setPicking(true); setPicked(new Set([c.id])); } else if (!picking) setSelected(c);
+                    }}
+                    aria-pressed={picking ? isPicked : friend ? c.members.filter((m) => !m.done).every((m) => m.offeredByMe) : allDone}
                     aria-label={`${localized(sp.name, lang)}${v.label ? ` ${localized(v.label, lang)}` : ''}`}
-                    className={`flex w-full flex-col items-center transition ${owner || (friend && cardMissing(c)) ? 'active:scale-[0.97]' : 'cursor-default'}`}
+                    className={`flex w-full flex-col items-center transition ${picking || owner || (friend && cardMissing(c)) ? 'active:scale-[0.97]' : 'cursor-default'}`}
                   >
                     <div className="relative">
                       <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone} size={72} />
@@ -210,7 +286,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
                     {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
                     {c.tag && <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">{tagLabel(idx, c.tag, t)}</span>}
                   </button>
-                  {gendered && (
+                  {gendered && !picking && (
                     <div className="mt-1 flex gap-1">
                       {c.members.map((m) => {
                         const label = `${genderSymbol(m.gender)} ${m.gender === 'm' ? t.male : t.female}`;
@@ -265,9 +341,32 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
         )}
       </main>
 
-      {owner && (
+      {picking && (
+        <div className="pb-safe fixed inset-x-0 bottom-[64px] z-30 px-3" role="toolbar" aria-label={t.pick_count(picked.size)}>
+          <div className="mx-auto max-w-3xl rounded-card bg-card p-2 shadow-lg ring-1 ring-line">
+            <p className="px-1 pb-1.5 text-sm font-semibold">{t.pick_count(pickedCards.length)}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {owner && (
+                <>
+                  <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={() => bulkDone(true)}>{t.pick_caught}</Button>
+                  <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={() => bulkDone(false)}>{t.pick_missing}</Button>
+                </>
+              )}
+              {friend && <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.some(cardMissing) || bulkBusy} onClick={bulkOffer}>{t.pick_offer}</Button>}
+              <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={toBasket}>{t.pick_basket}</Button>
+              {owner && <Button tone="danger" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={bulkRemove}>{t.pick_remove}</Button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {owner && !picking && (
         <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[64px] z-20 px-3">
-          <div className="mx-auto flex max-w-3xl justify-end">
+          <div className="mx-auto flex max-w-3xl justify-end gap-2">
+            <button type="button" onClick={() => setImporting(true)} aria-label={t.import_title} title={t.import_title} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-card px-4 font-semibold text-ink shadow-lg ring-1 ring-line hover:brightness-[0.98]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></svg>
+              {t.import_short}
+            </button>
             <Link to="/dex" className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg hover:brightness-110">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {t.add_pokemon}
@@ -306,6 +405,16 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
           </div>
           {search && <p className="text-xs text-ink-3">{t.export_with_search}</p>}
         </div>
+      </Sheet>
+
+      {owner && (
+        <Sheet open={importing} onClose={() => setImporting(false)} title={t.import_title}>
+          {importing && <ImportSearch idx={idx} list={list} onDone={() => setImporting(false)} />}
+        </Sheet>
+      )}
+
+      <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title={t.history}>
+        {historyOpen && <ListHistory idx={idx} listId={list.id} me={meName} />}
       </Sheet>
 
       <Sheet open={strings} onClose={() => setStrings(false)} title={t.game_strings_title}>
