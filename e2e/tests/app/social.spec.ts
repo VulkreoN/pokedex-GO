@@ -134,3 +134,25 @@ test('the service worker knows how to show push notifications', async ({ request
   expect(push).toContain("addEventListener('push'");
   expect(push).toContain("addEventListener('notificationclick'");
 });
+
+test("a friend's QR code, read from a screenshot, fills in the friend code", async ({ browser }) => {
+  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.5.1' } });
+  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.5.2' } });
+  const shower = await a.newPage();
+  const scanner = await b.newPage();
+  const ua = await apiRegister(shower.request, uniq('qrs'));
+  await apiRegister(scanner.request, uniq('qrr'));
+
+  await shower.goto('/friends');
+  await shower.getByRole('button', { name: 'Mon QR code' }).click();
+  const png = await shower.getByRole('img', { name: ua.friendCode }).screenshot();
+
+  await scanner.goto('/friends');
+  await scanner.getByRole('button', { name: 'Scanner un QR code' }).click();
+  await scanner.locator('dialog[open] input[type=file]').setInputFiles({ name: 'qr.png', mimeType: 'image/png', buffer: png });
+  await expect(scanner.getByPlaceholder('Code ami à 12 chiffres')).toHaveValue(ua.friendCode.replace(/(\d{4})(?=\d)/g, '$1 '));
+  await scanner.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(scanner.getByText(`Demande envoyée à ${ua.username}`).first()).toBeVisible();
+  await a.close();
+  await b.close();
+});

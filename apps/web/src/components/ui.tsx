@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useMe } from '../lib/auth.js';
 import { useNotifications } from '../lib/social.js';
@@ -27,13 +27,13 @@ export function IconButton({ label, className = '', ...props }: ButtonHTMLAttrib
   return <button type="button" aria-label={label} title={label} {...props} className={`icon-btn inline-flex h-11 w-11 items-center justify-center rounded-full text-ink-2 hover:bg-paper-2 ${className}`} />;
 }
 
-export function Chip({ active, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
+export function Chip({ active, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       {...props}
-      className={`chip inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition ${
+      className={`chip inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
         active ? 'chip-active border-ink bg-ink text-card' : 'border-line bg-card text-ink-2 hover:border-ink-3'
       } ${className}`}
     />

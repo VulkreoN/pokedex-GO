@@ -8,30 +8,28 @@ import { VariantCard, variantForGender, type GenderFilter } from '../components/
 import { Button, Chip, Empty, IconButton, Sheet, Spinner, TopBar } from '../components/ui.js';
 import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
+import { InstallBanner } from '../components/InstallBanner.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
-type Filter = 'all' | 'costume' | 'form' | 'regional' | 'mega' | 'datamined';
 /** Appeared in the last 45 days. */
 export const isRecent = (iso: string | undefined) => !!iso && Date.now() - new Date(iso).getTime() < 45 * 86_400_000;
 
-const FILTER_KINDS: Record<Exclude<Filter, 'all' | 'datamined'>, VariantKind[]> = { costume: ['costume'], form: ['form'], regional: ['regional'], mega: ['mega', 'gmax'] };
+/** What the Pokédex can show, each one on or off: no way to ask for costumes and no costumes at once. */
+const KINDS: VariantKind[] = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'];
+const ALL_KINDS = new Set(KINDS);
 
 export function PokedexPage() {
   const t = useT();
   const { lang } = useLang();
   const dataset = useDataset();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [kinds, setKinds] = useState<Set<VariantKind>>(ALL_KINDS);
+  const [onlyDatamined, setOnlyDatamined] = useState(false);
   const [gen, setGen] = useState(0);
   const [shiny, setShiny] = useState(false);
   const [gender, setGender] = useState<GenderFilter>('all');
   const [forceExploded, setForceExploded] = useState(false);
   const [sort, setSort] = useState<'dex' | 'new' | 'family'>('dex');
-  /** Hide costumes, forms (regional and others), Megas, Gigantamax: all on = base Pokémon only. */
-  const [noCostume, setNoCostume] = useState(false);
-  const [noForms, setNoForms] = useState(false);
-  const [noMega, setNoMega] = useState(false);
-  const [noGmax, setNoGmax] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
@@ -53,10 +51,26 @@ export function PokedexPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const q = useDeferredValue(normalize(query));
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
-  const exploded = forceExploded || filter !== 'all' || q !== '' || multi || noCostume || noForms || noMega || noGmax;
-  const activeCount = (filter !== 'all' ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0) + (noCostume ? 1 : 0) + (noForms ? 1 : 0) + (noMega ? 1 : 0) + (noGmax ? 1 : 0);
-  const hidden = (v: Variant) =>
-    (noCostume && v.kind === 'costume') || (noForms && (v.kind === 'regional' || v.kind === 'form')) || (noMega && v.kind === 'mega') || (noGmax && v.kind === 'gmax');
+  const allKinds = kinds.size === KINDS.length;
+  const exploded = forceExploded || !allKinds || onlyDatamined || q !== '' || multi;
+  const activeCount = (allKinds ? 0 : 1) + (onlyDatamined ? 1 : 0) + (gen ? 1 : 0) + (shiny ? 1 : 0) + (gender !== 'all' ? 1 : 0) + (forceExploded ? 1 : 0) + (sort !== 'dex' ? 1 : 0);
+  const shown = (v: Variant) => kinds.has(v.kind) && (!onlyDatamined || !!v.datamined);
+  /** The last kind left on cannot be switched off: the Pokédex is never empty by construction. */
+  const toggleKind = (k: VariantKind) =>
+    setKinds((prev) => {
+      if (prev.has(k) && prev.size === 1) return prev;
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  const kindName = (k: VariantKind) => t.kinds[k] ?? k;
+  const kindLc = (k: VariantKind) => t.kinds_lc[k] ?? k;
+  /** "Costumes only" or "No costumes, forms": whichever is shorter. */
+  const kindsSummary = () => {
+    const on = KINDS.filter((k) => kinds.has(k));
+    const off = KINDS.filter((k) => !kinds.has(k));
+    return on.length <= off.length ? t.kinds_only(on.map((k, i) => (i ? kindLc(k) : kindName(k))).join(', ')) : t.kinds_without(off.map((k) => kindLc(k)).join(', '));
+  };
 
   const rows = useMemo(() => {
     const idx = dataset.data;
@@ -64,12 +78,10 @@ export function PokedexPage() {
     return idx.ds.species.filter((s) => {
       if (gen && s.gen !== gen) return false;
       if (q && !q.split(/\s+/).filter(Boolean).some((w) => matchesQuery(idx, s.dex, w))) return false;
-      if (filter === 'all') return true;
-      const vs = idx.variantsByDex.get(s.dex) ?? [];
-      if (filter === 'datamined') return vs.some((v) => v.datamined);
-      return vs.some((v) => FILTER_KINDS[filter].includes(v.kind));
+      if (allKinds && !onlyDatamined) return true;
+      return (idx.variantsByDex.get(s.dex) ?? []).some(shown);
     });
-  }, [dataset.data, q, filter, gen]);
+  }, [dataset.data, q, kinds, onlyDatamined, gen]);
 
   /** Newest first: a species ranks by the most recent of its variants. */
   const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
@@ -85,10 +97,7 @@ export function PokedexPage() {
     const words = q.split(/\s+/).filter(Boolean);
     const out: { species: Species; group: VariantGroup; id: string }[] = [];
     for (const s of sort === 'family' ? sortedRows : rows) {
-      let vs = idx.variantsByDex.get(s.dex) ?? [];
-      if (filter === 'datamined') vs = vs.filter((v) => v.datamined);
-      else if (filter !== 'all') vs = vs.filter((v) => FILTER_KINDS[filter].includes(v.kind));
-      if (noCostume || noForms || noMega || noGmax) vs = vs.filter((v) => !hidden(v));
+      const vs = (idx.variantsByDex.get(s.dex) ?? []).filter(shown);
       for (const g of groupVariants(vs)) {
         // A gender filter keeps what exists in that gender (game master): no female-only costume under ♂, no genderless.
         if (gender !== 'all' && !((g.variants.find((v) => v.gender !== 'f') ?? g.variants[0]!).genders ?? ['m', 'f']).includes(gender)) continue;
@@ -101,7 +110,7 @@ export function PokedexPage() {
     }
     if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
     return out;
-  }, [dataset.data, exploded, rows, sortedRows, filter, q, gender, sort, noCostume, noForms, noMega, noGmax]);
+  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, q, gender, sort]);
 
   const toggleTick = (id: string, g: VariantGroup) =>
     setTicked((m) => {
@@ -110,26 +119,16 @@ export function PokedexPage() {
       return n;
     });
   const reset = () => {
-    setFilter('all');
+    setKinds(ALL_KINDS);
+    setOnlyDatamined(false);
     setGen(0);
     setShiny(false);
     setGender('all');
     setForceExploded(false);
     setSort('dex');
-    setNoCostume(false);
-    setNoForms(false);
-    setNoMega(false);
-    setNoGmax(false);
   };
-
-  const filters: [Filter, string][] = [
-    ['all', t.filter_all],
-    ['costume', t.filter_costumes],
-    ['form', t.filter_forms],
-    ['regional', t.filter_regional],
-    ['mega', t.filter_mega],
-    ['datamined', t.filter_datamined],
-  ];
+  const resultCount = exploded ? t.variants_count(cards.length) : t.species_count(rows.length);
+  const check = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
 
   return (
     <>
@@ -152,38 +151,49 @@ export function PokedexPage() {
             className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
             aria-label={t.search_placeholder}
           />
-          <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
-            {filter !== 'all' && <Chip active onClick={() => setFilter('all')}>{filters.find((f) => f[0] === filter)![1]} ✕</Chip>}
-            {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
-            {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
-            {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
-            {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
-            {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
-            {sort === 'family' && <Chip active onClick={() => setSort('dex')}>{t.sort_family} ✕</Chip>}
-            {/* Always at hand while ticking cards; otherwise shown once switched on. */}
-            {(multi || noCostume) && <Chip active={noCostume} onClick={() => setNoCostume((v) => !v)}>{t.filter_no_costume}{noCostume && !multi ? ' ✕' : ''}</Chip>}
-            {(multi || noForms) && <Chip active={noForms} onClick={() => setNoForms((v) => !v)}>{t.filter_no_forms}{noForms && !multi ? ' ✕' : ''}</Chip>}
-            {(multi || noMega) && <Chip active={noMega} onClick={() => setNoMega((v) => !v)}>{t.filter_no_mega}{noMega && !multi ? ' ✕' : ''}</Chip>}
-            {(multi || noGmax) && <Chip active={noGmax} onClick={() => setNoGmax((v) => !v)}>{t.filter_no_gmax}{noGmax && !multi ? ' ✕' : ''}</Chip>}
-            <Chip active={pvpMode} onClick={() => setPvpMode(!pvpMode)} className="ml-auto" aria-label={t.pvp_mode}>
+          <div className="mt-2 flex items-center gap-2">
+            {/* Active filters, each removable with a tap. */}
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_85%,transparent)] [scrollbar-width:none]">
+              {!allKinds && !multi && <Chip active onClick={() => setKinds(ALL_KINDS)}>{kindsSummary()} ✕</Chip>}
+              {onlyDatamined && <Chip active onClick={() => setOnlyDatamined(false)}>{t.filter_datamined} ✕</Chip>}
+              {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
+              {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
+              {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
+              {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
+              {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
+              {sort === 'family' && <Chip active onClick={() => setSort('dex')}>{t.sort_family} ✕</Chip>}
+            </div>
+            <Chip active={pvpMode} onClick={() => setPvpMode(!pvpMode)} aria-label={t.pvp_mode}>
               <LeagueIcon league="great" size={16} />
               PvP
             </Chip>
-            <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }}>
+            <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }} aria-label={t.multi_select}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" /><path d="m8 12 3 3 5-6" /></svg>
-              {t.multi_select}
+              {t.multi_short}
             </Chip>
           </div>
+          {/* While ticking cards, the kinds to show stay at hand, on a row of their own. */}
+          {multi && (
+            <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
+              {KINDS.map((k) => (
+                <Chip key={k} active={kinds.has(k)} onClick={() => toggleKind(k)} disabled={kinds.has(k) && kinds.size === 1}>
+                  {kinds.has(k) && check}
+                  {kindName(k)}
+                </Chip>
+              ))}
+            </div>
+          )}
         </div>
       </TopBar>
 
       <main className="mx-auto max-w-3xl px-3 pb-28">
         {dataset.isPending && <Spinner />}
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
+        <InstallBanner />
         {dataset.data && (
           <>
             <p className="tnum flex items-center gap-2 py-2 text-xs font-semibold text-ink-3">
-              {exploded ? t.variants_count(cards.length) : t.species_count(rows.length)}
+              {resultCount}
               {multi && cards.length > 0 && (
                 <>
                   <button type="button" className="ml-auto text-sky" onClick={() => setTicked(new Map(cards.map((c) => [c.id, c.group])))}>{t.select_all_visible}</button>
@@ -256,16 +266,20 @@ export function PokedexPage() {
       <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t.filters}>
         <div className="space-y-4">
           <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.filter_kind}</p>
-            <div className="flex flex-wrap gap-1.5">{filters.map(([f, label]) => <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{label}</Chip>)}</div>
-          </div>
-          <div>
-            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.filter_hide}</p>
+            <div className="mb-1.5 flex items-baseline gap-3">
+              <p className="flex-1 text-xs font-medium text-ink-3">{t.show_title}</p>
+              {!allKinds && <button type="button" className="text-xs font-semibold text-sky" onClick={() => setKinds(ALL_KINDS)}>{t.preset_all}</button>}
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              <Chip active={noCostume} onClick={() => setNoCostume((v) => !v)}>{t.filter_no_costume}</Chip>
-              <Chip active={noForms} onClick={() => setNoForms((v) => !v)}>{t.filter_no_forms}</Chip>
-              <Chip active={noMega} onClick={() => setNoMega((v) => !v)}>{t.filter_no_mega}</Chip>
-              <Chip active={noGmax} onClick={() => setNoGmax((v) => !v)}>{t.filter_no_gmax}</Chip>
+              {KINDS.map((k) => (
+                <Chip key={k} active={kinds.has(k)} onClick={() => toggleKind(k)} disabled={kinds.has(k) && kinds.size === 1}>
+                  {kinds.has(k) && check}
+                  {kindName(k)}
+                </Chip>
+              ))}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <Chip active={onlyDatamined} onClick={() => setOnlyDatamined((v) => !v)}>{t.only_datamined}</Chip>
             </div>
           </div>
           <div>
@@ -291,13 +305,16 @@ export function PokedexPage() {
               <Chip active={sort === 'family'} onClick={() => setSort('family')}>{t.sort_family}</Chip>
             </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <Chip active={shiny} onClick={() => setShiny((v) => !v)}><Sparkle className={shiny ? 'text-shiny' : ''} /> {t.shiny}</Chip>
-            <Chip active={forceExploded} onClick={() => setForceExploded((v) => !v)}>{t.exploded_view}</Chip>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.display_title}</p>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={shiny} onClick={() => setShiny((v) => !v)}><Sparkle className={shiny ? 'text-shiny' : ''} /> {t.shiny}</Chip>
+              <Chip active={forceExploded} onClick={() => setForceExploded((v) => !v)}>{t.exploded_view}</Chip>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button tone="ghost" className="flex-1" onClick={reset}>{t.filter_reset}</Button>
-            <Button tone="primary" className="flex-1" onClick={() => setFiltersOpen(false)}>{t.close}</Button>
+          <div className="sticky bottom-0 flex gap-2 bg-card pt-2">
+            <Button tone="ghost" className="flex-1" onClick={reset} disabled={activeCount === 0}>{t.filter_reset}</Button>
+            <Button tone="primary" className="flex-1" onClick={() => setFiltersOpen(false)}>{t.see_results(resultCount)}</Button>
           </div>
         </div>
       </Sheet>

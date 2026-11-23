@@ -134,6 +134,36 @@ export function dexFromImage(url: string): number | null {
   return Number(m[1] ?? m[2]);
 }
 
+const REGION_FR: Record<string, string> = { Alolan: "d'Alola", Galarian: 'de Galar', Hisuian: 'de Hisui', Paldean: 'de Paldea' };
+const FORM_FR: Record<string, string> = {
+  Normal: 'Normale', Attack: 'Attaque', Defense: 'Défense', Speed: 'Vitesse', Incarnate: 'Avatar', Therian: 'Totémique', Origin: 'Originelle',
+  Altered: 'Alternative', Forme: '', Form: '', Male: 'Mâle', Female: 'Femelle',
+};
+
+/**
+ * Leek Duck's English name in the app language: "Shadow Alolan Marowak" -> "Ossatueur d'Alola obscur",
+ * "Mega Charizard X" -> "Méga-Dracaufeu X". The species comes from the picture; unknown shapes stay as written.
+ */
+export function liveName(name: string, image: string, speciesByDex: Map<number, { name: { en: string; fr?: string } }> | undefined, lang: string): string {
+  const sp = speciesByDex?.get(dexFromImage(image) ?? 0);
+  if (lang !== 'fr' || !sp?.name.fr) return name;
+  const m = /^(Shadow )?(Mega |Primal )?(Alolan |Galarian |Hisuian |Paldean )?(Gigantamax |Dynamax )?(.*)$/.exec(name)!;
+  const rest = m[5]!;
+  if (!rest.startsWith(sp.name.en)) return name;
+  const suffix = rest
+    .slice(sp.name.en.length)
+    .replace(/\(([^)]*)\)/g, (_, inner: string) => `(${inner.split(/\s+/).map((w) => FORM_FR[w] ?? w).filter(Boolean).join(' ')})`)
+    .replace(/,? and /g, ', ');
+  let out = sp.name.fr;
+  if (m[2] === 'Mega ') out = `Méga-${out}`;
+  if (m[2] === 'Primal ') out = `Primo-${out}`;
+  out += suffix;
+  if (m[3]) out += ` ${REGION_FR[m[3].trim()]}`;
+  if (m[4]) out += m[4] === 'Gigantamax ' ? ' Gigamax' : ' Dynamax';
+  if (m[1]) out += ' obscur';
+  return out;
+}
+
 /**
  * The current raid-battle event announcing this boss, which carries the end date Leek Duck's boss list lacks.
  * Matches on the boss name (without Shadow prefix and form) and on Shadow / Mega consistency.

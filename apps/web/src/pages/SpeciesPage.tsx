@@ -6,7 +6,8 @@ import { useMe } from '../lib/auth.js';
 import { Sparkle } from '../components/Sprite.js';
 import { VariantCard } from '../components/VariantCard.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
-import { useDataset } from '../lib/dataset.js';
+import { normalize, useDataset } from '../lib/dataset.js';
+import { LeagueIcon } from '../components/PvpTops.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 
@@ -19,6 +20,7 @@ export function SpeciesPage() {
   const [shiny, setShiny] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [managing, setManaging] = useState<VariantGroup | null>(null);
+  const [query, setQuery] = useState('');
   const me = useMe();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const idx = dataset.data;
@@ -35,6 +37,14 @@ export function SpeciesPage() {
       [t.filter_mega, by(['mega', 'gmax'])],
     ] as [string, VariantGroup[]][];
   }, [variants, t]);
+  const total = sections.reduce((n, [, g]) => n + g.length, 0);
+  /** Pikachu has over a hundred costumes: past a couple of screens, a search and jumps to each section. */
+  const long = total > 24;
+  const q = normalize(query);
+  const shown = useMemo(
+    () => sections.map(([title, groups]) => [title, q ? groups.filter((g) => normalize(`${g.label?.fr ?? ''} ${g.label?.en ?? ''} ${title}`).includes(q)) : groups] as [string, VariantGroup[]]),
+    [sections, q],
+  );
 
   if (dataset.isPending) return <Spinner />;
   if (!idx || !species) return <Empty>{t.err_not_found}</Empty>;
@@ -61,6 +71,12 @@ export function SpeciesPage() {
           {species.rarity !== 'normal' && <Badge tone="muted">{t[`rarity_${species.rarity}`]}</Badge>}
           {!species.released && <Badge tone="datamined">{t.unreleased_species}</Badge>}
           {species.shinyReleased === false && <Badge tone="muted">{t.no_shiny}</Badge>}
+          {idx.pvpByKey.has(String(dex)) && (
+            <Link to={`/pvp/${dex}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-semibold text-ink-2 hover:border-ink-3">
+              <LeagueIcon league="great" size={16} />
+              PvP
+            </Link>
+          )}
           <span className="ml-auto" />
           <Chip active={!shiny} onClick={() => setShiny(false)}>{t.normal}</Chip>
           <Chip active={shiny} onClick={() => setShiny(true)}>
@@ -68,9 +84,31 @@ export function SpeciesPage() {
           </Chip>
         </div>
 
-        {sections.map(([title, groups]) =>
+        {long && (
+          <div className="mb-3 space-y-2">
+            <input
+              type="search"
+              placeholder={t.variant_search}
+              aria-label={t.variant_search}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:border-sky"
+            />
+            <nav className="flex gap-2 overflow-x-auto [scrollbar-width:none]" aria-label={t.sections}>
+              {shown.map(([title, groups], i) =>
+                groups.length ? (
+                  <a key={title} href={`#section-${i}`} className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border border-line bg-card px-3 text-sm font-semibold text-ink-2">
+                    {title} <span className="tnum font-normal text-ink-3">{groups.length}</span>
+                  </a>
+                ) : null,
+              )}
+            </nav>
+          </div>
+        )}
+        {q && shown.every(([, g]) => g.length === 0) && <Empty>{t.nothing_here}</Empty>}
+        {shown.map(([title, groups], i) =>
           groups.length ? (
-            <section key={title} className="mb-5">
+            <section key={title} id={`section-${i}`} className="mb-5 scroll-mt-20">
               <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-ink-3">{groups.length}</span></h2>
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {groups.map((g) => (

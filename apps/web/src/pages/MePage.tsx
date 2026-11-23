@@ -4,6 +4,7 @@ import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Chip, Sheet, TextField, TopBar } from '../components/ui.js';
 import { PushSettings } from '../components/PushSettings.js';
+import { InstallBanner } from '../components/InstallBanner.js';
 import { Badge } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
@@ -46,6 +47,7 @@ export function MePage() {
     <>
       <TopBar title={t.nav_me} />
       <main className="mx-auto max-w-3xl space-y-6 px-3 pb-24">
+        <InstallBanner dismissible={false} />
         {me.data ? (
           <section className="rounded-card border border-line p-4">
             <div className="flex items-center gap-2 text-[22px] font-bold">{me.data.username} {me.data.role !== 'user' && <Badge tone="grass">{t[`role_${me.data.role}`]}</Badge>}</div>
@@ -117,7 +119,6 @@ export function MePage() {
           {isAdmin && (
             <Button className="mt-3" disabled={refresh.isPending || status.data?.running} onClick={async () => { await refresh.mutateAsync(); toast(t.data_refresh_started); }}>{t.data_refresh_now}</Button>
           )}
-          <p className="mt-3 text-xs text-ink-3">{t.install_hint}</p>
         </section>
 
         {isAdmin && (

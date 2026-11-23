@@ -8,26 +8,41 @@ import { useMe } from '../lib/auth.js';
 import { useDataset } from '../lib/dataset.js';
 import { useTheme } from '../lib/theme.js';
 import { Button, TextField } from '../components/ui.js';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
+import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
 type Tab = 'raids' | 'max' | 'events' | 'research' | 'eggs' | 'tools';
 
+const TABS: Tab[] = ['raids', 'max', 'events', 'research', 'eggs', 'tools'];
+
 export function GamePage() {
   const t = useT();
-  const [tab, setTab] = useState<Tab>('raids');
-  const tabs: [Tab, string][] = [['raids', t.tab_raids], ['max', t.tab_max], ['events', t.tab_events], ['research', t.tab_research], ['eggs', t.tab_eggs], ['tools', t.tab_tools]];
+  // The tab lives in the URL: coming back from a Pokémon page lands on the same tab.
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.find((x) => x === params.get('tab')) ?? 'raids';
+  const setTab = (id: Tab) => setParams(id === 'raids' ? {} : { tab: id }, { replace: true });
+  const labels: Record<Tab, string> = { raids: t.tab_raids, max: t.tab_max, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
   return (
     <>
       <TopBar title={t.nav_game}>
-        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
-          {tabs.map(([id, label]) => (
-            <Chip key={id} active={tab === id} onClick={() => setTab(id)}>{label}</Chip>
+        {/* Six tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
+        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none]" role="tablist">
+          {TABS.map((id) => (
+            <Chip
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              active={tab === id}
+              ref={(el) => { if (el && tab === id) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }}
+              onClick={() => setTab(id)}
+            >
+              {labels[id]}
+            </Chip>
           ))}
         </div>
       </TopBar>
@@ -61,6 +76,8 @@ function Tools() {
 
 /** Small Pokémon picture from Leek Duck, linked to our Pokédex entry when the file name tells us the species. */
 function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; caption?: boolean }) {
+  const { lang } = useLang();
+  const idx = useDataset().data;
   const dex = dexFromImage(p.image);
   const body = (
     <span className="flex flex-col items-center text-center">
@@ -68,7 +85,7 @@ function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; 
         <img src={p.image} alt="" width={size} height={size} loading="lazy" className="object-contain" style={{ width: size, height: size }} />
         {p.canBeShiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
       </span>
-      {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{p.name}</span>}
+      {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{liveName(p.name, p.image, idx?.speciesByDex, lang)}</span>}
     </span>
   );
   return dex ? <Link to={`/dex/${dex}`} className="rounded-lg hover:bg-paper-2">{body}</Link> : body;
@@ -105,6 +122,7 @@ function Raids() {
   const { lang } = useLang();
   const raids = useRaids();
   const events = useEvents();
+  const dataset = useDataset();
   const tiers = useMemo(() => {
     const m = new Map<string, NonNullable<typeof raids.data>>();
     for (const b of raids.data ?? []) (m.get(b.tier) ?? m.set(b.tier, []).get(b.tier)!).push(b);
@@ -159,7 +177,7 @@ function Raids() {
                 <Mon p={b} size={56} caption={false} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 font-semibold">
-                    <span className="truncate">{b.name}</span>
+                    <span className="truncate">{liveName(b.name, b.image, dataset.data?.speciesByDex, lang)}</span>
                     {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
                   </div>
                   <div className="tnum text-xs text-ink-2">
@@ -338,11 +356,6 @@ function Research() {
     if (r.kind === 'resource' && energy) return t.mega_energy_of(speciesName(r.dex, energy[1]!));
     return t.items[r.name] ?? r.name;
   };
-  /** Leek Duck's English name, in French when it is exactly the species (not a form). */
-  const monName = (r: ResearchReward) => {
-    const sp = idx?.speciesByDex.get(dexFromImage(r.image) ?? 0);
-    return sp && sp.name.en === r.name ? localized(sp.name, lang) || r.name : r.name;
-  };
   const block = (c: ResearchCategory) => (
     <Section key={c.title} title={c.event ? c.title.replace(/ Tasks$/, '') : (t.research_types[c.title] ?? c.title.replace(/ Tasks$/, ''))} count={c.tasks.length}>
       {c.end && <p className="-mt-1 mb-2 text-xs text-ink-3">{formatUntil(c.end, lang)}</p>}
@@ -353,7 +366,7 @@ function Research() {
             <div className="mt-2 flex flex-wrap items-start gap-2">
               {task.rewards.map((r, i) =>
                 r.kind === 'encounter' ? (
-                  <Mon key={`${r.name}-${i}`} p={{ ...r, name: monName(r) }} size={48} />
+                  <Mon key={`${r.name}-${i}`} p={r} size={48} />
                 ) : items ? (
                   <span key={`${r.name}-${i}`} className="flex flex-col items-center text-center">
                     <span className="relative">

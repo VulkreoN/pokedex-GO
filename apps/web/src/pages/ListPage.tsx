@@ -159,7 +159,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
             {owner && <><br /><Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link></>}
           </Empty>
         )}
-        {list.entries.length > 0 && cards.length === 0 && <Empty>{t.nothing_here}</Empty>}
+        {list.entries.length > 0 && cards.length === 0 && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
+        {owner && cards.length > 0 && <p className="py-2 text-xs text-ink-3">{t.list_owner_hint}</p>}
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {cards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
@@ -171,7 +172,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
             const offerLines = owner ? c.members.filter((m) => !m.done && m.offers?.length) : [];
             return (
               <li key={c.id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 150px' }}>
-                <div className={`card flex h-full flex-col items-center px-1 pb-2 pt-1 ${allDone ? 'ring-2 ring-go' : ''} ${myOffers ? 'ring-2 ring-sky' : ''}`}>
+                <div className={`card relative flex h-full flex-col items-center px-1 pb-2 pt-1 ${allDone ? 'ring-2 ring-go' : ''} ${myOffers ? 'ring-2 ring-sky' : ''}`}>
+                  {owner && (
+                    <button type="button" onClick={() => setSelected(c)} className="absolute left-0.5 top-0.5 z-10 flex h-8 w-8 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleCard(c)}
@@ -224,9 +230,6 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
                       {genderSymbol(m.gender)} {t.offer_by(m.offers!.map((o) => o.username))}
                     </span>
                   ))}
-                  {owner && (
-                    <button type="button" onClick={() => setSelected(c)} className="mt-0.5 w-full text-center text-[10px] text-ink-3 hover:text-berry" aria-label={t.remove_entry}>···</button>
-                  )}
                 </div>
               </li>
             );
@@ -252,6 +255,17 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
         )}
       </main>
 
+      {owner && (
+        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[64px] z-20 px-3">
+          <div className="mx-auto flex max-w-3xl justify-end">
+            <Link to="/dex" className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg hover:brightness-110">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              {t.add_pokemon}
+            </Link>
+          </div>
+        </div>
+      )}
+
       <Sheet open={strings} onClose={() => setStrings(false)} title={t.game_strings_title}>
         <SearchStrings idx={idx} entries={list.entries} />
       </Sheet>
@@ -262,7 +276,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
             {selected.members.map((m) => (
               <div key={m.gender} className="space-y-1">
                 <Button className="w-full" onClick={() => { toggleMember(m); setSelected(null); }} disabled={!owner}>
-                  {[genderSymbol(m.gender), m.done ? t.missing : t.caught].filter(Boolean).join(' ')}
+                  {m.done ? t.mark_missing(genderSymbol(m.gender)) : t.mark_caught(genderSymbol(m.gender))}
                 </Button>
                 {owner && m.offers?.length ? <p className="text-sm text-ink-2">{genderSymbol(m.gender)} {t.offer_by(m.offers.map((o) => o.username))}</p> : null}
               </div>

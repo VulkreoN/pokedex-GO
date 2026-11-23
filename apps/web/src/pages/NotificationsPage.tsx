@@ -46,7 +46,7 @@ export function NotificationsPage() {
         <ul className="space-y-2">
           {q.data?.items.map((n) => (
             <li key={n.id}>
-              <Link to={target(n)} className={`card flex items-start gap-3 p-3 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
+              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold">{text(n)}</span>

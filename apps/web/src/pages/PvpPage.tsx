@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LEAGUES, cpOf, cpmAt, levelSteps, levelsForCp, powerUpCost, rankOf, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
 import { Sprite } from '../components/Sprite.js';
@@ -21,6 +21,24 @@ function picture(idx: DatasetIndex, p: PvpPokemon): Variant | undefined {
   return idx.variantByKey.get(p.key) ?? idx.coverOf.get(p.dex);
 }
 
+/** Great and Ultra League regulars, offered before anything is typed. */
+const POPULAR_DEX = [184, 308, 334, 379, 260, 227, 195, 362, 423, 340];
+
+/** Last forms opened on this device, newest first. */
+function recentPvp(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem('pvpRecent') ?? '[]') as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function rememberPvp(key: string) {
+  try {
+    localStorage.setItem('pvpRecent', JSON.stringify([key, ...recentPvp().filter((k) => k !== key)].slice(0, 8)));
+  } catch {}
+}
+
 export function PvpPage() {
   const { key } = useParams();
   return key ? <PvpDetail pkey={decodeURIComponent(key)} /> : <PvpSearch />;
@@ -29,8 +47,25 @@ export function PvpPage() {
 function PvpSearch() {
   const t = useT();
   const { lang } = useLang();
-  const { ds, pvp } = usePvp();
+  const { ds, pvp, byKey } = usePvp();
   const [query, setQuery] = useState('');
+  const picks = useMemo(() => {
+    if (!pvp) return { recent: [], popular: [] };
+    const recent = recentPvp().flatMap((k) => byKey.get(k) ?? []);
+    const popular = POPULAR_DEX.flatMap((dex) => byKey.get(String(dex)) ?? pvp.pokemon.find((p) => p.dex === dex) ?? []).filter((p) => !recent.includes(p));
+    return { recent, popular };
+  }, [pvp, byKey]);
+  const tile = (p: PvpPokemon) => {
+    const v = ds.data && picture(ds.data, p);
+    return (
+      <li key={p.key}>
+        <Link to={`/pvp/${encodeURIComponent(p.key)}`} className="card flex flex-col items-center px-1 pb-2 pt-1 hover:brightness-[0.98]">
+          {v && ds.data && <Sprite idx={ds.data} variant={v} size={60} />}
+          <span className="w-full truncate text-center text-[12px] font-semibold">{localized(p.name, lang)}</span>
+        </Link>
+      </li>
+    );
+  };
   const results = useMemo(() => {
     const q = normalize(query);
     if (!q || !pvp) return [];
@@ -55,7 +90,21 @@ function PvpSearch() {
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
         {ds.isPending && <Spinner />}
         {ds.data && !pvp && <Empty>{t.pvp_unavailable}</Empty>}
-        {pvp && !query && <p className="mt-6 text-center text-sm text-ink-2">{t.pvp_intro}</p>}
+        {pvp && !query && (
+          <>
+            <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
+            {picks.recent.length > 0 && (
+              <section className="mb-5">
+                <h2 className="mb-2 text-base font-bold">{t.pvp_recent}</h2>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.recent.map(tile)}</ul>
+              </section>
+            )}
+            <section>
+              <h2 className="mb-2 text-base font-bold">{t.pvp_popular}</h2>
+              <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.popular.map(tile)}</ul>
+            </section>
+          </>
+        )}
         {pvp && query && results.length === 0 && <Empty>{t.nothing_here}</Empty>}
         <ul className="space-y-2">
           {ds.data &&
@@ -119,6 +168,9 @@ function PvpDetail({ pkey }: { pkey: string }) {
     }, { replace: true });
 
   const me = byKey.get(pkey);
+  useEffect(() => {
+    if (me) rememberPvp(me.key);
+  }, [me]);
   if (ds.isPending) return <Spinner />;
   if (!pvp || !me || !ds.data) {
     return (
@@ -139,7 +191,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
         <section className="card p-3">
           <div className="flex items-center gap-3">
-            {meVariant && <Sprite idx={ds.data} variant={meVariant} size={64} />}
+            {meVariant && <Sprite idx={ds.data} variant={meVariant} size={80} />}
             <div className="min-w-0 flex-1">
               <div className="flex gap-1">{me.types.map((ty) => <TypeBadge key={ty} type={ty} />)}</div>
               <div className="tnum mt-1 text-xs text-ink-2">

@@ -31,9 +31,9 @@ test.describe('without an account', () => {
   test('filters narrow the Pokédex and show as removable chips', async ({ page }) => {
     await page.goto('/dex');
     await page.getByRole('button', { name: 'Filtres' }).click();
-    await page.getByRole('button', { name: 'Costumes', exact: true }).click();
+    await page.getByRole('button', { name: 'Costumes', exact: true }).click(); // every kind starts shown: this hides costumes
     await page.keyboard.press('Escape');
-    const chip = page.getByRole('button', { name: /Costumes ✕/ });
+    const chip = page.getByRole('button', { name: 'Sans costumes ✕' });
     await expect(chip).toBeVisible();
     await chip.click();
     await expect(chip).toHaveCount(0);
@@ -104,15 +104,16 @@ test.describe('game tab', () => {
   test('every section renders', async ({ page }) => {
     await page.goto('/game');
     await expect(page.getByText(/Raids \d étoiles|Impossible de charger/).first()).toBeVisible({ timeout: 20_000 });
-    for (const tab of ['Raids Dynamax', 'Événements', 'Études', 'Œufs']) {
-      await page.getByRole('button', { name: tab, exact: true }).click();
+    for (const tab of ['Dynamax', 'Événements', 'Études', 'Œufs']) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await expect(page.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('main')).not.toBeEmpty();
     }
   });
 
   test('research shows item rewards, which can be hidden', async ({ page }) => {
     await page.goto('/game');
-    await page.getByRole('button', { name: 'Études', exact: true }).click();
+    await page.getByRole('tab', { name: 'Études', exact: true }).click();
     const items = page.getByRole('button', { name: 'Objets', exact: true });
     // Upstream may be down: then only encounters, from the fallback, and no toggle.
     if (!(await items.isVisible({ timeout: 15_000 }).catch(() => false))) return;
@@ -124,7 +125,8 @@ test.describe('game tab', () => {
 
   test('tools: bottle caps copies the candidate search and tracks tasks', async ({ page }) => {
     await page.goto('/game');
-    await page.getByRole('button', { name: 'Outils', exact: true }).click();
+    await page.getByRole('tab', { name: 'Outils', exact: true }).click();
+    await expect(page).toHaveURL(/\/game\?tab=tools$/); // kept when coming back
     await page.getByRole('button', { name: 'Copier', exact: true }).click();
     expect(await clipboard(page)).toBe('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow&shiny');
     await page.getByRole('button', { name: 'Chromatiques seulement' }).click();
@@ -145,45 +147,64 @@ test.describe('installable app', () => {
   });
 });
 
-test('multi-select can hide costumes and / or forms', async ({ page }) => {
+test('multi-select: each kind of variant switches on and off on its own', async ({ page }) => {
   await page.goto('/dex');
   await page.getByPlaceholder('Nom ou numéro').fill('raichu');
   await page.getByRole('button', { name: 'Sélection multiple' }).click();
   const costume = page.getByRole('button', { name: /^Ajouter Raichu (Chapeau de fête|Party Hat)/ });
   const alola = page.getByRole('button', { name: /^Ajouter Raichu Alola/ });
   const base = page.getByRole('button', { name: 'Ajouter Raichu', exact: true });
+  const top = page.locator('header');
   await expect(costume.first()).toBeVisible();
   await expect(alola).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sans costumes' }).click();
+  await top.getByRole('button', { name: 'Costumes', exact: true }).click();
+  await expect(top.getByRole('button', { name: 'Costumes', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await expect(costume).toHaveCount(0);
   await expect(alola).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sans formes' }).click();
+  await top.getByRole('button', { name: 'Régionales', exact: true }).click();
   await expect(alola).toHaveCount(0);
   await expect(base).toBeVisible();
 
-  await page.getByRole('button', { name: 'Sans costumes' }).click();
+  await top.getByRole('button', { name: 'Costumes', exact: true }).click();
   await expect(costume.first()).toBeVisible();
   await expect(alola).toHaveCount(0);
 });
 
-test('multi-select can hide Megas and Gigantamax apart from forms', async ({ page }) => {
+test('multi-select hides Megas and Gigantamax apart from forms', async ({ page }) => {
   await page.goto('/dex');
   await page.getByPlaceholder('Nom ou numéro').fill('dracaufeu');
   await page.getByRole('button', { name: 'Sélection multiple' }).click();
   const mega = page.getByRole('button', { name: /^Ajouter Dracaufeu Méga/ });
   const gmax = page.getByRole('button', { name: /^Ajouter Dracaufeu Giga/ });
+  const top = page.locator('header');
   await expect(mega.first()).toBeVisible();
   await expect(gmax.first()).toBeVisible();
-  await page.getByRole('button', { name: 'Sans formes' }).click();
-  await expect(mega.first()).toBeVisible(); // forms only: Megas and Gigantamax have their own switches
-  await page.getByRole('button', { name: 'Sans Méga' }).click();
+  await top.getByRole('button', { name: 'Formes', exact: true }).click();
+  await expect(mega.first()).toBeVisible();
+  await top.getByRole('button', { name: 'Méga', exact: true }).click();
   await expect(mega).toHaveCount(0);
   await expect(gmax.first()).toBeVisible();
-  await page.getByRole('button', { name: 'Sans Gigamax' }).click();
+  await top.getByRole('button', { name: 'Gigamax', exact: true }).click();
   await expect(gmax).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ajouter Dracaufeu', exact: true })).toBeVisible();
+});
+
+test('filters cannot contradict each other: the last kind shown stays on', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByRole('button', { name: 'Filtres' }).click();
+  const sheet = page.locator('dialog[open]');
+  for (const k of ['Normaux', 'Formes', 'Régionales', 'Méga', 'Gigamax']) await sheet.getByRole('button', { name: k, exact: true }).click();
+  const costumes = sheet.getByRole('button', { name: 'Costumes', exact: true });
+  await expect(costumes).toHaveAttribute('aria-pressed', 'true');
+  await expect(costumes).toBeDisabled();
+  await expect(sheet.getByRole('button', { name: /^Voir \d+ variantes$/ })).toBeVisible();
+  await sheet.getByRole('button', { name: /^Voir / }).click();
+  await expect(page.getByRole('button', { name: 'Costumes seulement ✕' })).toBeVisible();
+  await expect(page.locator('main').getByText('Rien à afficher.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Costumes seulement ✕' }).click();
+  await expect(page.getByText(/^\d+ Pokémon$/)).toBeVisible();
 });
 
 test('family order puts Pichu before Pikachu and Raichu, at #25', async ({ page }) => {

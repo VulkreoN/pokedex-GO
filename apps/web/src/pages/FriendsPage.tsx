@@ -8,6 +8,7 @@ import { useMe } from '../lib/auth.js';
 import { useT, type T } from '../lib/i18n.js';
 import { useFriendLists, useFriendRequests, useFriends, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest } from '../lib/lists.js';
 import { VisibilityIcon } from './ListsPage.js';
+import { FriendQr, QrScanSheet } from '../components/FriendQr.js';
 
 export const fmtCode = (c: string) => c.replace(/(\d{4})(?=\d)/g, '$1 ');
 
@@ -39,6 +40,8 @@ export function FriendsPage() {
   const removeFriend = useRemoveFriend();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showQr, setShowQr] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,18 +63,46 @@ export function FriendsPage() {
       <TopBar title={t.friends} />
       <main className="mx-auto max-w-3xl space-y-5 px-3 pb-24">
         {me.data && (
-          <section className="rounded-card sky-header rounded-card p-4">
+          <section className="sky-header rounded-card p-4">
             <div className="text-sm opacity-70">{t.my_code}</div>
             <div className="tnum mt-1 text-[28px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
-            <Button tone="ghost" className="mt-2 bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" onClick={async () => { if (await copyText(me.data!.friendCode)) toast(t.copied); }}>{t.copy}</Button>
+            <div className="mt-2 flex gap-2">
+              <Button tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" onClick={async () => { if (await copyText(me.data!.friendCode)) toast(t.copied); }}>{t.copy}</Button>
+              <Button tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" aria-expanded={showQr} onClick={() => setShowQr((v) => !v)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" /></svg>
+                {showQr ? t.qr_hide : t.qr_show}
+              </Button>
+            </div>
+            {showQr && (
+              <div className="mt-3 flex flex-col items-center gap-2">
+                <FriendQr code={me.data.friendCode} />
+                <p className="text-center text-sm opacity-80">{t.qr_show_hint}</p>
+              </div>
+            )}
           </section>
         )}
 
         <form onSubmit={submit} className="space-y-2">
           <TextField label={t.add_friend} placeholder={t.friend_code_placeholder} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
           {error && <p className="text-sm text-berry">{error}</p>}
-          <Button tone="primary" type="submit" className="w-full" disabled={send.isPending || code.replace(/\D/g, '').length !== 12}>{t.send_request}</Button>
+          <div className="flex gap-2">
+            <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" /></svg>
+              QR
+            </Button>
+            <Button tone="primary" type="submit" className="flex-1" disabled={send.isPending || code.replace(/\D/g, '').length !== 12}>{t.send_request}</Button>
+          </div>
         </form>
+        <QrScanSheet
+          open={scanning}
+          onClose={() => setScanning(false)}
+          onCode={(c) => {
+            setScanning(false);
+            setCode(fmtCode(c));
+            setError(null);
+            toast(t.qr_read);
+          }}
+        />
 
         {(incoming.length > 0 || outgoing.length > 0) && (
           <section>

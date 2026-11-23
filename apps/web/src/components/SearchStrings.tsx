@@ -66,18 +66,17 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
     shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs, alola: 'Alola', galar: 'Galar', hisui: 'Hisui', paldea: 'Paldea',
   };
   const name = (m: string) => (m.startsWith('!') ? t.without(names[m.slice(1)] ?? m.slice(1)) : (names[m] ?? m));
-  const label = (mods: string[]) => (mods.filter((m) => !m.startsWith('!')).length ? mods.map(name).join(' ') : [t.filter_all, ...mods.map(name)].join(' '));
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-ink-2">{t.game_strings_help}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Chip active={onlyMissing} onClick={() => setOnlyMissing((v) => !v)}>
-          {t.only_missing}
-        </Chip>
-        <span className="ml-auto text-xs font-medium text-ink-3">{t.game_lang}</span>
-        <Chip active={gameLang === 'fr'} onClick={() => setGameLang('fr')}>Français</Chip>
-        <Chip active={gameLang === 'en'} onClick={() => setGameLang('en')}>English</Chip>
+      <div>
+        <p className="mb-1 text-xs font-medium text-ink-3">{t.game_lang}</p>
+        <div className="flex flex-wrap gap-1.5">
+          <Chip active={gameLang === 'fr'} onClick={() => setGameLang('fr')}>Français</Chip>
+          <Chip active={gameLang === 'en'} onClick={() => setGameLang('en')}>English</Chip>
+          <Chip active={onlyMissing} onClick={() => setOnlyMissing((v) => !v)} className="ml-auto">{t.only_missing}</Chip>
+        </div>
       </div>
       <div>
         <p className="mb-1 text-xs font-medium text-ink-3">{t.exclude_title}</p>
@@ -96,10 +95,9 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
           <li key={s.text} className="rounded-card border border-line bg-paper p-3">
             <div className="mb-1 flex items-center justify-between gap-2 text-sm">
               <span className="font-semibold">
-                {s.parts ? s.parts.map((p) => `${label(p.modifiers)} (${p.count})`).join(' · ') : label(s.modifiers)}
-                {s.batches > 1 && <span className="text-ink-3"> {s.batch}/{s.batches}</span>}
+                {t.strings_count(s.count)}
+                {s.batches > 1 && <span className="text-ink-3"> · {s.batch}/{s.batches}</span>}
               </span>
-              <span className="tnum text-ink-3">{s.count}</span>
             </div>
             <code className="block break-all rounded-lg bg-paper-2 p-2 text-[13px] leading-snug">{s.text}</code>
             {s.skippedExclusions && <p className="mt-1 text-xs text-ink-2">{t.exclude_skipped(s.skippedExclusions.map((d) => t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']).join(', '))}</p>}

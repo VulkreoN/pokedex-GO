@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventStatus, raidEventFor, type GameEvent } from './live.js';
+import { eventStatus, raidEventFor, type GameEvent, liveName } from './live.js';
 
 const ev = (name: string, start: string | null, end: string | null, extra: Partial<GameEvent> = {}): GameEvent => ({
   eventID: name, name, eventType: 'raid-battles', heading: '', link: '', image: '', start, end, ...extra,
@@ -28,5 +28,29 @@ describe('eventStatus', () => {
   it('treats an undated archived event as past, an undated live one as current', () => {
     expect(eventStatus({ start: null, end: null, archived: true }, now)).toBe('past');
     expect(eventStatus({ start: null, end: null }, now)).toBe('current');
+  });
+});
+
+describe('liveName', () => {
+  const species = new Map([
+    [105, { name: { en: 'Marowak', fr: 'Ossatueur' } }],
+    [6, { name: { en: 'Charizard', fr: 'Dracaufeu' } }],
+    [641, { name: { en: 'Tornadus', fr: 'Boréas' } }],
+    [386, { name: { en: 'Deoxys', fr: 'Deoxys' } }],
+    [25, { name: { en: 'Pikachu', fr: 'Pikachu' } }],
+  ]);
+  const img = (dex: number) => `https://cdn.leekduck.com/assets/img/pokemon_icons_crop/pm${dex}.icon.png`;
+  it('puts regional, Mega, Shadow and form names in French', () => {
+    expect(liveName('Alolan Marowak', img(105), species, 'fr')).toBe("Ossatueur d'Alola");
+    expect(liveName('Shadow Alolan Marowak', img(105), species, 'fr')).toBe("Ossatueur d'Alola obscur");
+    expect(liveName('Mega Charizard X', img(6), species, 'fr')).toBe('Méga-Dracaufeu X');
+    expect(liveName('Shadow Tornadus (Incarnate Forme)', img(641), species, 'fr')).toBe('Boréas (Avatar) obscur');
+    expect(liveName('Deoxys (Attack)', img(386), species, 'fr')).toBe('Deoxys (Attaque)');
+    expect(liveName('Gigantamax Charizard', img(6), species, 'fr')).toBe('Dracaufeu Gigamax');
+  });
+  it('leaves English and unknown shapes alone', () => {
+    expect(liveName('Alolan Marowak', img(105), species, 'en')).toBe('Alolan Marowak');
+    expect(liveName('Pikachu Libre', img(105), species, 'fr')).toBe('Pikachu Libre');
+    expect(liveName('Something', 'https://example.com/x.png', species, 'fr')).toBe('Something');
   });
 });

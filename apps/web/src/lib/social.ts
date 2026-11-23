@@ -81,8 +81,8 @@ export function useRealtime(loggedIn: boolean) {
 
 export type PushState = 'unsupported' | 'needs-install' | 'denied' | 'off' | 'on';
 
-const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+export const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+export const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 export async function pushState(): Promise<PushState> {
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return 'unsupported';
