@@ -18,6 +18,7 @@ import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js
 import { pruneNotifications } from './notify/service.js';
 import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
+import { sql } from './db/index.js';
 
 const app = new Hono<AuthEnv>().basePath('/api');
 
@@ -49,9 +50,28 @@ app.onError((err, c) => {
 
 export type AppType = typeof app;
 
-serve({ fetch: app.fetch, port: env.port }, (info) => {
+const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   console.log(`API listening on http://localhost:${info.port}/api`);
 });
+
+// Stopping (a deploy, a restart): no new connections, a moment for requests in flight, then the live streams are
+// cut (the apps reconnect to the new instance by themselves) and the database pool is closed.
+let stopping = false;
+function shutdown(signal: string) {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal}: shutting down`);
+  const http = server as unknown as { close(): void; closeIdleConnections?(): void; closeAllConnections?(): void };
+  http.close();
+  http.closeIdleConnections?.();
+  setTimeout(() => {
+    http.closeAllConnections?.();
+    void sql.end({ timeout: 2 }).finally(() => process.exit(0));
+  }, 2000).unref();
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 dataService.onDataset(async () => {
   const variants = await dataService.variants();
   if (variants) await migrateStoredGenders(variants);

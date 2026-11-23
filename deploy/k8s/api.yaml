@@ -1,5 +1,7 @@
 # The API: runs its migrations on start, builds the Pokédex dataset into /data (kept on a volume), sends pushes.
-# One replica: live updates (SSE) and timers live in the process. Recreate, as the data volume is ReadWriteOnce.
+# One replica: live updates (SSE) and timers live in the process. On a release the new pod starts next to the old one
+# and takes over once ready, so the site does not go down. ReadWriteOnce is per node: fine on a single-node cluster;
+# on several nodes, pin the pod to one (nodeSelector) or switch back to the Recreate strategy.
 apiVersion: v1
 kind: Service
 metadata:
@@ -27,7 +29,10 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: api
@@ -36,6 +41,7 @@ spec:
       labels:
         app: api
     spec:
+      terminationGracePeriodSeconds: 20
       containers:
         - name: api
           image: ghcr.io/vulkreon/pokedex-go-api
@@ -65,6 +71,11 @@ spec:
               value: /data
           ports:
             - containerPort: 3000
+          # A few seconds for the ingress to stop sending traffic here before the API is asked to stop.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "3"]
           # Migrations and the first dataset build can take a few minutes on a fresh volume.
           startupProbe:
             httpGet:
