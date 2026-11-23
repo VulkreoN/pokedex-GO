@@ -345,3 +345,39 @@ test('a team of three: picked from a search, shared weaknesses, and it lives in 
   await page.getByRole('button', { name: /Ligue Hyper/ }).click();
   await expect(page).toHaveURL(/l=ultra/);
 });
+
+test('battle simulator: two Pokémon from the URL, a winner, a timeline and the shield table', async ({ page }) => {
+  const data = await page.request.get('/api/game/pvp-battle/184');
+  test.skip(data.status() !== 200, 'PvPoke unreachable');
+  await page.goto('/pvp/battle?l=great&a=184&b=308'); // Azumarill vs Medicham
+  const result = page.getByRole('region', { name: 'Résultat' });
+  await expect(result).toBeVisible({ timeout: 20_000 });
+  await expect(result.getByText(/gagne$|^Égalité$/)).toBeVisible();
+  await expect(result.getByText('Déroulé')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Selon les boucliers' })).toBeVisible();
+  await expect(page.locator('table td')).toHaveCount(9);
+  // Shields and moves are settings in the URL.
+  await page.getByRole('region', { name: 'Ton Pokémon' }).getByRole('button', { name: '2', exact: true }).click();
+  await expect(page).toHaveURL(/as=2/);
+  await expect(page.getByRole('link', { name: 'Comparer sur PvPoke' })).toHaveAttribute('href', /pvpoke\.com\/battle\/1500\/azumarill\/medicham\/21\/$/);
+});
+
+test('popular teams load into the team builder', async ({ page }) => {
+  const teams = await page.request.get('/api/game/pvp-teams/great');
+  test.skip(teams.status() !== 200 || (await teams.json()).teams.length === 0, 'PvPoke unreachable');
+  await page.goto('/pvp/team');
+  await expect(page.getByRole('heading', { name: 'Équipes populaires' })).toBeVisible({ timeout: 20_000 });
+  await page.locator('section', { has: page.getByRole('heading', { name: 'Équipes populaires' }) }).getByRole('button').first().click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('p') ?? '').toMatch(/^[^,]+,[^,]+,[^,]+$/);
+  await expect(page.getByRole('heading', { name: 'Faiblesses' })).toBeVisible();
+});
+
+test('PvP pages fit a phone screen: no sideways scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  for (const path of ['/pvp', '/pvp/184?a=0&d=15&s=15', '/pvp/team?p=184,308,227', '/pvp/battle?a=184&b=308']) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, path).toBeLessThanOrEqual(0);
+  }
+});

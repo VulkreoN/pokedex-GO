@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { rankLeague } from './pvpRankings.js';
+import { abbreviationFit, decodeMember, rankLeague } from './pvpRankings.js';
 
+const sp = (speciesId: string, speciesName: string, dex: number, baseStats: { atk: number; def: number; hp: number }, extra = {}) => ({ speciesId, speciesName, dex, baseStats, types: [], fastMoves: [], chargedMoves: [], ...extra });
 const gm = new Map([
-  ['melmetal', { speciesId: 'melmetal', speciesName: 'Melmetal', dex: 809, baseStats: { atk: 226, def: 190, hp: 264 } }],
-  ['ninetales_shadow', { speciesId: 'ninetales_shadow', speciesName: 'Ninetales (Shadow)', dex: 38, baseStats: { atk: 169, def: 190, hp: 177 }, tags: ['shadow'] }],
-  ['marowak_alolan', { speciesId: 'marowak_alolan', speciesName: 'Marowak (Alolan)', dex: 105, baseStats: { atk: 144, def: 186, hp: 155 } }],
+  ['melmetal', sp('melmetal', 'Melmetal', 809, { atk: 226, def: 190, hp: 264 })],
+  ['ninetales_shadow', sp('ninetales_shadow', 'Ninetales (Shadow)', 38, { atk: 169, def: 190, hp: 177 }, { tags: ['shadow'] })],
+  ['marowak_alolan', sp('marowak_alolan', 'Marowak (Alolan)', 105, { atk: 144, def: 186, hp: 155 })],
 ]);
 const moves = new Map([
   ['THUNDER_SHOCK', { moveId: 'THUNDER_SHOCK', name: 'Thunder Shock', type: 'electric', power: 4, energy: 0, energyGain: 9, turns: 2 }],
@@ -37,5 +38,24 @@ describe('rankLeague', () => {
     expect(first!.wins).toEqual([{ speciesId: 'marowak_alolan', name: 'Marowak (Alolan)', dex: 105, atk: 144, def: 186, hp: 155, shadow: false, rating: 729 }]);
     expect(first!.losses[0]).toMatchObject({ dex: 38, shadow: true, rating: 99 });
     expect(second).toMatchObject({ rank: 2, speciesId: 'ninetales_shadow', shadow: true, moveset: [], wins: [] });
+  });
+});
+
+describe('decodeMember', () => {
+  const mv = (moveId: string, name: string, abbreviation?: string) => [moveId, { moveId, name, type: 'normal', power: 1, energy: 1, energyGain: 1, ...(abbreviation ? { abbreviation } : {}) }] as const;
+  const moves = new Map([
+    mv('INFESTATION', 'Infestation'), mv('SHADOW_BALL', 'Shadow Ball'), mv('SEED_BOMB', 'Seed Bomb'), mv('FOUL_PLAY', 'Foul Play'), mv('SUPER_POWER', 'Superpower'),
+    mv('PSYWAVE', 'Psywave'), mv('COUNTER', 'Counter', 'C'), mv('BULLDOZE', 'Bulldoze'),
+  ]);
+  const byId = new Map([
+    ['gourgeist_super', { ...sp('gourgeist_super', 'Gourgeist (Super)', 711, { atk: 1, def: 1, hp: 1 }), fastMoves: ['INFESTATION'], chargedMoves: ['SHADOW_BALL', 'SEED_BOMB'] }],
+    ['malamar', { ...sp('malamar', 'Malamar', 687, { atk: 1, def: 1, hp: 1 }), fastMoves: ['PSYWAVE'], chargedMoves: ['FOUL_PLAY', 'SUPER_POWER'] }],
+  ]);
+  it('reads PvPoke abbreviations against what the Pokémon can learn', () => {
+    expect(decodeMember('gourgeist_super I/SB/SeB', byId, moves)).toEqual({ speciesId: 'gourgeist_super', fast: 'INFESTATION', charged: ['SHADOW_BALL', 'SEED_BOMB'] });
+    expect(decodeMember('malamar Psy/FoP/SP', byId, moves)).toEqual({ speciesId: 'malamar', fast: 'PSYWAVE', charged: ['FOUL_PLAY', 'SUPER_POWER'] });
+    expect(decodeMember('missingno A/B/C', byId, moves)).toBeNull();
+    expect(abbreviationFit('Bd', moves.get('BULLDOZE')!)).toBe(1);
+    expect(abbreviationFit('C', moves.get('COUNTER')!)).toBe(2);
   });
 });

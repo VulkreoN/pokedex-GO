@@ -117,6 +117,15 @@ function PvpSearch() {
         {pvp && !query && (
           <>
             <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
+            <Link to="/pvp/battle" className="card mb-2 flex items-center gap-3 p-3 hover:brightness-[0.98]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-berry/10 text-berry">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /></svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{t.battle_open}</span>
+                <span className="block text-xs text-ink-3">{t.battle_open_hint}</span>
+              </span>
+            </Link>
             <Link to="/pvp/team" className="card mb-5 flex items-center gap-3 p-3 hover:brightness-[0.98]">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-go-soft text-go-ink">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
@@ -136,7 +145,7 @@ function PvpSearch() {
             {picks.top.length > 0 ? (
               <section>
                 <h2 className="mb-2 text-base font-bold">{t.pvp_top}</h2>
-                <div className="mb-2 flex gap-2">
+                <div className="mb-2 flex flex-wrap gap-2">
                   {LEAGUE_LIST.map((l) => (
                     <Chip key={l} active={league === l} onClick={() => setLeague(l)}>
                       <LeagueIcon league={l} size={16} />
@@ -328,6 +337,9 @@ function PvpDetail({ pkey }: { pkey: string }) {
             </label>
           </details>
           <SaveMine me={me} iv={iv} level={level} mineId={params.get('m')} onSaved={(id) => set({ m: id })} onRemoved={() => set({ m: null })} />
+          <Link to={`/pvp/battle?a=${encodeURIComponent(me.key)}&aiv=${iv.atk}-${iv.def}-${iv.sta}`} className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-paper-2 text-[15px] font-semibold text-ink hover:brightness-95">
+            {t.battle_open}
+          </Link>
         </section>
 
         <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} />

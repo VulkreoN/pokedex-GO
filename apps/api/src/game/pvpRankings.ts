@@ -55,8 +55,9 @@ export interface PvpRankings {
   master: RankedPokemon[];
 }
 
-type GmPokemon = { speciesId: string; speciesName: string; dex: number; baseStats: { atk: number; def: number; hp: number }; tags?: string[] };
-type GmMove = { moveId: string; name: string; type: string; power: number; energy: number; energyGain: number; turns?: number };
+type GmPokemon = { speciesId: string; speciesName: string; dex: number; baseStats: { atk: number; def: number; hp: number }; tags?: string[]; types: string[]; fastMoves: string[]; chargedMoves: string[]; formChange?: { alternativeFormId?: string } };
+type GmMove = { moveId: string; name: string; type: string; power: number; energy: number; energyGain: number; turns?: number; abbreviation?: string };
+type Analysis = { properties?: { lastUpdated?: string }; teams?: { team: string; teamScore: number; games: number }[] };
 type Ranking = {
   speciesId: string;
   speciesName: string;
@@ -67,7 +68,14 @@ type Ranking = {
   counters?: { opponent: string; rating: number }[];
 };
 
-let cache: { at: number; leagues: Record<League, RankedDetail[]> } | null = null;
+interface Loaded {
+  leagues: Record<League, RankedDetail[]>;
+  gm: GmPokemon[];
+  byId: Map<string, GmPokemon>;
+  moves: Map<string, GmMove>;
+  analysis: Record<League, Analysis>;
+}
+let cache: { at: number; data: Loaded } | null = null;
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}/${path}`, { headers: { 'user-agent': 'mydexpogo/1.0' } });
@@ -110,26 +118,30 @@ export function rankLeague(league: League, rankings: Ranking[], byId: Map<string
 }
 
 /** One download at a time: pages opened while it runs wait for it instead of each starting their own. */
-let loading: Promise<Record<League, RankedDetail[]>> | null = null;
+let loading: Promise<Loaded> | null = null;
 
-async function load(now: number): Promise<Record<League, RankedDetail[]>> {
-  if (cache && now - cache.at < 12 * 3600_000) return cache.leagues;
+async function loadAll(now: number): Promise<Loaded> {
+  if (cache && now - cache.at < 12 * 3600_000) return cache.data;
   loading ??= download(now).finally(() => (loading = null));
   return loading;
 }
+const load = async (now: number) => (await loadAll(now)).leagues;
 
-async function download(now: number): Promise<Record<League, RankedDetail[]>> {
-  const [gm, moveList, ...lists] = await Promise.all([
+async function download(now: number): Promise<Loaded> {
+  const [gm, moveList, analyses, ...lists] = await Promise.all([
     getJson<GmPokemon[]>('gamemaster/pokemon.json'),
     getJson<GmMove[]>('gamemaster/moves.json'),
+    // Most played teams on PvPoke's training mode: nice to have, the rest works without.
+    Promise.all(LEAGUES.map((l) => getJson<Analysis>(`training/analysis/all/${FILES[l].replace('rankings-', '')}`).catch(() => ({}) as Analysis))),
     ...LEAGUES.map((l) => getJson<Ranking[]>(`rankings/all/overall/${FILES[l]}`)),
   ]);
   const byId = new Map(gm.map((p) => [p.speciesId, p]));
   const moves = new Map(moveList.map((m) => [m.moveId, m]));
   const leagues = Object.fromEntries(LEAGUES.map((l, i) => [l, rankLeague(l, lists[i] as Ranking[], byId, moves)])) as Record<League, RankedDetail[]>;
   if (LEAGUES.some((l) => !leagues[l].length)) throw new Error('pvpoke: empty rankings, format changed?');
-  cache = { at: now, leagues };
-  return leagues;
+  const data: Loaded = { leagues, gm, byId, moves, analysis: Object.fromEntries(LEAGUES.map((l, i) => [l, analyses[i]!])) as Record<League, Analysis> };
+  cache = { at: now, data };
+  return data;
 }
 
 const slim = ({ rank, speciesId, name, dex, atk, def, hp, shadow, score }: RankedDetail): RankedPokemon => ({ rank, speciesId, name, dex, atk, def, hp, shadow, score });
@@ -145,3 +157,76 @@ export async function getPvpDetails(dex: number, now = Date.now()): Promise<Rank
   const l = await load(now);
   return LEAGUES.flatMap((league) => l[league]).filter((r) => r.dex === dex);
 }
+
+/** What a battle needs for one species: its forms (and the ones it changes into), their move details, PvPoke's movesets. */
+export async function getBattleData(dex: number, now = Date.now()) {
+  const d = await loadAll(now);
+  const species = new Map<string, GmPokemon>();
+  const add = (p: GmPokemon | undefined) => {
+    if (!p || species.has(p.speciesId)) return;
+    species.set(p.speciesId, p);
+    add(p.formChange?.alternativeFormId ? d.byId.get(p.formChange.alternativeFormId) : undefined);
+  };
+  for (const p of d.gm) if (p.dex === dex) add(p);
+  const moveIds = new Set([...species.values()].flatMap((p) => [...p.fastMoves, ...p.chargedMoves]));
+  const recommended: Record<string, Partial<Record<League, string[]>>> = {};
+  for (const league of LEAGUES)
+    for (const r of d.leagues[league]) if (species.has(r.speciesId)) (recommended[r.speciesId] ??= {})[league] = r.moveset.map((m) => m.id);
+  return { species: [...species.values()], moves: [...moveIds].flatMap((id) => d.moves.get(id) ?? []), recommended };
+}
+
+const words = (s: string) => s.split(/[\s_-]+/).filter(Boolean);
+/** How well an abbreviation like "SeB" or "FoP" fits a move: 2 exact, 1 letters in order, word by word; 0 no. */
+export function abbreviationFit(abbr: string, m: { moveId: string; name: string; abbreviation?: string }): number {
+  const initials = (ws: string[]) => ws.map((w) => w[0]!.toUpperCase()).join('');
+  if (m.abbreviation === abbr || initials(words(m.name)) === abbr || initials(words(m.moveId)) === abbr) return 2;
+  const chunks = abbr.match(/[A-Z][^A-Z]*/g) ?? [];
+  const fit = (ws: string[]) =>
+    ws.length === chunks.length &&
+    chunks.every((c, i) => {
+      const w = ws[i]!.toLowerCase();
+      let k = 0;
+      for (const ch of c.toLowerCase()) if ((k = w.indexOf(ch, k) + 1) === 0) return false;
+      return w[0] === c[0]!.toLowerCase();
+    });
+  return fit(words(m.name)) || fit(words(m.moveId)) ? 1 : 0;
+}
+
+/** "tinkaton FW/Bd/GH" -> tinkaton with Fairy Wind, Bulldoze and Gigaton Hammer, taken from what it can learn. */
+export function decodeMember(text: string, byId: Map<string, GmPokemon>, moves: Map<string, GmMove>): { speciesId: string; fast: string; charged: string[] } | null {
+  const [speciesId, set] = text.trim().split(' ');
+  const p = speciesId ? byId.get(speciesId) : undefined;
+  if (!p || !set) return null;
+  const parts = set.split(/[/+]/);
+  const pools = parts.map((_, i) => (i === 0 ? p.fastMoves : p.chargedMoves));
+  const out: (string | null)[] = parts.map(() => null);
+  const used = new Set<string>();
+  // Most specific abbreviations first: "SeB" takes Seed Bomb before "SB" picks between Shadow Ball and Seed Bomb.
+  for (const i of parts.map((_, i) => i).sort((a, b) => parts[b]!.length - parts[a]!.length)) {
+    const best = pools[i]!
+      .filter((id) => !used.has(id) && moves.has(id))
+      .map((id) => ({ id, fit: abbreviationFit(parts[i]!, moves.get(id)!) }))
+      .filter((x) => x.fit > 0)
+      .sort((a, b) => b.fit - a.fit)[0];
+    if (!best) return null;
+    out[i] = best.id;
+    used.add(best.id);
+  }
+  return { speciesId: speciesId!, fast: out[0]!, charged: out.slice(1) as string[] };
+}
+
+/** The most played teams of a league on PvPoke's training mode, most games first, with their moves decoded. */
+export async function getPopularTeams(league: League, now = Date.now()) {
+  const d = await loadAll(now);
+  const a = d.analysis[league];
+  const teams = (a.teams ?? [])
+    .flatMap((t) => {
+      const members = t.team.split('|').map((m) => decodeMember(m, d.byId, d.moves));
+      if (members.some((m) => !m)) return [];
+      return [{ members: members.map((m) => ({ ...m!, dex: d.byId.get(m!.speciesId)!.dex, ...stats(d.byId.get(m!.speciesId)!) })), games: t.games, score: t.teamScore }];
+    })
+    .sort((x, y) => y.games - x.games)
+    .slice(0, 20);
+  return { updated: a.properties?.lastUpdated?.replace(/\s+/g, ' ') ?? null, teams };
+}
+const stats = (p: GmPokemon) => ({ name: p.speciesName, atk: p.baseStats.atk, def: p.baseStats.def, hp: p.baseStats.hp, shadow: !!p.tags?.includes('shadow') });

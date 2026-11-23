@@ -1,6 +1,6 @@
 /** PvPoke's rankings (pvpoke.com), read and cached by our API, matched to our forms. */
 import { useQuery } from '@tanstack/react-query';
-import type { Lang, PvpData, PvpPokemon } from '@mydexpogo/shared';
+import type { Lang, PvpData, PvpPokemon, PvpokeMove as GameMove, PvpokeSpecies } from '@mydexpogo/shared';
 import { localized } from './i18n.js';
 
 export const PVPOKE_URL = 'https://pvpoke.com/rankings/';
@@ -65,3 +65,21 @@ export function moveName(pvp: PvpData, m: PvpokeMove, lang: Lang): string {
 export const pvpokeUrl = (r: { league: League; speciesId: string }) => `https://pvpoke.com/rankings/all/${LEAGUE_CP[r.league]}/overall/${r.speciesId}/`;
 
 export const leagueName = (t: { league_great: string; league_ultra: string; league_master: string }, l: League) => (l === 'great' ? t.league_great : l === 'ultra' ? t.league_ultra : t.league_master);
+
+/* ---------- Battles and popular teams ---------- */
+
+export interface BattleData { species: PvpokeSpecies[]; moves: GameMove[]; recommended: Record<string, Partial<Record<League, string[]>>> }
+/** PvPoke's data to battle with one species: its forms (and the ones it changes into), moves, recommended movesets. */
+export const useBattleData = (dex: number | undefined) =>
+  useQuery({ queryKey: ['game', 'pvp-battle', dex], queryFn: () => getJson<BattleData>(`/api/game/pvp-battle/${dex}`), enabled: !!dex, staleTime: 3600_000, retry: 1 });
+
+/** PvPoke's species for one of our forms: same dex and base stats, Shadow or not. */
+export function speciesFor(list: PvpokeSpecies[], form: PvpPokemon, shadow: boolean): PvpokeSpecies | undefined {
+  const same = list.filter((p) => p.dex === form.dex && !!p.tags?.includes('shadow') === shadow && !p.speciesId.endsWith('_xs'));
+  return same.find((p) => p.baseStats.atk === form.atk && p.baseStats.def === form.def && p.baseStats.hp === form.sta) ?? same[0];
+}
+
+export interface PopularTeam { members: (FormRef & { fast: string; charged: string[] })[]; games: number; score: number }
+/** The most played teams of a league on PvPoke's training mode. */
+export const usePopularTeams = (league: League) =>
+  useQuery({ queryKey: ['game', 'pvp-teams', league], queryFn: () => getJson<{ updated: string | null; teams: PopularTeam[] }>(`/api/game/pvp-teams/${league}`), staleTime: 3600_000, retry: 1 });

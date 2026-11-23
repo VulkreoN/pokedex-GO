@@ -12,6 +12,7 @@ import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
 import { GamePage } from './pages/GamePage.js';
 import { PvpPage } from './pages/PvpPage.js';
 import { PvpTeamPage } from './pages/PvpTeamPage.js';
+import { PvpBattlePage } from './pages/PvpBattlePage.js';
 import { NotificationsPage } from './pages/NotificationsPage.js';
 import { useRealtime } from './lib/social.js';
 import { reportError } from './lib/errorReport.js';
@@ -110,6 +111,7 @@ export function App() {
               <Route path="/game" element={<GamePage />} />
               <Route path="/pvp" element={<PvpPage />} />
               <Route path="/pvp/team" element={<PvpTeamPage />} />
+              <Route path="/pvp/battle" element={<PvpBattlePage />} />
               <Route path="/pvp/:key" element={<PvpPage />} />
               <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
               <Route path="/friends/:id" element={<RequireAuth><FriendListsPage /></RequireAuth>} />

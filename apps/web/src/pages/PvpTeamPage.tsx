@@ -9,7 +9,7 @@ import { Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
 import { normalize } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useMyPvp } from '../lib/myPvp.js';
-import { LEAGUE_LIST, formOf, leagueName, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
+import { LEAGUE_LIST, formOf, leagueName, usePopularTeams, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
 import { picture, usePvp } from './PvpPage.js';
 
 const SLOTS = 3;
@@ -72,7 +72,7 @@ export function PvpTeamPage() {
     <>
       <TopBar title={t.team_title} back />
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
           {LEAGUE_LIST.map((l) => (
             <Chip key={l} active={league === l} onClick={() => setParams((prev) => { const n = new URLSearchParams(prev); n.set('l', l); return n; }, { replace: true })}>
               <LeagueIcon league={l} size={16} />
@@ -98,6 +98,9 @@ export function PvpTeamPage() {
         </ul>
 
         {members.length === 0 && <p className="mt-6 text-center text-sm text-ink-2">{t.team_intro}</p>}
+        {members.length > 0 && (
+          <Link to={`/pvp/battle?l=${league}&a=${encodeURIComponent(members[0]!.key)}`} className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-paper-2 text-sm font-semibold hover:brightness-95">{t.battle_open}</Link>
+        )}
 
         {members.length > 0 && (
           <>
@@ -124,6 +127,7 @@ export function PvpTeamPage() {
             <Matchups title={t.team_beats} hint={t.team_beats_hint} list={beats} tone="go" />
           </>
         )}
+        <PopularTeams league={league} onLoad={(keys) => setTeam(keys)} />
       </main>
       <PickSheet open={picking !== null} league={league} onClose={() => setPicking(null)} onPick={(k) => { const next = [...team.map((m) => m?.key)]; next[picking!] = k; setTeam(next); setPicking(null); }} onClear={team[picking ?? -1] ? () => { const next = [...team.map((m) => m?.key)]; next[picking!] = undefined; setTeam(next); setPicking(null); } : undefined} />
     </>
@@ -175,7 +179,7 @@ function TypeGrid({ types, size }: { types: { type: PokemonType; weak: number; r
 }
 
 /** Choose a member: my saved Pokémon, PvPoke's top of the league, or a search. */
-function PickSheet({ open, league, onClose, onPick, onClear }: { open: boolean; league: League; onClose: () => void; onPick: (key: string) => void; onClear?: () => void }) {
+export function PickSheet({ open, league, onClose, onPick, onClear }: { open: boolean; league: League; onClose: () => void; onPick: (key: string) => void; onClear?: () => void }) {
   const t = useT();
   const { lang } = useLang();
   const { ds, pvp, byKey } = usePvp();
@@ -211,5 +215,46 @@ function PickSheet({ open, league, onClose, onPick, onClear }: { open: boolean; 
       </ul>
       {onClear && <button type="button" onClick={onClear} className="mt-3 w-full rounded-xl py-2 text-sm font-semibold text-berry hover:bg-berry/10">{t.team_remove}</button>}
     </Sheet>
+  );
+}
+
+/** The most played teams of the league on PvPoke's training mode, ready to load. */
+function PopularTeams({ league, onLoad }: { league: League; onLoad: (keys: string[]) => void }) {
+  const t = useT();
+  const { lang } = useLang();
+  const { ds, pvp } = usePvp();
+  const q = usePopularTeams(league);
+  if (!pvp || !ds.data || !q.data?.teams.length) return null;
+  const idx = ds.data;
+  return (
+    <section className="mt-5">
+      <h2 className="text-base font-bold">{t.team_popular}</h2>
+      <p className="mt-0.5 text-xs text-ink-3">{t.team_popular_hint(q.data.updated && !Number.isNaN(Date.parse(q.data.updated)) ? new Date(q.data.updated).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' }) : q.data.updated)}</p>
+      <ul className="mt-2 space-y-2">
+        {q.data.teams.map((team, i) => {
+          const forms = team.members.map((m) => ({ m, p: formOf(pvp, m) }));
+          if (forms.some((x) => !x.p)) return null;
+          return (
+            <li key={i}>
+              <button type="button" onClick={() => onLoad(forms.map((x) => x.p!.key))} className="card flex w-full items-center gap-2 p-2 text-left hover:brightness-[0.98]">
+                <span className="grid flex-1 grid-cols-3 gap-1">
+                  {forms.map(({ m, p }) => {
+                    const v = picture(idx, p!);
+                    return (
+                      <span key={m.speciesId} className="flex min-w-0 flex-col items-center">
+                        {v && <Sprite idx={idx} variant={v} size={44} />}
+                        <span className="w-full truncate text-center text-[11px] font-semibold leading-tight">{localized(p!.name, lang).replace(/ \(.*\)$/, '')}</span>
+                        {m.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
+                      </span>
+                    );
+                  })}
+                </span>
+                <span className="tnum shrink-0 text-right text-xs text-ink-3">{t.team_games(team.games)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

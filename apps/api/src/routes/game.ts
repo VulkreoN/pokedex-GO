@@ -7,7 +7,7 @@ import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getResearch } from '../game/research.js';
-import { getPvpDetails, getPvpRankings } from '../game/pvpRankings.js';
+import { LEAGUES, getBattleData, getPopularTeams, getPvpDetails, getPvpRankings, type League } from '../game/pvpRankings.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
@@ -46,6 +46,24 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ rankings: await getPvpDetails(Number(c.req.param('dex'))) });
     } catch (e) {
       return c.json({ rankings: [], error: (e as Error).message }, 502);
+    }
+  })
+  .get('/pvp-battle/:dex{[0-9]+}', async (c) => {
+    try {
+      c.header('cache-control', 'public, max-age=3600');
+      return c.json(await getBattleData(Number(c.req.param('dex'))));
+    } catch (e) {
+      return c.json({ species: [], moves: [], recommended: {}, error: (e as Error).message }, 502);
+    }
+  })
+  .get('/pvp-teams/:league', async (c) => {
+    const league = c.req.param('league') as League;
+    if (!LEAGUES.includes(league)) return c.json({ error: 'not_found' }, 404);
+    try {
+      c.header('cache-control', 'public, max-age=3600');
+      return c.json(await getPopularTeams(league));
+    } catch (e) {
+      return c.json({ updated: null, teams: [], error: (e as Error).message }, 502);
     }
   })
   .post('/posts', requireRole('manager'), zValidator('json', z.object({ url: z.string().max(300) })), async (c) => {
