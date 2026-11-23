@@ -32,7 +32,7 @@ function termMatches(term: string, p: Mon): boolean {
   else if (t === 'chanceux') ok = p.tag === 'lucky';
   else if (t === 'obscur') ok = p.tag === 'shadow';
   else if (t === 'purifié') ok = p.tag === 'purified';
-  else if (t === 'gigantamax') ok = p.gmax;
+  else if (t === 'gigantamax' || t === 'gigamax') ok = p.gmax;
   else if (t === 'alola' || t === 'galar' || t === 'hisui' || t === 'paldea') ok = p.region === t;
   else if (t === 'background') ok = p.tag === 'background' || p.tag.startsWith('bg:');
   else if (['lucky', 'shadow', 'purified', 'dynamax', 'xxl', 'xxs'].includes(t)) ok = p.tag === t;
@@ -184,9 +184,17 @@ describe('search strings behave like the in-game search', () => {
   });
 
   it('leaves out filters a French game has no keyword for, and says so', () => {
-    const [s] = buildSearchStrings([{ dex: 6, gmax: true, shiny: true }], { lang: 'fr' });
+    const [s] = buildSearchStrings([{ dex: 6, tag: 'dynamax', shiny: true }], { lang: 'fr' });
     expect(s!.text).toBe('6&chromatique');
-    expect(s!.unsupported).toEqual(['gigantamax']);
+    expect(s!.unsupported).toEqual(['dynamax']);
+  });
+
+  it('finds only Gigantamax in a French game ("gigamax")', () => {
+    const strings = buildSearchStrings([3, 6, 25].map((dex) => ({ dex, gmax: true, shiny: true })), { lang: 'fr', exclude: ['costume'] });
+    expect(strings).toHaveLength(1);
+    expect(strings[0]!.text.split('&')).toContain('gigamax');
+    expect(strings[0]!.unsupported).toBeUndefined();
+    for (const gmax of [true, false]) expect(gameSearch(strings[0]!.text, { dex: 6, shiny: true, costume: false, gender: null, region: null, gmax, tag: '' })).toBe(gmax);
   });
 
   it('holds on 300 random lists in French too', () => {

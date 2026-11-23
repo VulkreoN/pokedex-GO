@@ -150,7 +150,7 @@ const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
     paldea: 'paldea',
     background: null,
     dynamax: null,
-    gigantamax: null,
+    gigantamax: 'gigamax',
     // Appraisal stars per stat: "0-1attaque&3-4défense&3-4pv".
     attack: 'attaque',
     defense: 'défense',
