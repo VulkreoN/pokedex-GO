@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LEAGUES, cpOf, cpmAt, levelSteps, levelsForCp, powerUpCost, rankOf, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
-import { useQuery } from '@tanstack/react-query';
 import { Sprite } from '../components/Sprite.js';
 import { LeagueIcon } from '../components/PvpTops.js';
+import { PvpokeCard } from '../components/PvpokeCard.js';
+import { PVPOKE_URL, formOf, pvpokeRanks, usePvpRankings, type League, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -25,35 +26,6 @@ function picture(idx: DatasetIndex, p: PvpPokemon): Variant | undefined {
 
 /** Great and Ultra League regulars, offered when PvPoke's rankings cannot be loaded. */
 const POPULAR_DEX = [184, 308, 334, 379, 260, 227, 195, 362, 423, 340];
-const PVPOKE_URL = 'https://pvpoke.com/rankings/';
-
-interface RankedPokemon { rank: number; speciesId: string; name: string; dex: number; atk: number; def: number; hp: number; shadow: boolean; score: number }
-type League = 'great' | 'ultra';
-/** PvPoke's top 100 per league, read and cached by our API. */
-const usePvpRankings = () =>
-  useQuery({
-    queryKey: ['game', 'pvp-rankings'],
-    queryFn: async () => {
-      const res = await fetch('/api/game/pvp-rankings');
-      if (!res.ok) throw new Error(`pvp-rankings: ${res.status}`);
-      return (await res.json()) as Record<League, RankedPokemon[]>;
-    },
-    staleTime: 3600_000,
-    retry: 1,
-  });
-
-/** Our form for a PvPoke entry: same dex number and base stats (a Shadow form has its normal form's stats). */
-function formOf(pvp: PvpData, r: RankedPokemon): PvpPokemon | undefined {
-  const same = pvp.pokemon.filter((p) => p.dex === r.dex);
-  return same.find((p) => p.atk === r.atk && p.def === r.def && p.sta === r.hp) ?? same[0];
-}
-
-/** Every league rank PvPoke gives this form, the Shadow one apart. */
-export function pvpokeRanks(pvp: PvpData, rankings: Record<League, RankedPokemon[]> | undefined, key: string) {
-  if (!rankings) return [];
-  return (['great', 'ultra'] as League[]).flatMap((league) => rankings[league].filter((r) => formOf(pvp, r)?.key === key).map((r) => ({ league, rank: r.rank, shadow: r.shadow })));
-}
-
 /** Last forms opened on this device, newest first. */
 function recentPvp(): string[] {
   try {
@@ -340,6 +312,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
           <FormResult key={p.key} p={p} idx={ds.data!} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} isStart={p.key === me.key} />
         ))}
         {line.length > 1 && <p className="mt-3 text-xs text-ink-3">{t.pvp_evo_note}</p>}
+        <PvpokeCard idx={ds.data!} pvp={pvp} me={me} />
       </main>
     </>
   );

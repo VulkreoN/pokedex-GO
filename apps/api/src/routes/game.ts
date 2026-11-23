@@ -7,7 +7,7 @@ import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getResearch } from '../game/research.js';
-import { getPvpRankings } from '../game/pvpRankings.js';
+import { getPvpDetails, getPvpRankings } from '../game/pvpRankings.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
@@ -38,6 +38,14 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json(await getPvpRankings());
     } catch (e) {
       return c.json({ great: [], ultra: [], error: (e as Error).message }, 502);
+    }
+  })
+  .get('/pvp-rankings/:dex{[0-9]+}', async (c) => {
+    try {
+      c.header('cache-control', 'public, max-age=3600');
+      return c.json({ rankings: await getPvpDetails(Number(c.req.param('dex'))) });
+    } catch (e) {
+      return c.json({ rankings: [], error: (e as Error).message }, 502);
     }
   })
   .post('/posts', requireRole('manager'), zValidator('json', z.object({ url: z.string().max(300) })), async (c) => {

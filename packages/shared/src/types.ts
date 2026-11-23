@@ -120,6 +120,8 @@ export interface PvpData {
   /** Highest level reachable by powering up (best buddy adds one on top). */
   maxLevel: number;
   pokemon: PvpPokemon[];
+  /** Move names by the game's move id ("MUD_SHOT"), the same ids PvPoke uses. */
+  moves?: Record<string, LocalizedText>;
 }
 
 export interface DatasetManifest {

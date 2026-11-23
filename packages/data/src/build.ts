@@ -80,6 +80,20 @@ const rarityOf = (c?: string): Rarity =>
 const GENDER_ORDER: Record<string, number> = { n: 0, m: 1, f: 2 };
 const KIND_ORDER: Record<VariantKind, number> = { base: 0, regional: 1, form: 2, costume: 3, mega: 4, gmax: 5 };
 
+/** "COMBAT_V0216_MOVE_MUD_SHOT_FAST" + text "move_name_0216" -> MUD_SHOT: { en: 'Mud Shot', fr: 'Tir de Boue' }. */
+export function moveNames(gm: { templateId: string }[], texts: { en: Map<string, string>; fr: Map<string, string> }): Record<string, LocalizedText> {
+  const out: Record<string, LocalizedText> = {};
+  for (const t of gm) {
+    const m = /^COMBAT_V(\d{4})_MOVE_(.+?)(?:_FAST)?$/.exec(t.templateId);
+    if (!m) continue;
+    const en = texts.en.get(`move_name_${m[1]}`);
+    if (!en) continue;
+    const fr = texts.fr.get(`move_name_${m[1]}`);
+    out[m[2]!] = fr ? { en, fr } : { en };
+  }
+  return out;
+}
+
 function textsToMap(t: Texts): Map<string, string> {
   const m = new Map<string, string>();
   for (let i = 0; i + 1 < t.data.length; i += 2) m.set(t.data[i]!, t.data[i + 1]!);
@@ -461,7 +475,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       return { en: `${sp.name.en} (${label.en})`, fr: `${fr} (${label.fr ?? label.en})` };
     },
   });
-  if (pvp) log(`pvp: ${pvp.pokemon.length} battle forms`);
+  if (pvp) {
+    pvp.moves = moveNames(gm as { templateId: string }[], texts);
+    log(`pvp: ${pvp.pokemon.length} battle forms, ${Object.keys(pvp.moves).length} move names`);
+  }
 
   const body = JSON.stringify({ species, variants });
   const hash = createHash('sha256').update(body).digest('hex').slice(0, 8);

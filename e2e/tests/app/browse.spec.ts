@@ -110,6 +110,22 @@ test.describe('PvP', () => {
     await expect(page.getByText(/Ligue Hyper #1/)).toBeVisible();
   });
 
+  test("a form's page shows PvPoke's analysis: rank, moves in French, roles, matchups", async ({ page }) => {
+    const rankings = await page.request.get('/api/game/pvp-rankings/809');
+    test.skip(rankings.status() !== 200, 'PvPoke unreachable');
+    await page.goto('/pvp/809');
+    const card = page.getByRole('region', { name: 'Analyse PvPoke' });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card.getByText(/^#\d+$/)).toBeVisible();
+    await expect(card.getByText('Attaques conseillées')).toBeVisible();
+    await expect(card.getByText('Éclair')).toBeVisible(); // Thunder Shock, in the game's French
+    await expect(card.getByText('Ouverture')).toBeVisible();
+    await expect(card.getByText('Bat surtout')).toBeVisible();
+    await expect(card.getByRole('link', { name: 'Voir sur PvPoke' })).toHaveAttribute('href', /^https:\/\/pvpoke\.com\/rankings\/all\/(1500|2500)\/overall\/melmetal\/$/);
+    await card.getByRole('button', { name: /Ligue Hyper/ }).click();
+    await expect(card.getByRole('link', { name: 'Voir sur PvPoke' })).toHaveAttribute('href', /\/2500\/overall\/melmetal\/$/);
+  });
+
   test('moving a slider updates the URL', async ({ page }) => {
     await page.goto('/pvp/184');
     await page.locator('input[type=range]').first().fill('7');
