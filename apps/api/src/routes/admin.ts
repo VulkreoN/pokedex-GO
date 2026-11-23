@@ -182,6 +182,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     const key = e.targetId;
     const before = e.data.before as ReturnType<typeof overrideState> | null;
     const [current] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key)).limit(1);
+    const was = await dataService.shownState(key);
     if (!before) await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     else {
       const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, updatedBy: c.get('user').id, updatedAt: new Date() };
@@ -189,7 +190,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     }
     dataService.invalidateOverrides();
     await db.update(schema.auditLog).set({ undoneAt: new Date() }).where(eq(schema.auditLog.id, e.id));
-    await audit(c.get('user').id, 'override.undo', 'variant', key, { before: current ? overrideState(current) : null, after: before, undoes: e.id });
+    await audit(c.get('user').id, 'override.undo', 'variant', key, { before: current ? overrideState(current) : null, after: before, undoes: e.id, was, now: await dataService.shownState(key) });
     return c.json({ ok: true });
   })
 

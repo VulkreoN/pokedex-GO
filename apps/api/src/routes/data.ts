@@ -62,6 +62,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
     if (!isValidVariantKey(key)) return c.json({ error: 'invalid_variant_key' }, 400);
     const body = c.req.valid('json');
     const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key)).limit(1);
+    const was = await dataService.shownState(key);
     const values = {
       variantKey: key,
       released: body.released ?? null,
@@ -77,7 +78,13 @@ export const overrideRoutes = new Hono<AuthEnv>()
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();
-    await audit(c.get('user').id, 'override.set', 'variant', key, { before: before ? overrideState(before) : null, after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders } });
+    // was / now: what players saw before and see after, so the journal can say what changed.
+    await audit(c.get('user').id, 'override.set', 'variant', key, {
+      before: before ? overrideState(before) : null,
+      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders },
+      was,
+      now: await dataService.shownState(key),
+    });
     // Entries now listed under a gender this variant does not have move to the right one.
     if (body.genders) {
       const variants = await dataService.variants();
@@ -88,9 +95,10 @@ export const overrideRoutes = new Hono<AuthEnv>()
   .delete('/:key', requireRole('manager'), async (c) => {
     const key = c.req.param('key');
     const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key)).limit(1);
+    const was = await dataService.shownState(key);
     await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     dataService.invalidateOverrides();
-    if (before) await audit(c.get('user').id, 'override.reset', 'variant', key, { before: overrideState(before), after: null });
+    if (before) await audit(c.get('user').id, 'override.reset', 'variant', key, { before: overrideState(before), after: null, was, now: await dataService.shownState(key) });
     return c.json({ ok: true });
   });
 

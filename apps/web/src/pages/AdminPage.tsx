@@ -356,6 +356,30 @@ function describe(e: AuditEntry, t: ReturnType<typeof useT>, variant: (key: stri
   }
 }
 
+type Shown = { released?: boolean | null; label?: { en?: string; fr?: string } | null; genders?: string[] | null };
+
+/**
+ * What a variant correction changed, one line per field: "Nom FR : « K 2026 A » → « Kanto 2026 A »".
+ * Newer entries carry what players saw before and after (was / now); older ones only the correction itself.
+ */
+function variantChanges(d: Record<string, any>, t: ReturnType<typeof useT>): string[] {
+  const exact = !!(d.was || d.now);
+  const from: Shown = exact ? (d.was ?? {}) : (d.before ?? {});
+  const to: Shown = exact ? (d.now ?? {}) : (d.after ?? {});
+  const yesNo = (b: boolean | null | undefined) => (b === null || b === undefined ? t.change_auto : b ? t.change_yes : t.change_no);
+  const name = (s: string | undefined) => (s ? `« ${s} »` : '—');
+  const sexes = (g: string[] | null | undefined) => (g === null || g === undefined ? t.change_auto : g.length === 0 ? t.change_genderless : g.map((x) => (x === 'm' ? '♂' : '♀')).join(''));
+  const out: string[] = [];
+  // Old entries: a field left empty in the correction was not touched.
+  const touched = (k: keyof Shown) => exact || (to[k] !== null && to[k] !== undefined) || (from[k] !== null && from[k] !== undefined);
+  if (touched('released') && yesNo(from.released) !== yesNo(to.released)) out.push(`${t.change_released} : ${yesNo(from.released)} → ${yesNo(to.released)}`);
+  for (const l of ['fr', 'en'] as const) {
+    if (touched('label') && (from.label?.[l] ?? '') !== (to.label?.[l] ?? '')) out.push(`${t.change_name(l)} : ${name(from.label?.[l])} → ${name(to.label?.[l])}`);
+  }
+  if (touched('genders') && sexes(from.genders) !== sexes(to.genders)) out.push(`${t.change_genders} : ${sexes(from.genders)} → ${sexes(to.genders)}`);
+  return out;
+}
+
 function Journal() {
   const t = useT();
   const { lang } = useLang();
@@ -380,6 +404,10 @@ function Journal() {
           <li key={e.id} className="flex items-start gap-2 py-2.5">
             <span className="min-w-0 flex-1">
               <span className={`block text-sm ${e.undoneAt ? 'text-ink-3 line-through' : ''}`}>{describe(e, t, variant)}</span>
+              {e.action.startsWith('override.') &&
+                variantChanges(e.data as Record<string, any>, t).map((line) => (
+                  <span key={line} className="block text-xs text-ink-2">{line}</span>
+                ))}
               <span className="tnum block text-xs text-ink-3">{new Date(e.createdAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' })}</span>
             </span>
             {e.targetType === 'variant' && e.targetId && <Link to={`/dex/${e.targetId.split('.')[0]}`} className="shrink-0 py-1 text-xs font-semibold text-sky">{t.admin_see}</Link>}

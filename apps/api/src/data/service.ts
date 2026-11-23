@@ -6,7 +6,7 @@ import { recordSource } from '../lib/health.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
-import type { Dataset, LocalizedText, Variant } from '@mydexpogo/shared';
+import type { Dataset, Gender, LocalizedText, Variant } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
 
@@ -90,6 +90,12 @@ class DataService {
   }
 
   private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;
+  /** What players see for a variant right now (corrections included), for the admin journal's before / after. */
+  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null } | null> {
+    const v = (await this.variants())?.get(key);
+    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null } : null;
+  }
+
   /** Variants of the current dataset by key, managers' corrections included (null until a dataset is loaded). */
   async variants(): Promise<Map<string, Variant> | null> {
     // Datasets built before pipeline v8 have no genders: treat them as unknown rather than "every gender".

@@ -612,6 +612,8 @@ describe('admin panel', () => {
     const log = (await admin.get('/admin/audit')).body.entries;
     const last = log.find((e: any) => e.targetId === key && e.action === 'override.set');
     expect(last).toMatchObject({ actor: admin.user.username, undoable: true, data: { before: { released: true }, after: { released: false } } });
+    // What players saw before and after, for the journal to say what changed.
+    expect(last.data).toMatchObject({ was: { released: true }, now: { released: false } });
     expect((await admin.post(`/admin/audit/${last.id}/undo`)).status).toBe(200);
     const o = (await anon.get('/overrides')).body.overrides.find((x: any) => x.variantKey === key);
     expect(o.released).toBe(true);
