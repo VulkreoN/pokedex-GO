@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Chip, Sheet, TextField, TopBar } from '../components/ui.js';
+import { Button, Chip, PasswordField, Sheet, TopBar } from '../components/ui.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { InstallBanner } from '../components/InstallBanner.js';
 import { Badge } from '../components/ui.js';
@@ -29,6 +29,7 @@ export function MePage() {
   const [changing, setChanging] = useState(false);
   const [curPw, setCurPw] = useState('');
   const [newPw, setNewPw] = useState('');
+  const [newPw2, setNewPw2] = useState('');
   const [password, setPassword] = useState('');
   const status = useDataStatus();
   const isAdmin = me.data?.role === 'admin';
@@ -116,19 +117,21 @@ export function MePage() {
       </main>
       <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>
         <div className="space-y-3">
-          <TextField type="password" label={t.current_password} value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
-          <TextField type="password" label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
-          <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8} onClick={async () => {
+          <PasswordField label={t.current_password} value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
+          <PasswordField label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
+          <PasswordField label={t.password_confirm} value={newPw2} onChange={(e) => setNewPw2(e.target.value)} autoComplete="new-password" minLength={8} aria-invalid={!!newPw2 && newPw2 !== newPw} />
+          {!!newPw2 && newPw2 !== newPw && <p className="text-sm text-berry">{t.password_mismatch}</p>}
+          <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8 || newPw2 !== newPw} onClick={async () => {
             try {
               await api('/auth/password', { body: { current: curPw, password: newPw } });
-              toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw('');
+              toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw(''); setNewPw2('');
             } catch { alert(t.err_invalid_credentials); }
           }}>{t.save}</Button>
         </div>
       </Sheet>
       <Sheet open={deleting} onClose={() => setDeleting(false)} title={t.delete_account}>
         <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
-        <TextField type="password" label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+        <PasswordField label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         <Button
           tone="danger"
           className="mt-3 w-full"

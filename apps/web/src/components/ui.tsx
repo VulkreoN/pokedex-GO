@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useMe } from '../lib/auth.js';
 import { useNotifications } from '../lib/social.js';
@@ -49,6 +49,28 @@ export function TextField({ label, className = '', ...props }: InputHTMLAttribut
         className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] text-ink placeholder:text-ink-3 focus:border-sky"
       />
     </label>
+  );
+}
+
+/** A password input with an eye to show what was typed. */
+export function PasswordField({ label, className = '', ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: string }) {
+  const t = useT();
+  const id = useId();
+  const [shown, setShown] = useState(false);
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-ink-2">{label}</label>
+      <div className="relative">
+        <input id={id} {...props} type={shown ? 'text' : 'password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} className="min-h-11 w-full rounded-xl border border-line bg-card py-0 pl-3 pr-12 text-[16px] text-ink placeholder:text-ink-3 focus:border-sky" />
+        <button type="button" onClick={() => setShown((v) => !v)} aria-label={shown ? t.password_hide : t.password_show} aria-pressed={shown} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-ink-3 hover:text-ink">
+          {shown ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s4 7 10 7a9.6 9.6 0 0 0 5.4-1.6" /></svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 

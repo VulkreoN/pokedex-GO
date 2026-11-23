@@ -7,7 +7,16 @@ test('a new player signs up, builds a list, copies it for the game and shares it
   await page.goto('/login');
   await page.getByRole('button', { name: 'Créer un compte' }).click();
   await page.getByLabel('Pseudo').fill(username);
-  await page.getByLabel('Mot de passe', { exact: true }).fill(PASSWORD);
+  const pw = page.getByLabel('Mot de passe', { exact: true });
+  await pw.fill(PASSWORD);
+  // What was typed can be shown, and the password is asked twice.
+  await expect(pw).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: 'Afficher le mot de passe' }).first().click();
+  await expect(pw).toHaveAttribute('type', 'text');
+  await page.getByLabel('Confirme le mot de passe').fill(`${PASSWORD}x`);
+  await expect(page.getByText('Les deux mots de passe ne sont pas identiques.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Créer un compte' }).last()).toBeDisabled();
+  await page.getByLabel('Confirme le mot de passe').fill(PASSWORD);
   await page.getByRole('button', { name: 'Créer un compte' }).click();
   await expect(page).toHaveURL(/\/dex$/);
 
@@ -66,6 +75,7 @@ test('a player changes their password, logs back in, then deletes the account', 
   const sheet = page.locator('dialog[open]');
   await sheet.getByLabel('Mot de passe actuel').fill(PASSWORD);
   await sheet.getByLabel('Nouveau mot de passe').fill('a-brand-new-one');
+  await sheet.getByLabel('Confirme le mot de passe').fill('a-brand-new-one');
   await sheet.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByText('Mot de passe changé')).toBeVisible();
 
@@ -79,7 +89,7 @@ test('a player changes their password, logs back in, then deletes the account', 
 
   await page.goto('/me');
   await page.getByRole('button', { name: 'Supprimer mon compte' }).click();
-  await page.locator('dialog[open]').getByLabel('Mot de passe').fill('a-brand-new-one');
+  await page.locator('dialog[open]').getByLabel('Mot de passe', { exact: true }).fill('a-brand-new-one');
   await page.locator('dialog[open]').getByRole('button', { name: /Supprimer/ }).last().click();
   await expect(page).toHaveURL(/\/(login|dex)$/);
   const again = await page.request.post('/api/auth/login', { data: { username: user.username, password: 'a-brand-new-one' } });
@@ -150,6 +160,7 @@ test('an admin issues a reset code that lets a player choose a new password', as
   await player.getByLabel('Pseudo').fill(target.username);
   await player.getByLabel('Code').fill('0000-0000-0000');
   await player.getByLabel('Nouveau mot de passe').fill('fresh-password-9');
+  await player.getByLabel('Confirme le mot de passe').fill('fresh-password-9');
   await player.getByRole('button', { name: 'Changer le mot de passe' }).click();
   await expect(player.getByText('Code invalide ou expiré.')).toBeVisible();
   await player.getByLabel('Code').fill(code);

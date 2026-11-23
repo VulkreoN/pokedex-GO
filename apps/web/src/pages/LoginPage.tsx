@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Button, TextField } from '../components/ui.js';
+import { Button, PasswordField, TextField } from '../components/ui.js';
 import { useAuthMutation } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,10 @@ export function LoginPage() {
   const qc = useQueryClient();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  // A new password is typed twice; signing in needs it once.
+  const newPassword = mode !== 'login';
+  const mismatch = newPassword && confirm.length > 0 && confirm !== password;
   const [error, setError] = useState<string | null>(null);
   const [invite, setInvite] = useState('');
   // How sign-ups work now: open, by invitation, or closed.
@@ -25,6 +29,10 @@ export function LoginPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (newPassword && confirm !== password) {
+      setError(t.password_mismatch);
+      return;
+    }
     try {
       if (mode === 'reset') {
         const r = await api<{ user: unknown }>('/auth/reset', { body: { username: username.trim(), code: code.trim(), password } });
@@ -47,14 +55,21 @@ export function LoginPage() {
           {mode === 'reset' && <TextField label={t.reset_code} value={code} onChange={(e) => setCode(e.target.value)} autoCapitalize="characters" required />}
           {mode === 'register' && signup.data?.mode === 'invite' && <TextField label={t.invite_code} value={invite} onChange={(e) => setInvite(e.target.value)} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" required />}
           {mode === 'register' && signup.data?.mode === 'closed' && <p className="rounded-lg bg-paper-2 p-2 text-sm text-ink-2">{t.err_signups_closed}</p>}
-          <TextField label={mode === 'reset' ? t.new_password : t.password} type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} />
+          <PasswordField label={mode === 'reset' ? t.new_password : t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={8} />
+          {newPassword && (
+            <>
+              <PasswordField label={t.password_confirm} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required minLength={8} aria-invalid={mismatch} />
+              {mismatch && <p className="text-sm text-berry">{t.password_mismatch}</p>}
+              {password.length > 0 && password.length < 8 && <p className="text-sm text-ink-3">{t.password_too_short}</p>}
+            </>
+          )}
           {error && <p className="text-sm text-berry">{error}</p>}
-          <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>
+          <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending || mismatch}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>
         </form>
-        {mode === 'login' && <p className="mt-3 text-center text-sm"><button type="button" className="text-ink-2 underline" onClick={() => { setMode('reset'); setError(null); }}>{t.forgot}</button></p>}
+        {mode === 'login' && <p className="mt-3 text-center text-sm"><button type="button" className="text-ink-2 underline" onClick={() => { setMode('reset'); setError(null); setConfirm(''); }}>{t.forgot}</button></p>}
         <p className="mt-4 text-center text-sm text-ink-2">
           {mode === 'login' ? t.no_account : t.has_account}{' '}
-          <button type="button" className="font-semibold text-sky" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); }}>
+          <button type="button" className="font-semibold text-sky" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(null); setConfirm(''); }}>
             {mode === 'login' ? t.register : t.login}
           </button>
         </p>
