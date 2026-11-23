@@ -99,6 +99,21 @@ gunzip -c /backups/<fichier>.sql.gz | PGPASSWORD=<mot de passe> psql -h db -U my
 Les sauvegardes restent dans le cluster : en copier une ailleurs de temps en temps
 (`kubectl -n mydexpogo cp <pod>:/backups/<fichier> .` depuis le pod de restauration).
 
-Reprendre les données d'une ancienne instance : restaurer son `pg_dump` comme ci-dessus, et copier son `vapid.json`
-(clés des notifications push) dans le volume `appdata` (`/data/vapid.json`) avant de redémarrer l'API, sinon les
-appareils déjà abonnés devront se réabonner.
+## Reprendre les données d'une instance Docker Compose
+
+Une seule fois, juste après la première synchro et avant que quiconque utilise la nouvelle adresse.
+
+1. Sur la machine de l'ancienne instance (dossier du dépôt) :
+   ```
+   ./deploy/export-compose-data.sh            # -> mydexpogo-export-<date>.tar.gz
+   ```
+   L'archive contient la base (comptes, listes, amis, corrections des gérants ; pas les sessions : chacun se reconnecte
+   sur la nouvelle adresse) et les fichiers d'historique (archive des événements, dates « Nouveau », espèces vues en
+   jeu, clés push). Elle contient les mots de passe chiffrés : la transmettre en privé, la supprimer après l'import.
+2. Avec l'accès au cluster :
+   ```
+   ./deploy/k8s/import.sh mydexpogo-export-<date>.tar.gz
+   ```
+   Il remplace le contenu de la base et les fichiers d'historique, redémarre l'API et affiche le nombre de comptes et de
+   listes importés.
+3. Couper l'ancienne instance (`docker compose down`, en gardant ses volumes quelque temps par prudence).
