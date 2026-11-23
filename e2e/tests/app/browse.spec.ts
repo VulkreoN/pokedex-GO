@@ -110,6 +110,18 @@ test.describe('game tab', () => {
     }
   });
 
+  test('research shows item rewards, which can be hidden', async ({ page }) => {
+    await page.goto('/game');
+    await page.getByRole('button', { name: 'Études', exact: true }).click();
+    const items = page.getByRole('button', { name: 'Objets', exact: true });
+    // Upstream may be down: then only encounters, from the fallback, and no toggle.
+    if (!(await items.isVisible({ timeout: 15_000 }).catch(() => false))) return;
+    const stardust = page.getByText("Poussière d'étoile").first();
+    await expect(stardust).toBeVisible();
+    await items.click();
+    await expect(page.getByText("Poussière d'étoile")).toHaveCount(0);
+  });
+
   test('tools: bottle caps copies the candidate search and tracks tasks', async ({ page }) => {
     await page.goto('/game');
     await page.getByRole('button', { name: 'Outils', exact: true }).click();

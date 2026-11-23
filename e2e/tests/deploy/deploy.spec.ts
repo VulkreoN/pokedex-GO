@@ -27,6 +27,15 @@ test('API health, dataset and freshness', async ({ request }) => {
   expect(Date.now() - new Date(status.generatedAt).getTime()).toBeLessThan((status.refreshHours + 2) * 3600_000);
 });
 
+test('field research is read from Leek Duck (a failure means their markup changed)', async ({ request }) => {
+  const res = await request.get('/api/game/research');
+  expect(res.status(), 'the app falls back to ScrapedDuck meanwhile: encounters only, no event tasks, no items').toBe(200);
+  const { categories } = await res.json();
+  const rewards = categories.flatMap((c: any) => c.tasks.flatMap((t: any) => t.rewards));
+  expect(rewards.some((r: any) => r.kind === 'encounter')).toBe(true);
+  expect(rewards.some((r: any) => r.kind === 'item')).toBe(true);
+});
+
 test('only a handful of variants are flagged new', async ({ request }) => {
   const ds = await (await request.get('/api/data/pokedex.json')).json();
   const cut = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);

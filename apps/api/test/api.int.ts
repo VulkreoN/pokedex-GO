@@ -470,6 +470,15 @@ describe('game data', () => {
     expect([200, 502]).toContain(r.status);
     if (r.status === 200) for (const c of r.body.codes) expect(c.redeemUrl).toBe(`https://store.pokemongo.com/offer-redemption?passcode=${c.code}`);
   });
+
+  it('serves field research with event tasks apart (or a clean upstream error)', async () => {
+    const r = await anon.get('/game/research');
+    expect([200, 502]).toContain(r.status);
+    if (r.status === 200) {
+      expect(r.body.categories.length).toBeGreaterThan(0);
+      for (const c of r.body.categories) if (c.end) expect(Date.parse(c.end)).toBeGreaterThan(Date.now());
+    }
+  });
 });
 
 describe('abuse protection', () => {

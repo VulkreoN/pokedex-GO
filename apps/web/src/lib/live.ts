@@ -55,7 +55,46 @@ async function getJson<T>(url: string): Promise<T> {
 const live = { staleTime: 10 * 60_000, retry: 1 };
 
 export const useRaids = () => useQuery({ queryKey: ['live', 'raids'], queryFn: () => getJson<RaidBoss[]>(`${BASE}raids.json`), ...live });
-export const useResearch = () => useQuery({ queryKey: ['live', 'research'], queryFn: () => getJson<ResearchTask[]>(`${BASE}research.json`), ...live });
+export interface ResearchReward {
+  kind: 'encounter' | 'item' | 'resource';
+  name: string;
+  image: string;
+  quantity?: number;
+  /** Candy and Mega Energy: whose. */
+  dex?: number;
+  canBeShiny?: boolean;
+  combatPower?: { min: number; max: number };
+}
+export interface ResearchCategory {
+  title: string;
+  /** Tasks only given during an event, until `end`. */
+  event: boolean;
+  end: string | null;
+  tasks: { text: string; rewards: ResearchReward[] }[];
+}
+
+/**
+ * Field research read from Leek Duck by our API (event tasks apart, item rewards included). If that fails,
+ * ScrapedDuck's list: encounters only, grouped by kind of task.
+ */
+export const useResearch = () =>
+  useQuery({
+    queryKey: ['live', 'research'],
+    queryFn: async () => {
+      try {
+        const { categories } = await getJson<{ categories: ResearchCategory[] }>('/api/game/research');
+        if (categories.length) return categories;
+      } catch {}
+      const groups = new Map<string, ResearchCategory>();
+      for (const task of await getJson<ResearchTask[]>(`${BASE}research.json`)) {
+        const type = task.type ?? 'other';
+        const g = groups.get(type) ?? groups.set(type, { title: type, event: false, end: null, tasks: [] }).get(type)!;
+        g.tasks.push({ text: task.text.replace(/<[^>]+>/g, ''), rewards: task.rewards.map((r) => ({ ...r, kind: 'encounter' as const, combatPower: r.combatPower && 'min' in r.combatPower ? r.combatPower : undefined })) });
+      }
+      return [...groups.values()];
+    },
+    ...live,
+  });
 export const useEggs = () => useQuery({ queryKey: ['live', 'eggs'], queryFn: () => getJson<EggPokemon[]>(`${BASE}eggs.json`), ...live });
 
 /** Live events merged with the archive, so past events stay visible. */

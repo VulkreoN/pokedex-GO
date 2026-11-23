@@ -12,7 +12,7 @@ import { Link } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon } from '../lib/live.js';
+import { dexFromImage, eventStatus, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
@@ -322,28 +322,72 @@ function MaxBattles() {
 
 function Research() {
   const t = useT();
+  const { lang } = useLang();
   const q = useResearch();
+  const dataset = useDataset();
+  const [items, setItems] = useState(true);
   if (q.isPending) return <Spinner />;
   if (q.isError) return <Empty>{t.live_error}</Empty>;
-  const groups = new Map<string, NonNullable<typeof q.data>>();
-  for (const task of q.data) {
-    const k = task.type ?? 'other';
-    (groups.get(k) ?? groups.set(k, []).get(k)!).push(task);
-  }
+  const idx = dataset.data;
+  const speciesName = (dex: number | undefined, fallback: string) => (dex && idx ? localized(idx.speciesByDex.get(dex)?.name, lang) || fallback : fallback);
+  /** French names for items, candy and Mega Energy; Leek Duck writes English. */
+  const rewardName = (r: ResearchReward) => {
+    const candy = /^(.*) Candy( XL)?$/.exec(r.name);
+    if (r.kind === 'resource' && candy) return t.candy_of(speciesName(r.dex, candy[1]!), !!candy[2]);
+    const energy = /^(.*) Mega Energy$/.exec(r.name);
+    if (r.kind === 'resource' && energy) return t.mega_energy_of(speciesName(r.dex, energy[1]!));
+    return t.items[r.name] ?? r.name;
+  };
+  /** Leek Duck's English name, in French when it is exactly the species (not a form). */
+  const monName = (r: ResearchReward) => {
+    const sp = idx?.speciesByDex.get(dexFromImage(r.image) ?? 0);
+    return sp && sp.name.en === r.name ? localized(sp.name, lang) || r.name : r.name;
+  };
+  const block = (c: ResearchCategory) => (
+    <Section key={c.title} title={c.event ? c.title.replace(/ Tasks$/, '') : (t.research_types[c.title] ?? c.title.replace(/ Tasks$/, ''))} count={c.tasks.length}>
+      {c.end && <p className="-mt-1 mb-2 text-xs text-ink-3">{formatUntil(c.end, lang)}</p>}
+      <ul className="space-y-2">
+        {c.tasks.map((task) => (
+          <li key={task.text} className="card p-3">
+            <div className="text-sm font-semibold">{task.text}</div>
+            <div className="mt-2 flex flex-wrap items-start gap-2">
+              {task.rewards.map((r, i) =>
+                r.kind === 'encounter' ? (
+                  <Mon key={`${r.name}-${i}`} p={{ ...r, name: monName(r) }} size={48} />
+                ) : items ? (
+                  <span key={`${r.name}-${i}`} className="flex flex-col items-center text-center">
+                    <span className="relative">
+                      <img src={r.image} alt="" width={40} height={40} loading="lazy" className="h-10 w-10 object-contain" />
+                      {r.quantity && <span className="tnum absolute -bottom-1 -right-2 rounded-md bg-paper-2 px-1 text-[10px] font-bold leading-tight">×{r.quantity.toLocaleString(lang)}</span>}
+                    </span>
+                    <span className="mt-1 line-clamp-2 w-[4.5rem] text-[11px] leading-tight text-ink-2">{rewardName(r)}</span>
+                  </span>
+                ) : null,
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+  const events = q.data.filter((c) => c.event);
+  const regular = q.data.filter((c) => !c.event);
+  const hasItems = q.data.some((c) => c.tasks.some((task) => task.rewards.some((r) => r.kind !== 'encounter')));
   return (
     <>
-      {[...groups.entries()].map(([type, tasks]) => (
-        <Section key={type} title={t.research_types[type] ?? type} count={tasks.length}>
-          <ul className="space-y-2">
-            {tasks.map((task) => (
-              <li key={task.text} className="card p-3">
-                <div className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: task.text }} />
-                <div className="mt-2 flex flex-wrap gap-2">{task.rewards.map((r, i) => <Mon key={`${r.name}-${i}`} p={r} size={48} />)}</div>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      ))}
+      {hasItems && (
+        <div className="mb-3 flex gap-2">
+          <Chip active={items} onClick={() => setItems((v) => !v)}>{t.research_items}</Chip>
+        </div>
+      )}
+      {events.length > 0 && (
+        <>
+          <h2 className="mb-3 text-lg font-extrabold">{t.research_event}</h2>
+          {events.map(block)}
+          <h2 className="mb-3 text-lg font-extrabold">{t.research_regular}</h2>
+        </>
+      )}
+      {regular.map(block)}
     </>
   );
 }

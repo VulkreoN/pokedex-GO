@@ -6,10 +6,11 @@ import { requireRole, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
+import { getResearch } from '../game/research.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
-/** Game tab data that is not a Leek Duck JSON: curated X posts and promo codes. */
+/** Game tab data that is not a ScrapedDuck JSON: curated X posts, promo codes and field research. */
 export const gameRoutes = new Hono<AuthEnv>()
   .get('/posts', async (c) => {
     const rows = await db.select().from(schema.posts).orderBy(desc(schema.posts.postedAt), desc(schema.posts.createdAt)).limit(100);
@@ -21,6 +22,13 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ codes: await getPromoCodes() });
     } catch (e) {
       return c.json({ codes: [], error: (e as Error).message });
+    }
+  })
+  .get('/research', async (c) => {
+    try {
+      return c.json({ categories: await getResearch() });
+    } catch (e) {
+      return c.json({ categories: [], error: (e as Error).message }, 502);
     }
   })
   .post('/posts', requireRole('manager'), zValidator('json', z.object({ url: z.string().max(300) })), async (c) => {
