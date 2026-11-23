@@ -384,10 +384,22 @@ test('PvP pages fit a phone screen: no sideways scrolling', async ({ page }) => 
 
 test('a species the game only knows as forms has no extra "Normal" one (Poltchageist, Dudunsparce)', async ({ page }) => {
   await page.goto('/dex/1012');
+  await expect(page.getByRole('heading', { name: /Poltchageist/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Counterfeit/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Artisan/ }).first()).toBeVisible();
+  await page.goto('/dex/854'); // Sinistea: the game's own French names
   await expect(page.getByRole('heading', { name: /Théffroi/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Contrefaçon/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Authentique/ }).first()).toBeVisible();
   await page.goto('/dex/982');
   await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
+});
+
+test('battle-only forms are not in the collection (Mimikyu Busted, Morpeko Hangry, Cramorant Gulping)', async ({ request }) => {
+  const ds = await (await request.get('/api/data/pokedex.json')).json();
+  const keys = new Set(ds.variants.map((v: { key: string }) => v.key));
+  for (const gone of ['778.fBUSTED', '877.fHANGRY', '845.fGULPING', '845.fGORGING', '681.fBLADE', '555.fZEN']) expect(keys.has(gone), gone).toBe(false);
+  for (const kept of ['778.fDISGUISED', '877.fFULL_BELLY', '845', '681.fSHIELD']) expect(keys.has(kept), kept).toBe(true);
+  for (const dup of ['854', '855', '888', '889', '877', '982', '1012']) expect(keys.has(dup), dup).toBe(false);
+  expect(ds.aliases['778.fBUSTED']).toBe('778.fDISGUISED');
 });

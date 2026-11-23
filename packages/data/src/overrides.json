@@ -101,22 +101,6 @@
       "en": "Galarian Zen",
       "fr": "de Galar (Mode Transe)"
     },
-    "COUNTERFEIT": {
-      "en": "Counterfeit",
-      "fr": "Contrefaçon"
-    },
-    "ARTISAN": {
-      "en": "Artisan",
-      "fr": "Authentique"
-    },
-    "UNREMARKABLE": {
-      "en": "Unremarkable",
-      "fr": "Médiocre"
-    },
-    "MASTERPIECE": {
-      "en": "Masterpiece",
-      "fr": "Exceptionnelle"
-    },
     "ATTACK": {
       "en": "Attack Forme",
       "fr": "Forme Attaque"
@@ -288,6 +272,30 @@
     "351.fSUNNY": {
       "en": "Sunny Form",
       "fr": "Forme Solaire"
+    },
+    "931.fWHITE": {
+      "en": "White Plumage",
+      "fr": "Plumage Blanc"
+    },
+    "249.fS": {
+      "en": "Apex",
+      "fr": "Apex"
+    },
+    "250.fS": {
+      "en": "Apex",
+      "fr": "Apex"
+    },
+    "WORMADAM_PLANT": {
+      "en": "Plant Cloak",
+      "fr": "Cape Plante"
+    },
+    "WORMADAM_SANDY": {
+      "en": "Sandy Cloak",
+      "fr": "Cape Sable"
+    },
+    "WORMADAM_TRASH": {
+      "en": "Trash Cloak",
+      "fr": "Cape Déchet"
     }
   },
   "status": {
@@ -371,14 +379,26 @@
     "1011": {
       "fr": "Pomdramour"
     },
-    "1012": {
-      "fr": "Théffroi"
-    },
-    "1013": {
-      "fr": "Théffroyable"
-    },
     "1019": {
       "fr": "Pomdorochi"
     }
+  },
+  "battleForms": {
+    "$comment": "Forms a Pokemon only takes during a battle: never caught, so not in the collection (PvP keeps them). Key -> the form it is caught in.",
+    "778.fBUSTED": "778.fDISGUISED",
+    "877.fHANGRY": "877.fFULL_BELLY",
+    "845.fGULPING": "845",
+    "845.fGORGING": "845",
+    "681.fBLADE": "681.fSHIELD",
+    "555.fZEN": "555.fSTANDARD",
+    "555.fGALARIAN_ZEN": "555.fGALARIAN_STANDARD",
+    "648.fPIROUETTE": "648.fARIA",
+    "746.fSCHOOL": "746.fSOLO",
+    "875.fNOICE": "875.fICE",
+    "964.fHERO": "964.fZERO",
+    "800.fULTRA": "800",
+    "890.fETERNAMAX": "890",
+    "718.fCOMPLETE_TEN_PERCENT": "718.fCOMPLETE",
+    "718.fCOMPLETE_FIFTY_PERCENT": "718.fCOMPLETE"
   }
 }

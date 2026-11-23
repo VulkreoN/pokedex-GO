@@ -267,6 +267,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   // Read at build time (not a static import) so a long-running job picks up edits without restarting.
   const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as {
     speciesNames?: Record<string, { fr?: string }>;
+    /** Battle-only form key -> the form it is caught in. */
+    battleForms?: Record<string, string>;
     labels: Record<string, LocalizedText>;
     status: Record<string, 'released' | 'datamined'>;
     megas?: string[];
@@ -288,6 +290,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       return localizeHumanized(e ? e.name.replace(/\s*Noevolve$/i, '') : humanizeToken(costume));
     }
     if (!form) return null;
+    // Spinda's patterns are numbered from 00 in the game files.
+    if (sp.id === 'SPINDA' && /^\d+$/.test(form)) return { en: `Pattern ${Number(form) + 1}`, fr: `Motif ${Number(form) + 1}` };
     // A label for this species' form first ("351.fSUNNY": Castform, not Cherrim), then for the form name anywhere.
     return labelOverrides[`${sp.dex}.f${form}`] ?? labelOverrides[form] ?? gameFormLabel(texts, sp.id, form) ?? localizeHumanized(humanizeToken(form));
   };
@@ -356,6 +360,13 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     }
   }
   if (Object.keys(aliases).length) log(`forms: ${Object.keys(aliases).length} formless duplicates folded into their first form`);
+  // Battle-only forms (Mimikyu Busted, Aegislash Blade...): never caught, so not in the collection.
+  const battleForms = Object.entries(overrides.battleForms ?? {}).filter(([k]) => !k.startsWith('$'));
+  for (const [key, caughtAs] of battleForms) {
+    const before = variants.length;
+    for (let i = variants.length - 1; i >= 0; i--) if (variants[i]!.key.replace(/\.g2$/, '') === key) variants.splice(i, 1);
+    if (variants.length < before && variants.some((v) => v.key === caughtAs)) aliases[key] = caughtAs;
+  }
 
   // Game-master costume forms that have no picture yet
   for (const sp of speciesByDex.values()) {

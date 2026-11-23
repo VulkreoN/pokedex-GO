@@ -79,9 +79,10 @@ export function gameFormLabel(
 ): LocalizedText | null {
   const candidates = [`form_${speciesId}_${form}`.toLowerCase(), `form_${form}`.toLowerCase()];
   for (const key of candidates) {
-    const en = texts.en.get(key);
+    // Some game texts carry line breaks ("Coupe\nMonsieur").
+    const en = texts.en.get(key)?.replace(/\s+/g, ' ').trim();
     if (en) {
-      const fr = texts.fr.get(key);
+      const fr = texts.fr.get(key)?.replace(/\s+/g, ' ').trim();
       return fr && fr !== en ? { en, fr } : { en };
     }
   }
