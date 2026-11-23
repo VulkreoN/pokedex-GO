@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import type { Species, Variant } from '@mydexpogo/shared';
 import type { VariantGroup } from './AddToList.js';
-import { canBeShiny, possibleSexes, type DexPick } from './BulkAddSheet.js';
+import { comboId, possibleCombos, type DexPick, type PickCombo } from './BulkAddSheet.js';
 import { pvpOf, type DatasetIndex } from '../lib/dataset.js';
 import { PvpTops } from './PvpTops.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
@@ -73,26 +73,40 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
   );
 }
 
-/** Under a ticked card: which genders and which versions to add for it. At least one of each stays on. */
+/** Under a ticked card: each version it exists in (♂, ♀, ♂ shiny, ♀ shiny) switches on and off. One stays on. */
 function PickToggles({ pick, onPick }: { pick: DexPick; onPick: (p: DexPick) => void }) {
   const t = useT();
-  const sexes = possibleSexes(pick.group).filter((x) => x !== '');
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? (list.length > 1 ? list.filter((x) => x !== v) : list) : [...list, v]);
-  const pill = (on: boolean) => `flex h-6 min-w-[26px] items-center justify-center rounded-full border-2 px-1 text-[11px] font-bold transition ${on ? 'border-go bg-go text-white' : 'border-line bg-card text-ink-3'}`;
+  const on = new Set(pick.combos.map(comboId));
+  const toggle = (c: PickCombo) => {
+    const id = comboId(c);
+    if (on.has(id)) {
+      if (on.size > 1) onPick({ ...pick, combos: pick.combos.filter((x) => comboId(x) !== id) });
+    } else onPick({ ...pick, combos: [...pick.combos, c] });
+  };
   return (
-    <div className="mt-1 flex flex-wrap justify-center gap-0.5">
-      {sexes.length > 1 &&
-        sexes.map((g) => (
-          <button key={g} type="button" aria-pressed={pick.sexes.includes(g)} aria-label={g === 'm' ? t.male : t.female} onClick={() => onPick({ ...pick, sexes: toggle(pick.sexes, g) })} className={pill(pick.sexes.includes(g))}>
-            {g === 'm' ? '♂' : '♀'}
+    // One row of normal versions, one row of shiny ones.
+    <div className="mx-auto mt-1 grid grid-flow-row gap-0.5" style={{ gridTemplateColumns: `repeat(${new Set(possibleCombos(pick.group).map((c) => c.sex)).size}, minmax(0, auto))` }}>
+      {possibleCombos(pick.group).map((c) => {
+        const id = comboId(c);
+        const sex = c.sex === 'm' ? '♂' : c.sex === 'f' ? '♀' : '';
+        const label = `${c.sex === 'm' ? t.male : c.sex === 'f' ? t.female : t.bulk_normal}${c.shiny ? ` ${t.shiny}` : ''}`;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={on.has(id)}
+            aria-label={label}
+            title={label}
+            onClick={() => toggle(c)}
+            className={`flex h-6 min-w-[34px] items-center justify-center rounded-full border-2 px-1 text-[11px] font-bold transition ${
+              on.has(id) ? (c.shiny ? 'border-shiny bg-shiny text-[#3a2a00]' : 'border-go bg-go text-white') : 'border-line bg-card text-ink-3'
+            }`}
+          >
+            {sex || (c.shiny ? '' : 'N')}
+            {c.shiny && '✨'}
           </button>
-        ))}
-      {canBeShiny(pick.group) && (
-        <>
-          <button type="button" aria-pressed={pick.shinies.includes(false)} aria-label={t.bulk_normal} onClick={() => onPick({ ...pick, shinies: toggle(pick.shinies, false) })} className={pill(pick.shinies.includes(false))}>N</button>
-          <button type="button" aria-pressed={pick.shinies.includes(true)} aria-label={t.shiny} onClick={() => onPick({ ...pick, shinies: toggle(pick.shinies, true) })} className={pill(pick.shinies.includes(true))}>✨</button>
-        </>
-      )}
+        );
+      })}
     </div>
   );
 }

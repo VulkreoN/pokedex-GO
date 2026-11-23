@@ -7,12 +7,21 @@ import { selection } from '../lib/selection.js';
 import { useToast } from './toast.js';
 import { Button, Chip, Sheet } from './ui.js';
 
-/** One ticked card of the Pokédex and what to add for it: which genders, normal and / or shiny. */
+/** One version of a card: a gender ('' when genderless), normal or shiny. */
+export interface PickCombo {
+  sex: EntryGender;
+  shiny: boolean;
+}
+/** One ticked card of the Pokédex and the versions to add for it (♂, ♀, ♂ shiny, ♀ shiny). */
 export interface DexPick {
   group: VariantGroup;
-  sexes: EntryGender[];
-  shinies: boolean[];
+  combos: PickCombo[];
 }
+export const comboId = (c: PickCombo) => `${c.sex}${c.shiny ? '*' : ''}`;
+/** Every version this card exists in, normal ones first. */
+export const possibleCombos = (g: VariantGroup): PickCombo[] =>
+  (canBeShiny(g) ? [false, true] : [false]).flatMap((shiny) => possibleSexes(g).map((sex) => ({ sex, shiny })));
+const product = (g: VariantGroup, sexes: EntryGender[], shinies: boolean[]) => possibleCombos(g).filter((c) => sexes.includes(c.sex) && shinies.includes(c.shiny));
 
 const baseOf = (g: VariantGroup) => g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!;
 /** Genders this card exists in ('' for genderless). */
@@ -26,17 +35,16 @@ export const canBeShiny = (g: VariantGroup) => baseOf(g).hasShiny;
 export function defaultPick(group: VariantGroup, gender: GenderFilter, shinyView: boolean): DexPick {
   const possible = possibleSexes(group);
   const sexes = gender === 'all' ? possible : possible.filter((x) => x === gender || x === '');
-  return { group, sexes: sexes.length ? sexes : possible, shinies: [shinyView && canBeShiny(group)] };
+  return { group, combos: product(group, sexes.length ? sexes : possible, [shinyView && canBeShiny(group)]) };
 }
 
 function entriesOf(picks: DexPick[], tags: Set<EntryTag>) {
   const out: { variantKey: string; gender: EntryGender; shiny: boolean; tag: EntryTag }[] = [];
   for (const p of picks) {
-    const possible = possibleSexes(p.group);
     // Only what exists: a female-only costume gets no male entry, a Pokémon without a shiny no shiny one.
-    for (const sex of p.sexes.filter((x) => possible.includes(x)))
-      for (const shiny of p.shinies.filter((s) => !s || canBeShiny(p.group)))
-        for (const tag of tags) out.push({ variantKey: neutralKey(baseOf(p.group).key), gender: sex, shiny, tag });
+    const exists = new Set(possibleCombos(p.group).map(comboId));
+    for (const c of p.combos.filter((x) => exists.has(comboId(x))))
+      for (const tag of tags) out.push({ variantKey: neutralKey(baseOf(p.group).key), gender: c.sex, shiny: c.shiny, tag });
   }
   return out;
 }
@@ -55,12 +63,16 @@ export function BulkAddSheet({ open, picks, onApplyAll, onClose, onDone }: { ope
       return n.size ? n : new Set(['']);
     });
 
-  const versionOf = (p: DexPick) => (p.shinies.length === 2 ? 'both' : p.shinies[0] ? 'shiny' : 'normal');
-  const sexOf = (p: DexPick) => {
-    const real = p.sexes.filter((x) => x !== '');
-    return real.length === 1 ? real[0]! : 'all';
+  // The sheet's chips set every card at once; they light up while every card matches.
+  const sexesOf = (p: DexPick) => [...new Set(p.combos.map((c) => c.sex))];
+  const shiniesOf = (p: DexPick) => [...new Set(p.combos.map((c) => c.shiny))];
+  const same = (p: DexPick, sexes: EntryGender[], shinies: boolean[]) => {
+    const want = product(p.group, sexes, shinies).map(comboId).sort().join();
+    return want !== '' && want === p.combos.map(comboId).sort().join();
   };
-  const allSame = <T,>(f: (p: DexPick) => T, v: T) => picks.length > 0 && picks.every((p) => f(p) === v);
+  const sexChoice = (g: 'all' | 'm' | 'f', p: DexPick): EntryGender[] => (g === 'all' ? possibleSexes(p.group) : possibleSexes(p.group).filter((x) => x === g || x === ''));
+  const versionChoice = (v: 'normal' | 'shiny' | 'both') => (v === 'normal' ? [false] : v === 'shiny' ? [true] : [false, true]);
+  const allMatch = (f: (p: DexPick) => boolean) => picks.length > 0 && picks.every(f);
   const count = entriesOf(picks, tags).length;
 
   return (
@@ -69,7 +81,7 @@ export function BulkAddSheet({ open, picks, onApplyAll, onClose, onDone }: { ope
       <p className="mb-1.5 text-xs font-medium text-ink-3">{t.bulk_versions_all}</p>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {(['normal', 'shiny', 'both'] as const).map((v) => (
-          <Chip key={v} active={allSame(versionOf, v)} onClick={() => onApplyAll((p) => ({ ...p, shinies: v === 'normal' ? [false] : v === 'shiny' ? [true] : [false, true] }))}>
+          <Chip key={v} active={allMatch((p) => same(p, sexesOf(p), versionChoice(v)))} onClick={() => onApplyAll((p) => ({ ...p, combos: product(p.group, sexesOf(p).length ? sexesOf(p) : possibleSexes(p.group), versionChoice(v)) }))}>
             {{ normal: t.bulk_normal, shiny: t.bulk_shiny, both: t.bulk_both }[v]}
           </Chip>
         ))}
@@ -79,11 +91,8 @@ export function BulkAddSheet({ open, picks, onApplyAll, onClose, onDone }: { ope
         {(['all', 'm', 'f'] as const).map((g) => (
           <Chip
             key={g}
-            active={allSame(sexOf, g)}
-            onClick={() => onApplyAll((p) => {
-              const possible = possibleSexes(p.group);
-              return { ...p, sexes: g === 'all' ? possible : possible.filter((x) => x === g || x === '') };
-            })}
+            active={allMatch((p) => same(p, sexChoice(g, p), shiniesOf(p)))}
+            onClick={() => onApplyAll((p) => ({ ...p, combos: product(p.group, sexChoice(g, p), shiniesOf(p).length ? shiniesOf(p) : [false]) }))}
           >
             {g === 'all' ? `♂ ♀ ${t.gender_both}` : g === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`}
           </Chip>

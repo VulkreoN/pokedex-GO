@@ -411,12 +411,14 @@ test('multi-select: each ticked card chooses its genders and versions', async ({
   await page.getByPlaceholder('Nom ou numéro').fill('bulbizarre');
   await page.getByRole('button', { name: 'Sélection multiple' }).click();
   await page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true }).click();
-  // Starts as both genders, normal: only the female shiny is wanted here.
+  // Starts as ♂ and ♀, normal: only the female shiny is wanted here.
   const card = page.locator('li', { has: page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true }) });
-  await card.getByRole('button', { name: 'Mâle' }).click();
-  await card.getByRole('button', { name: 'Shiny' }).click();
-  await card.getByRole('button', { name: 'Normal' }).click();
-  await expect(card.getByRole('button', { name: 'Mâle' })).toHaveAttribute('aria-pressed', 'false');
+  // ♂, ♀, ♂ shiny and ♀ shiny are separate.
+  await card.getByRole('button', { name: 'Mâle', exact: true }).click();
+  await card.getByRole('button', { name: 'Femelle Shiny', exact: true }).click();
+  await card.getByRole('button', { name: 'Femelle', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Mâle', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(card.getByRole('button', { name: 'Mâle Shiny', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByPlaceholder('Nom ou numéro').fill('salamèche');
   await page.getByRole('button', { name: 'Ajouter Salamèche', exact: true }).click();
   await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
