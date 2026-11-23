@@ -152,7 +152,7 @@ test('multi-select: each kind of variant switches on and off on its own', async 
   await page.getByPlaceholder('Nom ou numéro').fill('raichu');
   await page.getByRole('button', { name: 'Sélection multiple' }).click();
   const costume = page.getByRole('button', { name: /^Ajouter Raichu (Chapeau de fête|Party Hat)/ });
-  const alola = page.getByRole('button', { name: /^Ajouter Raichu Alola/ });
+  const alola = page.getByRole('button', { name: /^Ajouter Raichu d'Alola/ });
   const base = page.getByRole('button', { name: 'Ajouter Raichu', exact: true });
   const top = page.locator('header');
   await expect(costume.first()).toBeVisible();

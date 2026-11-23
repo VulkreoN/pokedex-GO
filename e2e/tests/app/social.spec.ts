@@ -103,6 +103,7 @@ test('a list exports to a real PDF with its pictures', async ({ browser }) => {
   await page.goto(`/lists/${id}`);
   await page.getByRole('button', { name: 'Tous', exact: true }).click();
   await expect(page.locator('main img').first()).toBeVisible(); // pictures already shown once, as in real use
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
   const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), page.getByRole('button', { name: 'Exporter en PDF' }).click()]);
   expect(download.suggestedFilename()).toBe('export-test.pdf');
   const bytes = await readFile((await download.path())!);
@@ -110,6 +111,32 @@ test('a list exports to a real PDF with its pictures', async ({ browser }) => {
   const text = bytes.toString('latin1');
   expect((text.match(/\/Subtype \/Image/g) ?? []).length).toBeGreaterThanOrEqual(6);
   expect(bytes.length).toBeGreaterThan(20_000);
+  // The in-game search for the missing ones is on the first page, as text that can be copied.
+  expect(text).toContain('Recherche dans le jeu');
+  expect(text).toMatch(/1,4,7,133,150/);
+  await ctx.close();
+});
+
+test('a list shares as a picture, with its in-game search', async ({ browser }) => {
+  const ctx = await browser.newContext({ acceptDownloads: true, extraHTTPHeaders: {} });
+  const page = await ctx.newPage();
+  await apiRegister(page.request, uniq('img'));
+  const id = await apiCreateList(page.request, 'Pour Discord', ['1', '4', '7', '25', '133', '150']);
+  await page.request.put(`/api/lists/${id}/entries`, { data: { entries: [{ variantKey: '25', shiny: false, done: true }] } });
+  await page.goto(`/lists/${id}`);
+  await expect(page.locator('main img').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('button', { name: 'Manquants seulement' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.getByText(/QR code pour la copier/)).toBeVisible();
+  // Desktop browsers cannot share files: the picture is downloaded.
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), sheet.getByRole('button', { name: 'Image' }).click()]);
+  expect(download.suggestedFilename()).toBe('pour-discord.png');
+  const png = await readFile((await download.path())!);
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
+  expect(png.readUInt32BE(16)).toBe(1080); // width
+  expect(png.readUInt32BE(20)).toBeGreaterThan(1000); // header, two rows of cards, the search
+  await expect(page.getByText('Image enregistrée')).toBeVisible();
   await ctx.close();
 });
 

@@ -1,65 +1,31 @@
 import { useMemo, useState } from 'react';
-import { ALWAYS_EXCLUDED, buildSearchStrings, plainTargets, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
+import { FIXED_EXCLUSIONS as FIXED, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, savedExclusions, savedGameLang } from '../lib/searchString.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
-
-/** Left out of the whole search when looking for trades to get luckies. Shiny and costume are not a choice: always out. */
-const TRADE_EXCLUSIONS = ['traded', '4*', 'shiny', 'costume', 'shadow', 'purified', 'lucky'];
-const FIXED: readonly string[] = ALWAYS_EXCLUDED;
 
 export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
   const t = useT();
   const toast = useToast();
   const { lang } = useLang();
   const [onlyMissing, setOnlyMissing] = useState(true);
-  // The search bar only understands the game's own language: remembered per device, defaults to the app's.
-  const [gameLang, setGameLangState] = useState<GameLang>(() => {
-    try {
-      const saved = localStorage.getItem('gameLang');
-      if (saved === 'fr' || saved === 'en') return saved;
-    } catch {}
-    return lang === 'fr' ? 'fr' : 'en';
-  });
-  // For luckies by trade: what cannot or need not be traded is left out of the whole search. Remembered per device.
-  const [exclude, setExcludeState] = useState<string[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('searchExclude') ?? 'null') as string[] | null;
-      if (Array.isArray(saved)) return saved;
-    } catch {}
-    return [...TRADE_EXCLUSIONS];
-  });
+  const [gameLang, setGameLangState] = useState<GameLang>(() => savedGameLang(lang));
+  // For luckies by trade: what cannot or need not be traded is left out of the whole search.
+  const [exclude, setExcludeState] = useState<string[]>(savedExclusions);
   const toggleExclude = (d: string) =>
     setExcludeState((prev) => {
       const next = prev.includes(d) ? prev.filter((x) => x !== d) : TRADE_EXCLUSIONS.filter((x) => x === d || prev.includes(x));
-      try {
-        localStorage.setItem('searchExclude', JSON.stringify(next));
-      } catch {}
+      saveExclusions(next);
       return next;
     });
   const setGameLang = (l: GameLang) => {
     setGameLangState(l);
-    try {
-      localStorage.setItem('gameLang', l);
-    } catch {}
+    saveGameLang(l);
   };
-  // What each species can be (regional forms, costumes, genders): a plain entry leaves the others out
-  // (plain Growlithe, not Hisuian), and numbers that cannot break a clause are not listed in it.
-  const species = useMemo(() => speciesSearchInfo(idx.ds.variants), [idx]);
-  const { strings, dropped } = useMemo(() => {
-    const all = entries
-      .filter((e) => !onlyMissing || !e.done)
-      .flatMap((e) => {
-        const v = idx.variantByKey.get(e.variantKey);
-        return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, species.get(v.dex)?.regions ?? [])] : [];
-      });
-    // Shiny and costumed entries never go in the string.
-    const { targets, dropped } = plainTargets(all);
-    const out = TRADE_EXCLUSIONS.filter((d) => FIXED.includes(d) || exclude.includes(d));
-    return { strings: buildSearchStrings(targets, { lang: gameLang, species, exclude: out }), dropped };
-  }, [entries, idx, onlyMissing, gameLang, species, exclude]);
+  const { strings, dropped } = useMemo(() => listSearch(idx, entries, { onlyMissing, gameLang, exclude }), [entries, idx, onlyMissing, gameLang, exclude]);
 
   const names: Record<string, string> = {
     shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,

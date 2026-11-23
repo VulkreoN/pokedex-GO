@@ -76,6 +76,30 @@
     "GIGANTAMAX": {
       "en": "Gigantamax",
       "fr": "Gigamax"
+    },
+    "ALOLA": {
+      "en": "Alola",
+      "fr": "d'Alola"
+    },
+    "GALARIAN": {
+      "en": "Galarian",
+      "fr": "de Galar"
+    },
+    "HISUIAN": {
+      "en": "Hisuian",
+      "fr": "de Hisui"
+    },
+    "PALDEA": {
+      "en": "Paldea",
+      "fr": "de Paldea"
+    },
+    "GALARIAN_STANDARD": {
+      "en": "Galarian Standard",
+      "fr": "de Galar (Mode Normal)"
+    },
+    "GALARIAN_ZEN": {
+      "en": "Galarian Zen",
+      "fr": "de Galar (Mode Transe)"
     }
   },
   "status": {

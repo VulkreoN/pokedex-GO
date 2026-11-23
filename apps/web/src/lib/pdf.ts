@@ -6,9 +6,10 @@ import type { ListDetail } from '@mydexpogo/shared';
 import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
 import { cardDone, cardMissing, cardsOf } from './cards.js';
 import { localized } from './i18n.js';
+import { qrModules } from './qr.js';
 import type { Lang } from '@mydexpogo/shared';
 
-async function toDataUrl(url: string): Promise<string | null> {
+export async function toDataUrl(url: string): Promise<string | null> {
   try {
     // The page already displayed these pictures as plain <img>, so the browser and the service worker hold
     // responses that cannot be read from script. A distinct URL makes them fetch a readable (CORS) copy.
@@ -26,7 +27,7 @@ async function toDataUrl(url: string): Promise<string | null> {
   }
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -38,10 +39,15 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
   return out;
 }
 
+/** A list name as a file name: "Shinies à chasser" -> "shinies-a-chasser". */
+export const fileSlug = (name: string) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'liste';
+
 /** Standard PDF fonts only cover Latin-1-ish text: replace what they cannot draw. */
 const pdfText = (s: string) => s.replace(/♂/g, '(m)').replace(/♀/g, '(f)').replace(/[’]/g, "'").replace(/[^\x20-\x7E -ſŒœ]/g, '');
 
 export interface PdfLabels {
+  export_search_title: string;
+  export_search_hint: string;
   caught: string;
   missing: string;
   shiny: string;
@@ -49,7 +55,7 @@ export interface PdfLabels {
   progress: (done: number, total: number) => string;
 }
 
-export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: Lang, t: PdfLabels & Record<string, unknown>, opts: { onlyMissing?: boolean } = {}) {
+export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: Lang, t: PdfLabels & Record<string, unknown>, opts: { onlyMissing?: boolean; search?: string | null } = {}) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210;
@@ -90,6 +96,38 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   };
 
   let y = header(true);
+  // The in-game search for what is missing: selectable text, and a QR code for phones that cannot copy from a PDF.
+  if (opts.search) {
+    const qr = qrModules(opts.search);
+    const qrSize = 30;
+    const textW = W - 2 * M - qrSize - 6;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(8.5);
+    const lines = doc.splitTextToSize(pdfText(opts.search), textW - 6) as string[];
+    const boxH = Math.max(qrSize + 6, 13 + lines.length * 3.6);
+    doc.setFillColor(233, 244, 234);
+    doc.roundedRect(M, y, W - 2 * M, boxH, 3, 3, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(30, 45, 55);
+    doc.text(pdfText(t.export_search_title), M + 4, y + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 110, 120);
+    doc.text(pdfText(t.export_search_hint), M + 4, y + 10);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 45, 55);
+    doc.text(lines, M + 4, y + 15);
+    const cell = qrSize / (qr.length + 2);
+    const qx = W - M - qrSize - 3;
+    const qy = y + 3;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(qx, qy, qrSize, qrSize, 'F');
+    doc.setFillColor(20, 35, 43);
+    qr.forEach((row, r) => row.forEach((dark, c) => { if (dark) doc.rect(qx + (c + 1) * cell, qy + (r + 1) * cell, cell + 0.02, cell + 0.02, 'F'); }));
+    y += boxH + 5;
+  }
   rows.forEach(({ c, e, v, sp }, i) => {
     const col = i % COLS;
     if (col === 0 && i > 0) y += cellH;
@@ -154,6 +192,5 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     }
   });
 
-  const slug = list.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'liste';
-  doc.save(`${slug}.pdf`);
+  doc.save(`${fileSlug(list.name)}.pdf`);
 }

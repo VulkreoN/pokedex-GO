@@ -5,7 +5,7 @@ import { AddToListSheet, groupVariants, type VariantGroup } from '../components/
 import { BulkAddSheet } from '../components/BulkAddSheet.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { VariantCard, variantForGender, type GenderFilter } from '../components/VariantCard.js';
-import { Button, Chip, Empty, IconButton, Sheet, Spinner, TopBar } from '../components/ui.js';
+import { Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
 import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
 import { InstallBanner } from '../components/InstallBanner.js';
@@ -134,12 +134,6 @@ export function PokedexPage() {
     <>
       <TopBar
         title={t.nav_dex}
-        actions={
-          <IconButton label={t.filters} onClick={() => setFiltersOpen(true)} className="relative">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18M6 12h12M10 19h4" /></svg>
-            {activeCount > 0 && <span className="tnum absolute right-1 top-1 rounded-full bg-go px-1.5 text-[10px] font-bold text-white">{activeCount}</span>}
-          </IconButton>
-        }
       >
         <div className="mx-auto max-w-3xl px-3 pb-2">
           <input
@@ -151,18 +145,13 @@ export function PokedexPage() {
             className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
             aria-label={t.search_placeholder}
           />
+          {/* The three ways to change what the grid shows, side by side. */}
           <div className="mt-2 flex items-center gap-2">
-            {/* Active filters, each removable with a tap. */}
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_85%,transparent)] [scrollbar-width:none]">
-              {!allKinds && !multi && <Chip active onClick={() => setKinds(ALL_KINDS)}>{kindsSummary()} ✕</Chip>}
-              {onlyDatamined && <Chip active onClick={() => setOnlyDatamined(false)}>{t.filter_datamined} ✕</Chip>}
-              {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
-              {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
-              {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
-              {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
-              {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
-              {sort === 'family' && <Chip active onClick={() => setSort('dex')}>{t.sort_family} ✕</Chip>}
-            </div>
+            <Chip active={activeCount > 0} onClick={() => setFiltersOpen(true)} aria-label={t.filters}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 5h18M6 12h12M10 19h4" /></svg>
+              {t.filters}
+              {activeCount > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[11px] font-bold leading-4 text-white">{activeCount}</span>}
+            </Chip>
             <Chip active={pvpMode} onClick={() => setPvpMode(!pvpMode)} aria-label={t.pvp_mode}>
               <LeagueIcon league="great" size={16} />
               PvP
@@ -172,6 +161,19 @@ export function PokedexPage() {
               {t.multi_short}
             </Chip>
           </div>
+          {/* Active filters on their own row, each removable with a tap. */}
+          {activeCount - (multi && !allKinds ? 1 : 0) > 0 && (
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
+              {!allKinds && !multi && <Chip active onClick={() => setKinds(ALL_KINDS)}>{kindsSummary()} ✕</Chip>}
+              {onlyDatamined && <Chip active onClick={() => setOnlyDatamined(false)}>{t.filter_datamined} ✕</Chip>}
+              {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
+              {gender !== 'all' && <Chip active onClick={() => setGender('all')}>{gender === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`} ✕</Chip>}
+              {shiny && <Chip active onClick={() => setShiny(false)}><Sparkle className="text-shiny" /> {t.shiny} ✕</Chip>}
+              {forceExploded && !multi && <Chip active onClick={() => setForceExploded(false)}>{t.exploded_view} ✕</Chip>}
+              {sort === 'new' && <Chip active onClick={() => setSort('dex')}>{t.sort_new} ✕</Chip>}
+              {sort === 'family' && <Chip active onClick={() => setSort('dex')}>{t.sort_family} ✕</Chip>}
+            </div>
+          )}
           {/* While ticking cards, the kinds to show stay at hand, on a row of their own. */}
           {multi && (
             <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">

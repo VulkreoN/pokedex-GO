@@ -14,7 +14,9 @@ import { useUpsertEntries } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
 import { useFollowList, useOffer } from '../lib/social.js';
 import { cardDone, cardMissing, cardsOf, type EntryCard } from '../lib/cards.js';
-import { exportListPdf } from '../lib/pdf.js';
+import { exportListPdf, fileSlug } from '../lib/pdf.js';
+import { renderListImage, shareOrDownload } from '../lib/shareImage.js';
+import { exportSearchText } from '../lib/searchString.js';
 
 export function ListPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,7 +62,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
   const friend = access === 'friend';
   const offer = useOffer(list.id);
   const follow = useFollowList(list.id);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [exportMissing, setExportMissing] = useState(true);
   const [view, setView] = useState<View>('missing');
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -95,14 +99,20 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
       for (const m of open) if (!!m.offeredByMe !== on) setOffer(m, on);
     } else if (owner) setDone(c.members, cardMissing(c));
   };
-  const exportPdf = async () => {
-    setExporting(true);
+  const search = useMemo(() => exportSearchText(idx, list.entries, lang), [idx, list.entries, lang]);
+  const exportAs = async (kind: 'image' | 'pdf') => {
+    setExporting(kind);
     try {
-      await exportListPdf(idx, list, lang, t, { onlyMissing: view === 'missing' });
+      if (kind === 'pdf') await exportListPdf(idx, list, lang, t, { onlyMissing: exportMissing, search });
+      else {
+        const blob = await renderListImage(idx, list, lang, t, { onlyMissing: exportMissing, search });
+        if ((await shareOrDownload(blob, `${fileSlug(list.name)}.png`, list.name)) === 'downloaded') toast(t.image_saved);
+      }
+      setSharing(false);
     } catch {
       toast(t.err_generic);
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -144,9 +154,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
             {t.copy_for_game}
           </Button>
-            <Button tone="ghost" className="gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={exportPdf} disabled={list.entries.length === 0 || exporting} aria-label={t.export_pdf}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" /></svg>
-              {exporting ? t.loading : 'PDF'}
+            <Button tone="ghost" className="gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => { setExportMissing(view !== 'all'); setSharing(true); }} disabled={list.entries.length === 0}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
+              {t.export_share}
             </Button>
           </div>
         </div>
@@ -265,6 +275,38 @@ function ListBody({ idx, list, access, following, id, token, loggedIn }: { idx: 
           </div>
         </div>
       )}
+
+      <Sheet open={sharing} onClose={() => setSharing(false)} title={t.export_title}>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={exportMissing} onClick={() => setExportMissing(true)}>{t.export_scope_missing}</Chip>
+            <Chip active={!exportMissing} onClick={() => setExportMissing(false)}>{t.export_scope_all}</Chip>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(['image', 'pdf'] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                disabled={!!exporting}
+                onClick={() => exportAs(kind)}
+                aria-label={kind === 'pdf' ? t.export_pdf : t.export_image}
+                className="card flex flex-col items-start gap-1 p-3 text-left transition hover:brightness-[0.98] active:scale-[0.98] disabled:opacity-60"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-go-soft text-go-ink">
+                  {kind === 'image' ? (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></svg>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+                  )}
+                </span>
+                <span className="font-semibold">{exporting === kind ? t.export_working : kind === 'image' ? t.export_image : t.export_pdf_short}</span>
+                <span className="text-xs text-ink-3">{kind === 'image' ? t.export_image_hint : t.export_pdf_hint}</span>
+              </button>
+            ))}
+          </div>
+          {search && <p className="text-xs text-ink-3">{t.export_with_search}</p>}
+        </div>
+      </Sheet>
 
       <Sheet open={strings} onClose={() => setStrings(false)} title={t.game_strings_title}>
         <SearchStrings idx={idx} entries={list.entries} />
