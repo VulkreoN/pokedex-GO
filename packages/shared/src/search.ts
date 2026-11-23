@@ -151,6 +151,10 @@ const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
     background: null,
     dynamax: null,
     gigantamax: null,
+    // Appraisal stars per stat: "0-1attaque&3-4défense&3-4pv".
+    attack: 'attaque',
+    defense: 'défense',
+    hp: 'pv',
   },
 };
 export const keyword = (id: string, lang: GameLang = 'en'): string | null => {

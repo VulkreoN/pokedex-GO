@@ -78,11 +78,28 @@ test.describe('PvP', () => {
 
   test('IVs live in the URL: a 0/15/15 Azumarill is rank 1 in Great League', async ({ page }) => {
     await page.goto('/pvp/184?a=0&d=15&s=15&l=20');
-    const great = page.locator('div.rounded-xl', { hasText: 'Ligue Super' }).first();
+    const great = page.locator('[aria-label="Ligue Super"]');
     await expect(great.getByText('#1', { exact: true })).toBeVisible();
+    await expect(great.getByText('Rang 1', { exact: true })).toBeVisible(); // verdict
     await expect(great).toContainText('100,0');
     await expect(great).toContainText('Depuis le niveau 20');
     await expect(great).toContainText('poussières');
+    await expect(great).not.toContainText('Trouver mieux'); // nothing better to look for
+  });
+
+  test('a poor pick shows what rank 1 has more, and a search to find a better one', async ({ page }) => {
+    await page.goto('/pvp/184?a=15&d=0&s=0');
+    const great = page.locator('[aria-label="Ligue Super"]');
+    await expect(great.getByText('Faible', { exact: true })).toBeVisible();
+    await expect(great).toContainText('Rang 1 : 0/15/15');
+    await expect(great).toContainText('Attaque +15');
+    await expect(great).toContainText('Défense -15');
+    await expect(great.getByText('Indique son niveau ou son PC')).toBeVisible();
+    await expect(great.locator('code')).toHaveText('+azurill&0-1attaque&3-4défense&3-4pv');
+    await great.getByRole('button', { name: 'Copier' }).click();
+    expect(await clipboard(page)).toBe('+azurill&0-1attaque&3-4défense&3-4pv');
+    await great.getByRole('button', { name: 'Plus large' }).click();
+    await expect(great.locator('code')).toHaveText('+azurill&0-1attaque&2-4défense&2-4pv');
   });
 
   test('a CP finds the level, and a Pokémon over the cap is flagged', async ({ page }) => {

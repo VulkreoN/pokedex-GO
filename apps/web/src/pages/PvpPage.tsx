@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { LEAGUES, cpOf, cpmAt, levelSteps, levelsForCp, powerUpCost, rankOf, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
+import { LEAGUES, cpOf, cpmAt, ivSearch, levelSteps, levelsForCp, powerUpCost, rankOf, rankTable, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
 import { Sprite } from '../components/Sprite.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { PvpokeCard } from '../components/PvpokeCard.js';
 import { PVPOKE_URL, formOf, pvpokeRanks, usePvpRankings, type League, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { useToast } from '../components/toast.js';
+import { copyText } from '../lib/api.js';
+import { savedGameLang } from '../lib/searchString.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
@@ -253,7 +256,8 @@ function PvpDetail({ pkey }: { pkey: string }) {
             <button type="button" onClick={() => navigate('/pvp')} className="shrink-0 text-sm font-semibold text-sky">{t.pvp_change}</button>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <h2 className="mt-4 text-sm font-semibold text-ink-2">{t.pvp_your_ivs}</h2>
+          <div className="mt-2 space-y-2">
             <IvSlider label={t.stat_atk} value={iv.atk} onChange={(v) => set({ a: String(v) })} />
             <IvSlider label={t.stat_def} value={iv.def} onChange={(v) => set({ d: String(v) })} />
             <IvSlider label={t.stat_sta} value={iv.sta} onChange={(v) => set({ s: String(v) })} />
@@ -294,24 +298,26 @@ function PvpDetail({ pkey }: { pkey: string }) {
             </p>
           )}
 
-          <div className="mt-4">
-            <div className="mb-1 text-sm font-medium text-ink-2">{t.pvp_floor}</div>
-            <div className="flex flex-wrap gap-2">
+          {/* Rarely changed: folded, with the current choice in view. */}
+          <details className="mt-3 rounded-xl bg-paper-2 px-3 py-2" open={floor > 0 || buddy}>
+            <summary className="cursor-pointer text-sm font-medium text-ink-2">
+              {t.pvp_floor} : <span className="font-semibold text-ink">{t[`pvp_floor_${floor as 0}`]}</span>
+              {buddy && <span className="font-semibold text-ink"> · {t.pvp_buddy}</span>}
+            </summary>
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {FLOORS.map((f) => (
-                <Chip key={f} active={floor === f} onClick={() => set({ f: f ? String(f) : null })}>{t[`pvp_floor_${f}`]}</Chip>
+                <Chip key={f} active={floor === f} onClick={() => set({ f: f ? String(f) : null })} className="min-h-8 px-2.5 text-xs">{t[`pvp_floor_${f}`]}</Chip>
               ))}
             </div>
-          </div>
-          <label className="mt-3 flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" checked={buddy} onChange={(e) => set({ b: e.target.checked ? '1' : null })} className="h-5 w-5 accent-[var(--go)]" />
-            {t.pvp_buddy}
-          </label>
+            <p className="mt-1.5 text-xs text-ink-3">{t.pvp_floor_hint}</p>
+            <label className="mt-2 flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={buddy} onChange={(e) => set({ b: e.target.checked ? '1' : null })} className="h-5 w-5 accent-[var(--go)]" />
+              {t.pvp_buddy}
+            </label>
+          </details>
         </section>
 
-        {line.map((p) => (
-          <FormResult key={p.key} p={p} idx={ds.data!} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} isStart={p.key === me.key} />
-        ))}
-        {line.length > 1 && <p className="mt-3 text-xs text-ink-3">{t.pvp_evo_note}</p>}
+        <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} />
         <PvpokeCard idx={ds.data!} pvp={pvp} me={me} />
       </main>
     </>
@@ -328,77 +334,187 @@ function IvSlider({ label, value, onChange }: { label: string; value: number; on
   );
 }
 
-function FormResult(props: { p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; isStart: boolean }) {
-  const { p, idx, pvp, iv, level, floor, maxLevel, isStart } = props;
+/** Results for one form of the evolution line at a time: the last one first, as that is what gets played. */
+function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number }) {
+  const { me, line, idx, pvp, iv, level, maxLevel } = props;
   const t = useT();
   const { lang } = useLang();
-  const v = picture(idx, p);
-  const masterLevel = maxLevel;
-  const masterCp = cpOf(p, iv, cpmAt(pvp.cpm, masterLevel));
+  const [chosen, setChosen] = useState<string | null>(null);
+  const p = line.find((x) => x.key === chosen) ?? line[line.length - 1] ?? me;
+  const masterCp = cpOf(p, iv, cpmAt(pvp.cpm, maxLevel));
   return (
-    <section className="card mt-4 p-3">
-      <div className="flex items-center gap-2">
-        {v && <Sprite idx={idx} variant={v} size={44} />}
-        <h2 className="min-w-0 flex-1 truncate text-lg font-bold">{localized(p.name, lang)}</h2>
-        {!isStart && <span className="shrink-0 text-xs font-semibold text-ink-3">{t.pvp_after_evo}</span>}
+    <section className="mt-4">
+      {line.length > 1 && (
+        <div className="mb-2 flex gap-2 overflow-x-auto [scrollbar-width:none]" role="tablist" aria-label={t.pvp_evo_pick}>
+          {line.map((x) => {
+            const v = picture(idx, x);
+            return (
+              <Chip key={x.key} role="tab" aria-selected={x.key === p.key} active={x.key === p.key} onClick={() => setChosen(x.key)} className="pl-1.5">
+                {v && <Sprite idx={idx} variant={v} size={26} />}
+                {localized(x.name, lang)}
+              </Chip>
+            );
+          })}
+        </div>
+      )}
+      {/* Its name again only when it is not the Pokémon of the page. */}
+      {line.length > 1 && (
+        <div className="mb-2 flex items-baseline gap-2">
+          <h2 className="text-lg font-bold">{localized(p.name, lang)}</h2>
+          {p.key !== me.key && <span className="text-xs font-semibold text-ink-3">{t.pvp_after_evo}</span>}
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <LeagueCard league="great" {...props} p={p} />
+        <LeagueCard league="ultra" {...props} p={p} />
       </div>
-      <div className="mt-2 grid gap-3 sm:grid-cols-2">
-        <League title={t.league_great} cap={LEAGUES.great} {...props} />
-        <League title={t.league_ultra} cap={LEAGUES.ultra} {...props} />
+      <div className="card mt-3 px-3 py-2.5 text-sm">
+        <div>
+          <span className="font-semibold">{t.league_master}</span>
+          <span className="text-ink-2"> · {t.pvp_master_hint(maxLevel, masterCp)}</span>
+        </div>
+        {level !== null && level < maxLevel && <Cost pvp={pvp} from={level} to={maxLevel} />}
       </div>
-      <div className="mt-3 rounded-xl bg-paper-2 px-3 py-2 text-sm">
-        <span className="font-semibold">{t.league_master}</span>
-        <span className="text-ink-2"> · {t.pvp_master_hint(masterLevel, masterCp)}</span>
-        {level !== null && level < masterLevel && <Cost pvp={pvp} from={level} to={masterLevel} />}
-      </div>
+      {line.length > 1 && <p className="mt-2 text-xs text-ink-3">{t.pvp_evo_note}</p>}
     </section>
   );
 }
 
-function rankTone(r: RankInfo): string {
-  if (r.rank <= 10) return 'text-shiny';
-  if (r.rank <= 100) return 'text-go-ink dark:text-go';
-  if (r.percent >= 95) return 'text-ink';
-  return 'text-ink-3';
+type Verdict = 'perfect' | 'excellent' | 'great' | 'ok' | 'weak';
+/** Out of 4096 combinations: rank 1, top 10, top 100 (~2.5 %), then how close its stats are to rank 1's. */
+function verdictOf(r: RankInfo): Verdict {
+  if (r.rank === 1) return 'perfect';
+  if (r.rank <= 10) return 'excellent';
+  if (r.rank <= 100) return 'great';
+  if (r.percent >= 97) return 'ok';
+  return 'weak';
 }
+const VERDICT_STYLE: Record<Verdict, string> = {
+  perfect: 'bg-shiny-soft text-[#7a5a0e] dark:text-shiny',
+  excellent: 'bg-go-soft text-go-ink',
+  great: 'bg-go-soft text-go-ink',
+  ok: 'bg-paper-2 text-ink-2',
+  weak: 'bg-berry/10 text-berry',
+};
 
-function League({ title, cap, p, pvp, iv, level, floor, maxLevel }: { title: string; cap: number; p: PvpPokemon; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number }) {
+function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel }: { league: 'great' | 'ultra'; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number }) {
   const t = useT();
   const { lang } = useLang();
-  const r = useMemo(() => rankOf(pvp, p, iv, cap, maxLevel, Math.min(floor, iv.atk, iv.def, iv.sta)), [pvp, p, iv.atk, iv.def, iv.sta, cap, maxLevel, floor]);
-  const cpNow = level !== null ? cpOf(p, iv, cpmAt(pvp.cpm, level)) : null;
+  const cap = LEAGUES[league];
+  const title = league === 'great' ? t.league_great : t.league_ultra;
+  const effFloor = Math.min(floor, iv.atk, iv.def, iv.sta);
+  const r = useMemo(() => rankOf(pvp, p, iv, cap, maxLevel, effFloor), [pvp, p, iv.atk, iv.def, iv.sta, cap, maxLevel, effFloor]);
+  const head = (
+    <div className="flex items-center gap-2">
+      <LeagueIcon league={league} size={20} />
+      <h3 className="flex-1 text-sm font-bold">{title}</h3>
+    </div>
+  );
   // Even the best IVs at max level stay under the cap: no ranking to speak of in this league.
   if (r.best.level === maxLevel && r.best.cp < cap) {
     return (
-      <div className="rounded-xl border border-dashed border-line p-3">
-        <div className="text-sm font-bold">{title}</div>
-        <p className="mt-1 text-sm text-ink-2">{t.pvp_capped(r.cp)}</p>
+      <div className="card p-3">
+        {head}
+        <p className="mt-2 text-sm text-ink-2">{t.pvp_capped(r.cp)}</p>
       </div>
     );
   }
-  const tooLow = r.level === maxLevel && r.cp < cap * 0.93;
-  let status: ReactNode = null;
-  if (cpNow !== null && level !== null) {
-    if (cpNow > cap) status = <p className="mt-2 text-sm font-semibold text-berry">{t.pvp_too_high(cpNow)}</p>;
-    else if (level >= r.level) status = <p className="mt-2 text-sm font-semibold text-go-ink dark:text-go">{t.pvp_ready}</p>;
-    else status = <div className="mt-2 text-sm"><span className="text-ink-2">{t.pvp_from(level)}</span><Cost pvp={pvp} from={level} to={r.level} /></div>;
-  }
+  const verdict = verdictOf(r);
+  const fmt = (x: number) => x.toLocaleString(lang);
+  const cpNow = level !== null ? cpOf(p, iv, cpmAt(pvp.cpm, level)) : null;
+  const diff = (k: keyof Ivs) => iv[k] - r.best.ivs[k];
   return (
-    <div className="rounded-xl border border-line p-3">
-      <div className="text-sm font-bold">{title}</div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className={`tnum text-3xl font-extrabold ${rankTone(r)}`}>#{r.rank}</span>
-        <span className="tnum text-xs text-ink-3">/ {r.of}</span>
+    <div className="card p-3" aria-label={title}>
+      <div className="flex items-center gap-2">
+        <LeagueIcon league={league} size={20} />
+        <h3 className="flex-1 text-sm font-bold">{title}</h3>
+        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${VERDICT_STYLE[verdict]}`}>{t.pvp_verdict[verdict]}</span>
+      </div>
+
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="tnum text-[34px] font-extrabold leading-none">#{fmt(r.rank)}</span>
+        <span className="tnum text-xs text-ink-3">/ {fmt(r.of)}</span>
         <span className="tnum ml-auto text-sm font-semibold">{r.percent.toLocaleString(lang, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{'\u00a0'}%</span>
       </div>
-      <div className="tnum mt-1 text-sm">
-        {t.pvp_level} {r.level.toLocaleString(lang)} · PC {r.cp}
+      <div className="track mt-1.5 h-1.5 overflow-hidden rounded-full bg-paper-2" title={t.pvp_percent_hint}>
+        {/* From 90 % (a poor pick) to 100 % (rank 1): the part where IVs make a difference. */}
+        <div className="h-full rounded-full bg-go" style={{ width: `${Math.max(3, Math.min(100, (r.percent - 90) * 10))}%` }} />
       </div>
-      {tooLow && <p className="mt-1 text-xs text-ink-3">{t.pvp_under_cap}</p>}
-      {status}
-      <p className="tnum mt-2 text-xs text-ink-3">
-        {t.pvp_rank1} {r.best.ivs.atk}/{r.best.ivs.def}/{r.best.ivs.sta} · {t.pvp_level} {r.best.level} · PC {r.best.cp}
-      </p>
+      <p className="mt-1 text-xs text-ink-3">{t.pvp_percent_hint}</p>
+
+      <dl className="tnum mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="rounded-lg bg-paper-2 px-2.5 py-1.5">
+          <dt className="text-[11px] text-ink-3">{t.pvp_target_level}</dt>
+          <dd className="font-bold">{fmt(r.level)}{r.level > pvp.maxLevel ? ' *' : ''}</dd>
+        </div>
+        <div className="rounded-lg bg-paper-2 px-2.5 py-1.5">
+          <dt className="text-[11px] text-ink-3">{t.pvp_target_cp}</dt>
+          <dd className="font-bold">{fmt(r.cp)} PC</dd>
+        </div>
+      </dl>
+      {r.level === maxLevel && r.cp < cap * 0.93 && <p className="mt-1 text-xs text-ink-3">{t.pvp_under_cap}</p>}
+
+      {/* What it takes from where it is now. */}
+      <div className="mt-3">
+        {level === null ? (
+          <p className="text-xs text-ink-3">{t.pvp_cost_needs_level}</p>
+        ) : cpNow !== null && cpNow > cap ? (
+          <p className="text-sm font-semibold text-berry">{t.pvp_too_high(cpNow)}</p>
+        ) : level >= r.level ? (
+          <p className="text-sm font-semibold text-go-ink dark:text-go">{t.pvp_ready}</p>
+        ) : (
+          <div className="text-sm">
+            <span className="text-ink-2">{t.pvp_from(level)}</span>
+            <Cost pvp={pvp} from={level} to={r.level} />
+          </div>
+        )}
+      </div>
+
+      {/* Against rank 1 of this league. */}
+      <div className="mt-3 border-t border-line pt-2.5">
+        <p className="tnum text-xs text-ink-2">
+          <span className="font-semibold text-ink">{t.pvp_rank1}</span> {r.best.ivs.atk}/{r.best.ivs.def}/{r.best.ivs.sta} · {t.pvp_level} {fmt(r.best.level)} · PC {r.best.cp}
+        </p>
+        {r.rank > 1 && (
+          <p className="tnum mt-1 flex flex-wrap gap-x-3 text-xs">
+            {(['atk', 'def', 'sta'] as const).map((k) => (
+              <span key={k} className={diff(k) === 0 ? 'text-ink-3' : 'text-ink-2'}>
+                {t[k === 'atk' ? 'stat_atk' : k === 'def' ? 'stat_def' : 'stat_sta']} {diff(k) > 0 ? `+${diff(k)}` : diff(k)}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+
+      {r.rank > 10 && <BetterSearch league={league} p={p} idx={idx} pvp={pvp} maxLevel={maxLevel} />}
+    </div>
+  );
+}
+
+/** A search to paste in the game to find a better one in storage. */
+function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: 'great' | 'ultra'; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; maxLevel: number }) {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const [wide, setWide] = useState(false);
+  const gameLang = savedGameLang(lang);
+  // The whole family: a better Marill is as good as a better Azumarill.
+  let root = idx.speciesByDex.get(p.dex);
+  for (let i = 0; root?.parent && i < 3; i++) root = idx.speciesByDex.get(root.parent) ?? root;
+  const family = root ? (gameLang === 'fr' ? root.name.fr ?? root.name.en : root.name.en) : undefined;
+  const s = useMemo(() => ivSearch(rankTable(pvp, p, LEAGUES[league], maxLevel), { top: wide ? 41 : 10, family, lang: gameLang }), [pvp, p, league, maxLevel, wide, family, gameLang]);
+  if (!s.text) return null;
+  return (
+    <div className="mt-3 rounded-xl bg-paper-2 p-2.5">
+      <div className="flex items-baseline gap-2">
+        <p className="flex-1 text-xs font-semibold text-ink-2">{t.pvp_find_better}</p>
+        <button type="button" className="text-xs font-semibold text-sky" onClick={() => setWide((w) => !w)}>{wide ? t.pvp_search_strict : t.pvp_search_wide}</button>
+      </div>
+      <code className="mt-1 block break-all text-[13px]">{s.text}</code>
+      <div className="mt-1.5 flex items-center gap-2">
+        <p className="tnum flex-1 text-[11px] text-ink-3">{t.pvp_search_scope(s.top, s.matched)}</p>
+        <Button className="min-h-8 px-3 text-xs" onClick={async () => { if (await copyText(s.text)) toast(t.copied); }}>{t.copy}</Button>
+      </div>
     </div>
   );
 }
@@ -408,12 +524,15 @@ function Cost({ pvp, from, to }: { pvp: PvpData; from: number; to: number }) {
   const { lang } = useLang();
   const c = powerUpCost(pvp, from, to);
   const n = (x: number) => x.toLocaleString(lang);
-  const parts = [`${n(c.stardust)} ${t.stardust}`, c.candy ? `${n(c.candy)} ${t.candy}` : null, c.xlCandy ? `${n(c.xlCandy)} ${t.xl_candy}` : null].filter(Boolean);
   const buddyOnly = to > pvp.maxLevel;
   return (
-    <span className="tnum block text-sm font-semibold">
-      {parts.join(' · ')}
-      {buddyOnly && <span className="block text-xs font-normal text-ink-3">{t.pvp_buddy_needed}</span>}
+    <span className="mt-1 block">
+      <span className="tnum flex flex-wrap gap-1.5">
+        <span className="rounded-md bg-sky/10 px-1.5 py-0.5 text-xs font-semibold text-sky">{n(c.stardust)} {t.stardust}</span>
+        {c.candy > 0 && <span className="rounded-md bg-go-soft px-1.5 py-0.5 text-xs font-semibold text-go-ink">{n(c.candy)} {t.candy}</span>}
+        {c.xlCandy > 0 && <span className="rounded-md bg-shiny-soft px-1.5 py-0.5 text-xs font-semibold text-[#7a5a0e] dark:text-shiny">{n(c.xlCandy)} {t.xl_candy}</span>}
+      </span>
+      {buddyOnly && <span className="mt-1 block text-xs text-ink-3">* {t.pvp_buddy_needed}</span>}
     </span>
   );
 }
