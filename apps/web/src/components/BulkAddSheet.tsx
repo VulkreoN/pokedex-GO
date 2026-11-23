@@ -1,5 +1,5 @@
 import { neutralKey, type EntryGender } from '@mydexpogo/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ENTRY_TAGS, type EntryTag } from '@mydexpogo/shared';
 import type { VariantGroup } from './AddToList.js';
 import type { GenderFilter } from './VariantCard.js';
@@ -13,6 +13,9 @@ export function BulkAddSheet({ open, groups, gender, onClose, onDone }: { open: 
   const t = useT();
   const toast = useToast();
   const [versions, setVersions] = useState<'normal' | 'shiny' | 'both'>('normal');
+  // Starts from the Pokédex's gender filter, and can be changed here.
+  const [sex, setSex] = useState<GenderFilter>(gender);
+  useEffect(() => { if (open) setSex(gender); }, [open, gender]);
   const [tags, setTags] = useState<Set<EntryTag>>(new Set(['']));
   const toggleTag = (tg: EntryTag) =>
     setTags((prev) => {
@@ -29,12 +32,12 @@ export function BulkAddSheet({ open, groups, gender, onClose, onDone }: { open: 
       const v = g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!;
       const possible: EntryGender[] = v.genders?.length === 0 ? [''] : (v.genders ?? ['m', 'f']);
       // The gender filter only keeps what exists: a female-only costume gets no male entry.
-      const genders = gender === 'all' ? possible : possible.filter((x) => x === gender || x === '');
-      for (const sex of genders) {
+      const genders = sex === 'all' ? possible : possible.filter((x) => x === sex || x === '');
+      for (const one of genders) {
         const shinies = versions === 'normal' ? [false] : versions === 'shiny' ? [true] : [false, true];
         for (const shiny of shinies) {
           if (shiny && !v.hasShiny) continue;
-          for (const tag of tags) out.push({ variantKey: neutralKey(v.key), gender: sex, shiny, tag });
+          for (const tag of tags) out.push({ variantKey: neutralKey(v.key), gender: one, shiny, tag });
         }
       }
     }
@@ -50,13 +53,19 @@ export function BulkAddSheet({ open, groups, gender, onClose, onDone }: { open: 
           <Chip key={v} active={versions === v} onClick={() => setVersions(v)}>{{ normal: t.bulk_normal, shiny: t.bulk_shiny, both: t.bulk_both }[v]}</Chip>
         ))}
       </div>
+      <p className="mb-1.5 text-xs font-medium text-ink-3">{t.bulk_gender}</p>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {(['all', 'm', 'f'] as const).map((g) => (
+          <Chip key={g} active={sex === g} onClick={() => setSex(g)}>{g === 'all' ? `♂ ♀ ${t.gender_both}` : g === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`}</Chip>
+        ))}
+      </div>
       <p className="mb-1.5 text-xs font-medium text-ink-3">{t.trait}</p>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {ENTRY_TAGS.map((tg) => (
           <Chip key={tg} active={tags.has(tg)} onClick={() => toggleTag(tg)} className="min-h-8 px-2.5 text-xs">{t[`tag_${tg}`]}</Chip>
         ))}
       </div>
-      <p className="mb-3 text-xs text-ink-3">{t.bulk_gender_note(gender === 'all' ? t.gender_both : gender === 'm' ? t.male : t.female)}</p>
+      <p className="mb-3 text-xs text-ink-3">{t.bulk_gender_hint}</p>
       <Button
         tone="primary"
         className="w-full"

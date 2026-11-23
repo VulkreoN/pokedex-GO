@@ -89,7 +89,7 @@ describe('whole-search exclusions for trades', () => {
   });
 });
 
-describe('strings never show shinies or costumes', () => {
+describe('shinies and costumes in strings', () => {
   it('leaves shiny and costumed entries out, and starts with both exclusions', () => {
     const { targets, dropped } = plainTargets([
       { dex: 25, gender: 'm', shiny: false, costume: false },
@@ -102,5 +102,21 @@ describe('strings never show shinies or costumes', () => {
     expect(s!.text).toBe('!chromatique&!costume&4,25&femelle,25&mâle,4');
     expect(s!.skippedExclusions).toBeUndefined();
     expect(s!.looser).toBeUndefined();
+  });
+  it('keeps shiny entries when the player wants them, telling each version apart', () => {
+    const { targets, dropped } = plainTargets(
+      [
+        { dex: 25, gender: 'm', shiny: false, costume: false },
+        { dex: 4, gender: 'f', shiny: true, costume: false },
+        { dex: 25, gender: 'f', shiny: false, costume: true },
+      ],
+      { shiny: true },
+    );
+    expect(dropped).toBe(1);
+    expect(targets.map((t) => t.shiny)).toEqual([false, true]);
+    const strings = buildSearchStrings(targets, { lang: 'en', exclude: ['costume'] });
+    const text = strings.map((x) => x.text).join('\n');
+    expect(text).toContain('shiny');
+    expect(text).not.toMatch(/^!shiny/);
   });
 });

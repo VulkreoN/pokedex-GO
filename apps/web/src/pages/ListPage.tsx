@@ -76,7 +76,10 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const [importing, setImporting] = useState(false);
   // Several cards at once: tapping a card picks it instead of ticking it.
   const [picking, setPicking] = useState(false);
+  /** Picked genders of cards: `${card id}|${gender}`. */
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pickSex, setPickSex] = useState<'all' | 'm' | 'f'>('all');
+  const [pickVersion, setPickVersion] = useState<'all' | 'normal' | 'shiny'>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const upsert = useUpsertEntries();
   const remove = useRemoveEntries();
@@ -110,9 +113,29 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   };
   const search = useMemo(() => exportSearchText(idx, list.entries, lang), [idx, list.entries, lang]);
 
-  const pickedCards = allCards.filter((c) => picked.has(c.id));
-  const togglePick = (c: EntryCard) => setPicked((p) => { const n = new Set(p); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; });
-  const stopPicking = () => { setPicking(false); setPicked(new Set()); };
+  const memberId = (c: EntryCard, m: ListDetailEntry) => `${c.id}|${m.gender}`;
+  const fits = (c: EntryCard, m: ListDetailEntry, sex = pickSex, version = pickVersion) =>
+    (sex === 'all' || !m.gender || m.gender === sex) && (version === 'all' || (version === 'shiny') === c.shiny);
+  const pickedMembers = allCards.flatMap((c) => c.members.filter((m) => picked.has(memberId(c, m))));
+  /** A card picks its genders that fit the filters (all of them when none fits); tapping again lets them go. */
+  const togglePick = (c: EntryCard) =>
+    setPicked((p) => {
+      const fitting = c.members.filter((m) => fits(c, m));
+      const ids = (fitting.length ? fitting : c.members).map((m) => memberId(c, m));
+      const n = new Set(p);
+      if (ids.every((id) => n.has(id))) ids.forEach((id) => n.delete(id));
+      else ids.forEach((id) => n.add(id));
+      return n;
+    });
+  const toggleMemberPick = (c: EntryCard, m: ListDetailEntry) => setPicked((p) => { const n = new Set(p); const id = memberId(c, m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const pickAll = () => setPicked(new Set(cards.flatMap((c) => c.members.filter((m) => fits(c, m)).map((m) => memberId(c, m)))));
+  /** A filter narrows what is already picked, so "All", then "Shiny", then "♀" leaves the shiny females. */
+  const setPickFilter = (sex: typeof pickSex, version: typeof pickVersion) => {
+    setPickSex(sex);
+    setPickVersion(version);
+    setPicked((p) => new Set(allCards.flatMap((c) => c.members.filter((m) => p.has(memberId(c, m)) && fits(c, m, sex, version)).map((m) => memberId(c, m)))));
+  };
+  const stopPicking = () => { setPicking(false); setPicked(new Set()); setPickSex('all'); setPickVersion('all'); };
   const bulk = async (run: () => Promise<unknown>) => {
     setBulkBusy(true);
     try {
@@ -124,19 +147,18 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       setBulkBusy(false);
     }
   };
-  const members = (cs: EntryCard[]) => cs.flatMap((c) => c.members);
   const inParts = async <T,>(items: T[], send: (part: T[]) => Promise<unknown>) => {
     for (let k = 0; k < items.length; k += 1000) await send(items.slice(k, k + 1000));
   };
   const bulkDone = (value: boolean) =>
-    bulk(() => inParts(members(pickedCards).filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
+    bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
   const bulkRemove = () => {
-    if (!confirm(t.pick_confirm_remove(pickedCards.length))) return;
-    void bulk(() => inParts(pickedCards, (part) => remove.mutateAsync({ id: list.id, entries: part.map((c) => ({ variantKey: c.variantKey, shiny: c.shiny, tag: c.tag })) })));
+    if (!confirm(t.pick_confirm_remove(pickedMembers.length))) return;
+    void bulk(() => inParts(pickedMembers, (part) => remove.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, shiny: m.shiny, tag: m.tag, gender: m.gender })) })));
   };
-  const bulkOffer = () => bulk(async () => { for (const m of members(pickedCards).filter((m) => !m.done && !m.offeredByMe)) await offer.mutateAsync({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on: true }); });
+  const bulkOffer = () => bulk(async () => { for (const m of pickedMembers.filter((m) => !m.done && !m.offeredByMe)) await offer.mutateAsync({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on: true }); });
   const toBasket = () => {
-    const entries = members(pickedCards).map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag }));
+    const entries = pickedMembers.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag }));
     selection.add(entries);
     toast(t.added_to_selection(entries.length));
     stopPicking();
@@ -210,7 +232,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         </div>
       </TopBar>
 
-      <main className="mx-auto max-w-3xl px-3 pb-28">
+      <main className={`mx-auto max-w-3xl px-3 ${picking ? 'pb-72' : 'pb-28'}`}>
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}
@@ -228,8 +250,6 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         {cards.length > 0 && (owner || (loggedIn && list.entries.length > 0)) && (
           <div className="flex items-center gap-3 py-2 text-xs text-ink-3">
             <span className="flex-1">{picking ? t.pick_hint : owner ? t.list_owner_hint : ''}</span>
-            {picking && <button type="button" className="font-semibold text-sky" onClick={() => setPicked(new Set(cards.map((c) => c.id)))}>{t.pick_all}</button>}
-            {picking && <button type="button" className="font-semibold text-sky" onClick={() => setPicked(new Set())}>{t.pick_none}</button>}
             {loggedIn && (
               <button type="button" aria-pressed={picking} onClick={() => (picking ? stopPicking() : setPicking(true))} className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${picking ? 'bg-sky text-white' : 'bg-paper-2 text-ink'}`}>
                 {picking ? t.pick_done : t.pick_mode}
@@ -246,12 +266,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             const gendered = c.members.some((m) => m.gender);
             const myOffers = c.members.some((m) => m.offeredByMe);
             const offerLines = owner ? c.members.filter((m) => !m.done && m.offers?.length) : [];
-            const isPicked = picking && picked.has(c.id);
+            const isPicked = picking && c.members.some((m) => picked.has(memberId(c, m)));
             return (
               <li key={c.id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 150px' }}>
                 <div className={`card relative flex h-full flex-col items-center px-1 pb-2 pt-1 ${isPicked ? 'ring-[3px] ring-sky' : allDone ? 'ring-2 ring-go' : myOffers ? 'ring-2 ring-sky' : ''}`}>
                   {picking && (
-                    <span className={`pointer-events-none absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isPicked ? 'border-sky bg-sky text-white' : 'border-line bg-card'}`} aria-hidden="true">
+                    <span className={`pointer-events-none absolute left-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isPicked ? 'border-sky bg-sky text-white' : 'border-line bg-card'}`} aria-hidden="true">
                       {isPicked && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
                     </span>
                   )}
@@ -286,7 +306,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                     {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
                     {c.tag && <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">{tagLabel(idx, c.tag, t)}</span>}
                   </button>
-                  {gendered && !picking && (
+                  {gendered && (
                     <div className="mt-1 flex gap-1">
                       {c.members.map((m) => {
                         const label = `${genderSymbol(m.gender)} ${m.gender === 'm' ? t.male : t.female}`;
@@ -295,12 +315,14 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                           <button
                             key={m.gender}
                             type="button"
-                            onClick={() => toggleMember(m)}
-                            aria-pressed={friend ? !!m.offeredByMe : m.done}
-                            aria-label={`${label} : ${state}`}
+                            onClick={() => (picking ? toggleMemberPick(c, m) : toggleMember(m))}
+                            aria-pressed={picking ? picked.has(memberId(c, m)) : friend ? !!m.offeredByMe : m.done}
+                            aria-label={picking ? `${label} : ${t.pick_mode}` : `${label} : ${state}`}
                             title={`${label} : ${state}`}
                             className={`flex h-7 min-w-9 items-center justify-center gap-0.5 rounded-full border-2 px-1.5 text-[13px] font-bold transition ${
-                              m.done ? 'border-go bg-go text-white' : m.offeredByMe ? 'border-sky bg-sky/15 text-sky' : 'border-line text-ink-3'
+                              picking
+                                ? picked.has(memberId(c, m)) ? 'border-sky bg-sky text-white' : 'border-line text-ink-3'
+                                : m.done ? 'border-go bg-go text-white' : m.offeredByMe ? 'border-sky bg-sky/15 text-sky' : 'border-line text-ink-3'
                             }`}
                           >
                             {genderSymbol(m.gender)}
@@ -344,17 +366,29 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       {picking && (
         <div className="pb-safe fixed inset-x-0 bottom-[64px] z-30 px-3" role="toolbar" aria-label={t.pick_count(picked.size)}>
           <div className="mx-auto max-w-3xl rounded-card bg-card p-2 shadow-lg ring-1 ring-line">
-            <p className="px-1 pb-1.5 text-sm font-semibold">{t.pick_count(pickedCards.length)}</p>
+            <div className="flex items-center gap-2 px-1 pb-1.5">
+              <p className="flex-1 text-sm font-semibold">{t.pick_count(pickedMembers.length)}</p>
+              <button type="button" className="text-sm font-semibold text-sky" onClick={pickAll}>{t.pick_all}</button>
+              <button type="button" className="text-sm font-semibold text-sky" onClick={() => setPicked(new Set())}>{t.pick_none}</button>
+            </div>
+            <div className="mb-2 flex flex-wrap gap-1.5" aria-label={t.pick_filters}>
+              {(['m', 'f'] as const).map((g) => (
+                <Chip key={g} active={pickSex === g} onClick={() => setPickFilter(pickSex === g ? 'all' : g, pickVersion)} className="min-h-8 px-2.5 text-xs">{g === 'm' ? `♂ ${t.male}` : `♀ ${t.female}`}</Chip>
+              ))}
+              {(['normal', 'shiny'] as const).map((v) => (
+                <Chip key={v} active={pickVersion === v} onClick={() => setPickFilter(pickSex, pickVersion === v ? 'all' : v)} className="min-h-8 px-2.5 text-xs">{v === 'shiny' ? `✨ ${t.shiny}` : t.bulk_normal}</Chip>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {owner && (
                 <>
-                  <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={() => bulkDone(true)}>{t.pick_caught}</Button>
-                  <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={() => bulkDone(false)}>{t.pick_missing}</Button>
+                  <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedMembers.length || bulkBusy} onClick={() => bulkDone(true)}>{t.pick_caught}</Button>
+                  <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedMembers.length || bulkBusy} onClick={() => bulkDone(false)}>{t.pick_missing}</Button>
                 </>
               )}
-              {friend && <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.some(cardMissing) || bulkBusy} onClick={bulkOffer}>{t.pick_offer}</Button>}
-              <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={toBasket}>{t.pick_basket}</Button>
-              {owner && <Button tone="danger" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedCards.length || bulkBusy} onClick={bulkRemove}>{t.pick_remove}</Button>}
+              {friend && <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedMembers.some((m) => !m.done) || bulkBusy} onClick={bulkOffer}>{t.pick_offer}</Button>}
+              <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedMembers.length || bulkBusy} onClick={toBasket}>{t.pick_basket}</Button>
+              {owner && <Button tone="danger" className="min-h-10 flex-1 px-3 text-sm" disabled={!pickedMembers.length || bulkBusy} onClick={bulkRemove}>{t.pick_remove}</Button>}
             </div>
           </div>
         </div>

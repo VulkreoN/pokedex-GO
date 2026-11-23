@@ -187,16 +187,20 @@ export function speciesSearchInfo(variants: Variant[]): Map<number, SpeciesSearc
   return out;
 }
 
-/** The search never shows shinies or costumes: always excluded, whatever the list holds. */
-export const ALWAYS_EXCLUDED = ['shiny', 'costume'] as const;
-
 /**
- * Targets for the in-game string: shiny and costumed entries are left out (the string starts with "!shiny&!costume"),
- * and the others no longer carry those two filters. Returns how many entries were left out.
+ * Targets for the in-game string. Shinies and costumes are left out by default (the string starts with
+ * "!shiny&!costume") and the others then no longer carry that filter; a player hunting shinies keeps them instead,
+ * and the string tells each version apart. Returns how many entries were left out.
  */
-export function plainTargets(targets: SearchTarget[]): { targets: SearchTarget[]; dropped: number } {
-  const kept = targets.filter((t) => !t.shiny && !t.costume);
-  return { targets: kept.map(({ shiny: _s, costume: _c, ...t }) => t), dropped: targets.length - kept.length };
+export function plainTargets(targets: SearchTarget[], keep: { shiny?: boolean; costume?: boolean } = {}): { targets: SearchTarget[]; dropped: number } {
+  const kept = targets.filter((t) => (keep.shiny || !t.shiny) && (keep.costume || !t.costume));
+  const out = kept.map((t) => {
+    const o = { ...t };
+    if (!keep.shiny) delete o.shiny;
+    if (!keep.costume) delete o.costume;
+    return o;
+  });
+  return { targets: out, dropped: targets.length - kept.length };
 }
 
 type Lit = { dim: string; pos: boolean };

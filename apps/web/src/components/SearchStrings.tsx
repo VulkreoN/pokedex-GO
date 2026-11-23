@@ -3,7 +3,7 @@ import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { FIXED_EXCLUSIONS as FIXED, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, savedExclusions, savedGameLang } from '../lib/searchString.js';
+import { TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, savedExclusions, savedGameLang } from '../lib/searchString.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
 
@@ -47,14 +47,14 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       <div>
         <p className="mb-1 text-xs font-medium text-ink-3">{t.exclude_title}</p>
         <div className="flex flex-wrap gap-1.5">
-          {TRADE_EXCLUSIONS.filter((d) => !FIXED.includes(d)).map((d) => (
+          {TRADE_EXCLUSIONS.map((d) => (
             <Chip key={d} active={exclude.includes(d)} onClick={() => toggleExclude(d)} className="min-h-8 px-2.5 text-xs">
               {t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']}
             </Chip>
           ))}
         </div>
       </div>
-      <p className="text-xs text-ink-3">{t.exclude_fixed}{dropped > 0 ? ` ${t.exclude_dropped(dropped)}` : ''}</p>
+      {dropped > 0 && <p className="text-xs text-ink-3">{t.exclude_dropped(dropped)} {t.exclude_fixed}</p>}
       {strings.length === 0 && <p className="py-6 text-center text-sm text-ink-3">{t.nothing_here}</p>}
       <ul className="space-y-2">
         {strings.map((s) => (

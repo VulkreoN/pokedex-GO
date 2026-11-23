@@ -1,10 +1,9 @@
 /** The in-game search for a list, with the player's saved settings: shared by the sheet, the PDF and the image. */
-import { ALWAYS_EXCLUDED, buildSearchStrings, plainTargets, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import { buildSearchStrings, plainTargets, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from './dataset.js';
 
-/** Left out of the whole search when looking for trades to get luckies. Shiny and costume are not a choice: always out. */
+/** Left out of the whole search, each one a choice. Unticking shiny or costume keeps those entries in the search. */
 export const TRADE_EXCLUSIONS = ['traded', '4*', 'shiny', 'costume', 'shadow', 'purified', 'lucky'];
-export const FIXED_EXCLUSIONS: readonly string[] = ALWAYS_EXCLUDED;
 
 /** The search bar only understands the game's own language: remembered per device, defaults to the app's. */
 export function savedGameLang(appLang: string): GameLang {
@@ -50,9 +49,9 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
       const v = idx.variantByKey.get(e.variantKey);
       return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, species.get(v.dex)?.regions ?? [])] : [];
     });
-  // Shiny and costumed entries never go in the string.
-  const { targets, dropped } = plainTargets(all);
-  const out = TRADE_EXCLUSIONS.filter((d) => FIXED_EXCLUSIONS.includes(d) || opts.exclude.includes(d));
+  // Shiny and costumed entries leave the string while those are excluded, and come back when they are not.
+  const { targets, dropped } = plainTargets(all, { shiny: !opts.exclude.includes('shiny'), costume: !opts.exclude.includes('costume') });
+  const out = TRADE_EXCLUSIONS.filter((d) => opts.exclude.includes(d));
   return { strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out }), dropped };
 }
 
