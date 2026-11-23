@@ -471,6 +471,17 @@ describe('game data', () => {
     if (r.status === 200) for (const c of r.body.codes) expect(c.redeemUrl).toBe(`https://store.pokemongo.com/offer-redemption?passcode=${c.code}`);
   });
 
+  it('serves PvPoke rankings for Great and Ultra League (or a clean upstream error)', async () => {
+    const r = await anon.get('/game/pvp-rankings');
+    expect([200, 502]).toContain(r.status);
+    if (r.status === 200) {
+      for (const league of ['great', 'ultra']) {
+        expect(r.body[league].length).toBeGreaterThan(20);
+        expect(r.body[league][0]).toMatchObject({ rank: 1, dex: expect.any(Number), atk: expect.any(Number) });
+      }
+    }
+  });
+
   it('serves field research with event tasks apart (or a clean upstream error)', async () => {
     const r = await anon.get('/game/research');
     expect([200, 502]).toContain(r.status);

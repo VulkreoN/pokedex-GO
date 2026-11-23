@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LEAGUES, cpOf, cpmAt, levelSteps, levelsForCp, powerUpCost, rankOf, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
+import { useQuery } from '@tanstack/react-query';
 import { Sprite } from '../components/Sprite.js';
+import { LeagueIcon } from '../components/PvpTops.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -21,8 +23,36 @@ function picture(idx: DatasetIndex, p: PvpPokemon): Variant | undefined {
   return idx.variantByKey.get(p.key) ?? idx.coverOf.get(p.dex);
 }
 
-/** Great and Ultra League regulars, offered before anything is typed. */
+/** Great and Ultra League regulars, offered when PvPoke's rankings cannot be loaded. */
 const POPULAR_DEX = [184, 308, 334, 379, 260, 227, 195, 362, 423, 340];
+const PVPOKE_URL = 'https://pvpoke.com/rankings/';
+
+interface RankedPokemon { rank: number; speciesId: string; name: string; dex: number; atk: number; def: number; hp: number; shadow: boolean; score: number }
+type League = 'great' | 'ultra';
+/** PvPoke's top 100 per league, read and cached by our API. */
+const usePvpRankings = () =>
+  useQuery({
+    queryKey: ['game', 'pvp-rankings'],
+    queryFn: async () => {
+      const res = await fetch('/api/game/pvp-rankings');
+      if (!res.ok) throw new Error(`pvp-rankings: ${res.status}`);
+      return (await res.json()) as Record<League, RankedPokemon[]>;
+    },
+    staleTime: 3600_000,
+    retry: 1,
+  });
+
+/** Our form for a PvPoke entry: same dex number and base stats (a Shadow form has its normal form's stats). */
+function formOf(pvp: PvpData, r: RankedPokemon): PvpPokemon | undefined {
+  const same = pvp.pokemon.filter((p) => p.dex === r.dex);
+  return same.find((p) => p.atk === r.atk && p.def === r.def && p.sta === r.hp) ?? same[0];
+}
+
+/** Every league rank PvPoke gives this form, the Shadow one apart. */
+export function pvpokeRanks(pvp: PvpData, rankings: Record<League, RankedPokemon[]> | undefined, key: string) {
+  if (!rankings) return [];
+  return (['great', 'ultra'] as League[]).flatMap((league) => rankings[league].filter((r) => formOf(pvp, r)?.key === key).map((r) => ({ league, rank: r.rank, shadow: r.shadow })));
+}
 
 /** Last forms opened on this device, newest first. */
 function recentPvp(): string[] {
@@ -49,19 +79,36 @@ function PvpSearch() {
   const { lang } = useLang();
   const { ds, pvp, byKey } = usePvp();
   const [query, setQuery] = useState('');
+  const rankings = usePvpRankings();
+  const [league, setLeague] = useState<League>('great');
   const picks = useMemo(() => {
-    if (!pvp) return { recent: [], popular: [] };
+    if (!pvp) return { recent: [], popular: [], top: [] };
     const recent = recentPvp().flatMap((k) => byKey.get(k) ?? []);
     const popular = POPULAR_DEX.flatMap((dex) => byKey.get(String(dex)) ?? pvp.pokemon.find((p) => p.dex === dex) ?? []).filter((p) => !recent.includes(p));
-    return { recent, popular };
-  }, [pvp, byKey]);
-  const tile = (p: PvpPokemon) => {
+    const top = (rankings.data?.[league] ?? []).slice(0, 20).flatMap((r) => {
+      const p = formOf(pvp, r);
+      return p ? [{ p, r }] : [];
+    });
+    return { recent, popular, top };
+  }, [pvp, byKey, rankings.data, league]);
+  const tile = (p: PvpPokemon, r?: RankedPokemon) => {
     const v = ds.data && picture(ds.data, p);
     return (
-      <li key={p.key}>
-        <Link to={`/pvp/${encodeURIComponent(p.key)}`} className="card flex flex-col items-center px-1 pb-2 pt-1 hover:brightness-[0.98]">
+      <li key={r ? r.speciesId : p.key}>
+        <Link to={`/pvp/${encodeURIComponent(p.key)}`} className="card relative flex flex-col items-center px-1 pb-2 pt-1 hover:brightness-[0.98]">
+          {r && <span className="tnum absolute left-1.5 top-1 text-[11px] font-bold text-ink-3">#{r.rank}</span>}
           {v && ds.data && <Sprite idx={ds.data} variant={v} size={60} />}
-          <span className="w-full truncate text-center text-[12px] font-semibold">{localized(p.name, lang)}</span>
+          {(() => {
+            // "Corayon (de Galar)": the form on a line of its own, small tiles cut long names.
+            const [, base, form] = /^(.*?)(?: \((.*)\))?$/.exec(localized(p.name, lang))!;
+            return (
+              <>
+                <span className="w-full truncate text-center text-[12px] font-semibold">{base}</span>
+                {form && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{form}</span>}
+              </>
+            );
+          })()}
+          {r?.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
         </Link>
       </li>
     );
@@ -96,13 +143,31 @@ function PvpSearch() {
             {picks.recent.length > 0 && (
               <section className="mb-5">
                 <h2 className="mb-2 text-base font-bold">{t.pvp_recent}</h2>
-                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.recent.map(tile)}</ul>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.recent.map((p) => tile(p))}</ul>
               </section>
             )}
-            <section>
-              <h2 className="mb-2 text-base font-bold">{t.pvp_popular}</h2>
-              <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.popular.map(tile)}</ul>
-            </section>
+            {picks.top.length > 0 ? (
+              <section>
+                <h2 className="mb-2 text-base font-bold">{t.pvp_top}</h2>
+                <div className="mb-2 flex gap-2">
+                  {(['great', 'ultra'] as League[]).map((l) => (
+                    <Chip key={l} active={league === l} onClick={() => setLeague(l)}>
+                      <LeagueIcon league={l} size={16} />
+                      {l === 'great' ? t.league_great : t.league_ultra}
+                    </Chip>
+                  ))}
+                </div>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.top.map(({ p, r }) => tile(p, r))}</ul>
+                <p className="mt-2 text-xs text-ink-3">
+                  {t.pvp_source} <a href={PVPOKE_URL} target="_blank" rel="noreferrer" className="font-semibold text-sky">PvPoke</a>
+                </p>
+              </section>
+            ) : (
+              <section>
+                <h2 className="mb-2 text-base font-bold">{t.pvp_popular}</h2>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.popular.map((p) => tile(p))}</ul>
+              </section>
+            )}
           </>
         )}
         {pvp && query && results.length === 0 && <Empty>{t.nothing_here}</Empty>}
@@ -154,6 +219,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
   const { lang } = useLang();
   const navigate = useNavigate();
   const { ds, pvp, byKey } = usePvp();
+  const rankings = usePvpRankings();
   const [params, setParams] = useSearchParams();
   const [cpInput, setCpInput] = useState('');
   const iv: Ivs = { atk: clampIv(params.get('a')), def: clampIv(params.get('d')), sta: clampIv(params.get('s')) };
@@ -197,6 +263,20 @@ function PvpDetail({ pkey }: { pkey: string }) {
               <div className="tnum mt-1 text-xs text-ink-2">
                 {t.stat_atk} {me.atk} · {t.stat_def} {me.def} · {t.stat_sta} {me.sta}
               </div>
+              {(() => {
+                const ranks = pvpokeRanks(pvp, rankings.data, me.key);
+                return ranks.length ? (
+                  <a href={PVPOKE_URL} target="_blank" rel="noreferrer" className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-2" title={t.pvp_pvpoke_rank}>
+                    <span className="font-semibold">PvPoke</span>
+                    {ranks.map((r) => (
+                      <span key={`${r.league}${r.shadow}`} className="tnum inline-flex items-center gap-1">
+                        <LeagueIcon league={r.league} size={13} />
+                        {t.pvp_rank_in(r.league === 'great' ? t.league_great : t.league_ultra, r.rank, r.shadow)}
+                      </span>
+                    ))}
+                  </a>
+                ) : null;
+              })()}
             </div>
             <button type="button" onClick={() => navigate('/pvp')} className="shrink-0 text-sm font-semibold text-sky">{t.pvp_change}</button>
           </div>

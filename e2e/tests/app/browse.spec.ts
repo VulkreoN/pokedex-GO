@@ -93,6 +93,23 @@ test.describe('PvP', () => {
     await expect(page.getByText(/Trop haut : déjà 4178 PC/).first()).toBeVisible();
   });
 
+  test("the start page shows PvPoke's top picks per league, and their rank on the form's page", async ({ page }) => {
+    await page.goto('/pvp');
+    const top = page.getByRole('heading', { name: 'Les meilleurs du moment' });
+    const regulars = page.getByRole('heading', { name: 'Souvent joués en Ligue Super et Hyper' });
+    // Until the rankings answer, and for good if PvPoke is unreachable, the fixed list of regulars stands in.
+    await expect(top.or(regulars)).toBeVisible();
+    await expect(top).toBeVisible({ timeout: 30_000 }).catch(() => {});
+    if (!(await top.isVisible())) return;
+    await expect(page.getByRole('link', { name: 'PvPoke' })).toHaveAttribute('href', 'https://pvpoke.com/rankings/');
+    await page.getByRole('button', { name: /Ligue Hyper/ }).click();
+    await expect(page.getByRole('button', { name: /Ligue Hyper/ })).toHaveAttribute('aria-pressed', 'true');
+    const first = page.locator('main section', { has: top }).locator('ul li a').first();
+    await expect(first).toContainText('#1');
+    await first.click();
+    await expect(page.getByText(/Ligue Hyper #1/)).toBeVisible();
+  });
+
   test('moving a slider updates the URL', async ({ page }) => {
     await page.goto('/pvp/184');
     await page.locator('input[type=range]').first().fill('7');

@@ -7,10 +7,11 @@ import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getResearch } from '../game/research.js';
+import { getPvpRankings } from '../game/pvpRankings.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
-/** Game tab data that is not a ScrapedDuck JSON: curated X posts, promo codes and field research. */
+/** Game tab data that is not a ScrapedDuck JSON: curated X posts, promo codes, field research, PvPoke rankings. */
 export const gameRoutes = new Hono<AuthEnv>()
   .get('/posts', async (c) => {
     const rows = await db.select().from(schema.posts).orderBy(desc(schema.posts.postedAt), desc(schema.posts.createdAt)).limit(100);
@@ -29,6 +30,14 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ categories: await getResearch() });
     } catch (e) {
       return c.json({ categories: [], error: (e as Error).message }, 502);
+    }
+  })
+  .get('/pvp-rankings', async (c) => {
+    try {
+      c.header('cache-control', 'public, max-age=3600');
+      return c.json(await getPvpRankings());
+    } catch (e) {
+      return c.json({ great: [], ultra: [], error: (e as Error).message }, 502);
     }
   })
   .post('/posts', requireRole('manager'), zValidator('json', z.object({ url: z.string().max(300) })), async (c) => {
