@@ -4,6 +4,7 @@ let seq = 0;
 const run = Date.now().toString(36).slice(-4);
 export const uniq = (p: string) => `${p}_${run}${process.pid % 100}${seq++}`;
 export const PASSWORD = 'correct-horse-42';
+const randomIp = () => `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
 /**
  * Every test gets its own client IP (the API rate-limits per x-forwarded-for, and the preview proxy forwards headers),
@@ -11,7 +12,7 @@ export const PASSWORD = 'correct-horse-42';
  */
 export const test = base.extend<{ guard: void }>({
   extraHTTPHeaders: async ({}, use) => {
-    await use({ 'x-forwarded-for': `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` });
+    await use({ 'x-forwarded-for': randomIp() });
   },
   guard: [
     async ({ page }, use) => {
@@ -29,9 +30,12 @@ export const test = base.extend<{ guard: void }>({
 });
 export { expect };
 
-/** Creates an account through the API; the session cookie lands in the page's context. */
+/**
+ * Creates an account through the API; the session cookie lands in the page's context. Sign-ups are rate-limited per
+ * IP: each one comes from its own test IP, also from contexts that send no x-forwarded-for (picture exports).
+ */
 export async function apiRegister(request: APIRequestContext, username = uniq('u'), password = PASSWORD) {
-  const r = await request.post('/api/auth/register', { data: { username, password } });
+  const r = await request.post('/api/auth/register', { data: { username, password }, headers: { 'x-forwarded-for': randomIp() } });
   expect(r.status(), await r.text()).toBe(201);
   return (await r.json()).user as { id: string; username: string; friendCode: string; role: string };
 }

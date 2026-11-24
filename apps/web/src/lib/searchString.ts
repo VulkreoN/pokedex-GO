@@ -44,6 +44,24 @@ export function speciesInfo(idx: DatasetIndex) {
   return s;
 }
 
+/**
+ * Cut long searches into several, each at most this long (0 = never). The game documents no limit; iOS text
+ * replacements, where many keep their searches, refuse more than 2,000 characters.
+ */
+export const MAX_LENGTHS = [0, 2000, 1000, 500] as const;
+export function savedMaxLength(): number {
+  try {
+    const n = Number(localStorage.getItem('searchMaxLength'));
+    if ((MAX_LENGTHS as readonly number[]).includes(n)) return n;
+  } catch {}
+  return 0;
+}
+export function saveMaxLength(n: number) {
+  try {
+    localStorage.setItem('searchMaxLength', String(n));
+  } catch {}
+}
+
 /** "With pre-evolutions", remembered per device: off by default. */
 export function savedPreEvolutions(): boolean {
   try {
@@ -80,7 +98,7 @@ export function preEvolutions(idx: DatasetIndex, v: Variant): Variant[] {
   return out;
 }
 
-export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions?: boolean }) {
+export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions?: boolean; maxLength?: number }) {
   const species = speciesInfo(idx);
   const target = (v: Variant, e: ListEntry) => {
     // A gender the pre-evolution does not have (Kirlia for a Gallade...) is not a filter there.
@@ -97,15 +115,16 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
   // Shiny and costumed entries leave the string while those are excluded, and come back when they are not.
   const { targets, dropped } = plainTargets(all, { shiny: !opts.exclude.includes('shiny'), costume: !opts.exclude.includes('costume') });
   const out = TRADE_EXCLUSIONS.filter((d) => opts.exclude.includes(d));
-  return { strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out }), dropped };
+  return { strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out, ...(opts.maxLength ? { maxLength: opts.maxLength } : {}) }), dropped };
 }
 
 /** The missing Pokémon's search with this device's settings, for exports. */
 export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], appLang: string): string | null {
   const exclude = savedExclusions();
   const preEvolutions = savedPreEvolutions();
-  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude, preEvolutions });
+  const maxLength = savedMaxLength();
+  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude, preEvolutions, maxLength });
   // A collection of shinies or costumes only would get no search at all with those excluded: keep them then.
-  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume'), preEvolutions }));
+  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume'), preEvolutions, maxLength }));
   return strings.length ? strings.map((s) => s.text).join('\n') : null;
 }

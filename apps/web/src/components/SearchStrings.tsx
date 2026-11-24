@@ -3,7 +3,7 @@ import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { copyText } from '../lib/api.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, savePreEvolutions, savedExclusions, savedGameLang, savedPreEvolutions } from '../lib/searchString.js';
+import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions } from '../lib/searchString.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
 
@@ -30,7 +30,12 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
     setPreEvoState(on);
     savePreEvolutions(on);
   };
-  const { strings, dropped } = useMemo(() => listSearch(idx, entries, { onlyMissing, gameLang, exclude, preEvolutions: preEvo }), [entries, idx, onlyMissing, gameLang, exclude, preEvo]);
+  const [maxLength, setMaxLengthState] = useState(savedMaxLength);
+  const setMaxLength = (n: number) => {
+    setMaxLengthState(n);
+    saveMaxLength(n);
+  };
+  const { strings, dropped } = useMemo(() => listSearch(idx, entries, { onlyMissing, gameLang, exclude, preEvolutions: preEvo, maxLength }), [entries, idx, onlyMissing, gameLang, exclude, preEvo, maxLength]);
 
   const names: Record<string, string> = {
     shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
@@ -52,6 +57,15 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       <div>
         <Chip active={preEvo} onClick={() => setPreEvo(!preEvo)}>{t.with_pre_evolutions}</Chip>
         <p className="mt-1 text-xs text-ink-3">{t.with_pre_evolutions_hint}</p>
+      </div>
+      <div>
+        <p className="mb-1 text-xs font-medium text-ink-3">{t.max_length_title}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {MAX_LENGTHS.map((n) => (
+            <Chip key={n} active={maxLength === n} onClick={() => setMaxLength(n)} className="min-h-8 px-2.5 text-xs">{n ? t.max_length(n) : t.max_length_none}</Chip>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-ink-3">{t.max_length_hint}</p>
       </div>
       <div>
         <p className="mb-1 text-xs font-medium text-ink-3">{t.exclude_title}</p>

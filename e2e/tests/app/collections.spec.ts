@@ -123,3 +123,19 @@ test('the game string can show pre-evolutions too, keeping gender and luck', asy
   await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
   await expect(page.locator('dialog[open]').getByRole('button', { name: 'Avec les pré-évolutions' })).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('a long game search can be cut into strings under a chosen length', async ({ page }) => {
+  await apiRegister(page.request);
+  const ds = await (await page.request.get('/api/data/pokedex.json')).json();
+  const both = (ds.variants as { key: string; kind: string; genders?: string[] }[]).filter((v) => v.kind === 'base' && v.genders?.length === 2).slice(0, 300);
+  const id = await apiCreateList(page.request, 'Longue', both.map((v, i) => `${v.key}:${i % 2 ? 'm' : 'f'}`));
+  await page.goto(`/lists/${id}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('button', { name: 'Sans limite' }).click();
+  await expect(sheet.locator('code')).toHaveCount(1);
+  expect((await sheet.locator('code').first().textContent())!.length).toBeGreaterThan(500);
+  await sheet.getByRole('button', { name: '500 car.' }).click();
+  await expect.poll(() => sheet.locator('code').count()).toBeGreaterThan(1);
+  for (const text of await sheet.locator('code').allTextContents()) expect(text.length).toBeLessThanOrEqual(500);
+});
