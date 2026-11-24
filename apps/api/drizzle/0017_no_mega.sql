@@ -1,0 +1,1 @@
+ALTER TABLE "variant_overrides" ADD COLUMN "no_mega" boolean;

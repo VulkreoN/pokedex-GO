@@ -25,7 +25,7 @@ export function GenderReview({ idx }: { idx: DatasetIndex }) {
     // Keep what managers already set on this variant (release status, name).
     const prev = overrides.data?.find((o) => o.variantKey === v.key);
     const keys = [v.key, ...(idx.variantByKey.has(`${v.key}.g2`) ? [`${v.key}.g2`] : [])];
-    await Promise.all(keys.map((k) => set.mutateAsync({ variantKey: k, released: prev?.released ?? null, label: prev?.label ?? null, genders, shinyReleased: prev?.shinyReleased ?? null, noEvolve: prev?.noEvolve ?? null })));
+    await Promise.all(keys.map((k) => set.mutateAsync({ variantKey: k, released: prev?.released ?? null, label: prev?.label ?? null, genders, shinyReleased: prev?.shinyReleased ?? null, noEvolve: prev?.noEvolve ?? null, noMega: prev?.noMega ?? null })));
     toast(t.saved);
   };
 

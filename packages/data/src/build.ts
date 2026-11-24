@@ -42,7 +42,7 @@ export interface BuildOptions {
 }
 
 /** What a manager can change from the web app, keyed by variant key. */
-export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null }>;
+export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null }>;
 
 export interface BuildResult {
   dataset: Dataset;
@@ -652,6 +652,8 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
       else if (m.shinyReleased === false) out.shinyReleased = false;
       if (m.noEvolve === true) out.noEvolve = true;
       else if (m.noEvolve === false) delete out.noEvolve;
+      if (m.noMega === true) out.noMega = true;
+      else if (m.noMega === false) delete out.noMega;
       return out;
     }),
   };

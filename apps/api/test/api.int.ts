@@ -615,9 +615,9 @@ describe('admin panel', () => {
     // What players saw before and after, for the journal to say what changed.
     expect(last.data).toMatchObject({ was: { released: true }, now: { released: false } });
     // A shiny that is not out yet and a costume that cannot evolve, set by hand, reach every player.
-    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: true, shinyReleased: false, noEvolve: true });
+    await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: true, shinyReleased: false, noEvolve: true, noMega: true });
     const v = (await anon.get('/data/pokedex.json')).body.variants.find((x: any) => x.key === key);
-    expect(v).toMatchObject({ shinyReleased: false, noEvolve: true, datamined: false });
+    expect(v).toMatchObject({ shinyReleased: false, noEvolve: true, noMega: true, datamined: false });
     await admin.put(`/overrides/${encodeURIComponent(key)}`, { released: false });
     expect((await admin.post(`/admin/audit/${last.id}/undo`)).status).toBe(200);
     const o = (await anon.get('/overrides')).body.overrides.find((x: any) => x.variantKey === key);
@@ -632,12 +632,12 @@ describe('admin panel', () => {
     const keys = ds.variants.filter((x) => x.kind === 'costume').slice(0, 3).map((x) => x.key);
     await admin.put(`/overrides/${encodeURIComponent(keys[0]!)}`, { released: null, label: { en: 'Kept name' } });
     expect((await alice.patch('/overrides', { keys, shinyReleased: false })).status).toBe(403);
-    expect((await admin.patch('/overrides', { keys, shinyReleased: false })).status).toBe(200);
+    expect((await admin.patch('/overrides', { keys, shinyReleased: false, noMega: true })).status).toBe(200);
     const after = (await anon.get('/overrides')).body.overrides.filter((o: any) => keys.includes(o.variantKey));
     expect(after).toHaveLength(3);
-    expect(after.every((o: any) => o.shinyReleased === false)).toBe(true);
+    expect(after.every((o: any) => o.shinyReleased === false && o.noMega === true)).toBe(true);
     expect(after.find((o: any) => o.variantKey === keys[0]).label).toEqual({ en: 'Kept name' });
-    await admin.patch('/overrides', { keys, shinyReleased: null });
+    await admin.patch('/overrides', { keys, shinyReleased: null, noMega: null });
     await admin.del(`/overrides/${encodeURIComponent(keys[0]!)}`);
   });
 
