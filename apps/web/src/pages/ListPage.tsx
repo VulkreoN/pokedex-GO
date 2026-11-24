@@ -124,7 +124,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}`);
 
   /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
-  const reward = (members: ListDetailEntry[], value: boolean) => {
+  /** Plays the reward, and returns the milestone reached (25, 50, 75) for the message, if any. */
+  const reward = (members: ListDetailEntry[], value: boolean): number | undefined => {
     const changed = new Set(members.map((m) => `${m.variantKey}|${m.gender}|${m.shiny}|${m.tag}`));
     const total = list.entries.length;
     const before = list.entries.filter((e) => e.done).length;
@@ -136,16 +137,18 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       celebrate();
     } else if (value && step) {
       feedback('milestone');
-      toast(t.milestone(step));
+      return step;
     } else feedback(value ? 'tick' : 'untick');
+    return undefined;
   };
   const writeDone = (members: ListDetailEntry[], value: boolean | ((m: ListDetailEntry) => boolean)) =>
     upsert.mutateAsync({ id: list.id, entries: members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: typeof value === 'function' ? value(m) : value, note: m.note })) });
   const setDone = (members: ListDetailEntry[], value: boolean) => {
-    reward(members, value);
+    const step = reward(members, value);
     void writeDone(members, value);
-    // Unticking by mistake is easy with a finger: it can be taken back.
-    if (!value) toast(t.unticked(members.length), { action: { label: t.undo, onClick: () => void writeDone(members, true) } });
+    // A tap by mistake is easy with a finger: ticked or unticked, it can be taken back.
+    const message = step ? t.milestone(step) : value ? t.ticked(members.length) : t.unticked(members.length);
+    toast(message, { action: { label: t.undo, onClick: () => void writeDone(members, !value) } });
   };
   const setOffer = (m: ListDetailEntry, on: boolean) => {
     feedback(on ? 'tick' : 'untick');
@@ -209,8 +212,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   };
   const bulkDone = (value: boolean) => {
     const changing = pickedMembers.filter((m) => m.done !== value);
-    reward(changing, value);
-    if (changing.length) toast(value ? t.ticked_many(changing.length) : t.unticked(changing.length), { action: { label: t.undo, onClick: () => void writeDone(changing, !value) } });
+    const step = reward(changing, value);
+    if (changing.length) toast(step ? t.milestone(step) : value ? t.ticked(changing.length) : t.unticked(changing.length), { action: { label: t.undo, onClick: () => void writeDone(changing, !value) } });
     return bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
   };
   const bulkRemove = () => {

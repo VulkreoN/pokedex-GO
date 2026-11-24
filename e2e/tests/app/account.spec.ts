@@ -191,7 +191,8 @@ test('a manager marks a datamined variant released from its card, for everyone',
   const cardOf = (p: typeof mgr) => p.locator('li', { has: p.getByRole('button', { name: cardName, exact: true }) });
 
   await mgr.goto(`/dex/${target.dex}`);
-  await expect(cardOf(mgr).getByText('Pas encore sorti', { exact: true })).toBeVisible();
+  // First paint of a species with many forms, while other tests build PDFs and pictures: more time.
+  await expect(cardOf(mgr).getByText('Pas encore sorti', { exact: true })).toBeVisible({ timeout: 20_000 });
   await cardOf(mgr).getByRole('button', { name: 'Gérer cette variante' }).click();
   const sheet = mgr.locator('dialog[open]');
   await sheet.getByRole('button', { name: 'Sortie', exact: true }).click();

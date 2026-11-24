@@ -11,6 +11,13 @@ test('unticking and removing can be undone from the message', async ({ page }) =
   await page.getByRole('button', { name: 'Annuler', exact: true }).click();
   await expect(page.getByText('1 / 2 attrapés')).toBeVisible();
 
+  // Ticked by mistake: same.
+  await page.getByRole('button', { name: 'Évoli', exact: true }).click();
+  await expect(page.getByText('Marqué attrapé')).toBeVisible();
+  await expect(page.getByText('2 / 2 attrapés')).toBeVisible();
+  await page.getByRole('button', { name: 'Annuler', exact: true }).click();
+  await expect(page.getByText('1 / 2 attrapés')).toBeVisible();
+
   // Removed by mistake: back with its caught state.
   await page.locator('main li', { hasText: 'Magnéti' }).getByRole('button', { name: 'Options' }).click();
   await page.locator('dialog[open]').getByRole('button', { name: /Retirer/ }).click();
