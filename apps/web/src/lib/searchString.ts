@@ -1,5 +1,5 @@
 /** The in-game search for a list, with the player's saved settings: shared by the sheet, the PDF and the image. */
-import { buildSearchStrings, plainTargets, speciesSearchInfo, targetFromVariant, type GameLang, type ListEntry } from '@mydexpogo/shared';
+import { buildSearchStrings, plainTargets, regionOfForm, speciesSearchInfo, targetFromVariant, type EntryGender, type GameLang, type ListEntry, type Variant } from '@mydexpogo/shared';
 import type { DatasetIndex } from './dataset.js';
 
 /** Left out of the whole search, each one a choice. Unticking shiny or costume keeps those entries in the search. */
@@ -44,13 +44,55 @@ export function speciesInfo(idx: DatasetIndex) {
   return s;
 }
 
-export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { onlyMissing: boolean; gameLang: GameLang; exclude: string[] }) {
+/** "With pre-evolutions", remembered per device: off by default. */
+export function savedPreEvolutions(): boolean {
+  try {
+    return localStorage.getItem('searchPreEvo') === '1';
+  } catch {
+    return false;
+  }
+}
+export function savePreEvolutions(on: boolean) {
+  try {
+    localStorage.setItem('searchPreEvo', on ? '1' : '0');
+  } catch {}
+}
+
+/**
+ * The versions that evolve into this one: a Scatterbug or a Spewpa becomes the wanted Vivillon, keeping its gender,
+ * shine and luck. A regional form only comes from the same region's pre-evolution, a costume from the same costume
+ * (when that one may evolve); a pattern or a Mega comes from the plain pre-evolution.
+ */
+export function preEvolutions(idx: DatasetIndex, v: Variant): Variant[] {
+  const out: Variant[] = [];
+  const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
+  let dex = idx.speciesByDex.get(v.dex)?.parent;
+  for (let guard = 0; dex && guard < 4; guard++) {
+    const vs = (idx.variantsByDex.get(dex) ?? []).filter((x) => !x.key.endsWith('.g2'));
+    const next =
+      v.kind === 'costume' ? vs.find((x) => x.kind === 'costume' && ((v.costume && x.costume === v.costume) || (v.form && x.form === v.form)))
+      : region ? vs.find((x) => x.kind === 'regional' && regionOfForm(x.form) === region)
+      : vs.find((x) => x.kind === 'base');
+    if (!next || next.noEvolve) break;
+    out.push(next);
+    dex = idx.speciesByDex.get(dex)?.parent;
+  }
+  return out;
+}
+
+export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions?: boolean }) {
   const species = speciesInfo(idx);
+  const target = (v: Variant, e: ListEntry) => {
+    // A gender the pre-evolution does not have (Kirlia for a Gallade...) is not a filter there.
+    const gender: EntryGender = e.gender && (v.genders ?? ['m', 'f']).includes(e.gender as 'm' | 'f') ? e.gender : '';
+    return targetFromVariant(v, e.shiny, gender, e.tag, species.get(v.dex)?.regions ?? []);
+  };
   const all = entries
     .filter((e) => !opts.onlyMissing || !e.done)
     .flatMap((e) => {
       const v = idx.variantByKey.get(e.variantKey);
-      return v ? [targetFromVariant(v, e.shiny, e.gender, e.tag, species.get(v.dex)?.regions ?? [])] : [];
+      if (!v) return [];
+      return [target(v, e), ...(opts.preEvolutions ? preEvolutions(idx, v).map((p) => target(p, e)) : [])];
     });
   // Shiny and costumed entries leave the string while those are excluded, and come back when they are not.
   const { targets, dropped } = plainTargets(all, { shiny: !opts.exclude.includes('shiny'), costume: !opts.exclude.includes('costume') });
@@ -61,8 +103,9 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
 /** The missing Pokémon's search with this device's settings, for exports. */
 export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], appLang: string): string | null {
   const exclude = savedExclusions();
-  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude });
+  const preEvolutions = savedPreEvolutions();
+  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude, preEvolutions });
   // A collection of shinies or costumes only would get no search at all with those excluded: keep them then.
-  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume') }));
+  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume'), preEvolutions }));
   return strings.length ? strings.map((s) => s.text).join('\n') : null;
 }

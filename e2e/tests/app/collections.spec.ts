@@ -101,3 +101,25 @@ test('collections can be put in any order', async ({ page }) => {
   await page.reload();
   await expect(page.locator('main li').first()).toContainText('Première');
 });
+
+test('the game string can show pre-evolutions too, keeping gender and luck', async ({ page }) => {
+  await apiRegister(page.request);
+  const list = (await (await page.request.post('/api/lists', { data: { name: 'Chanceux' } })).json()).list;
+  await page.request.put(`/api/lists/${list.id}/entries`, { data: { entries: [{ variantKey: '3', gender: 'f', shiny: false, tag: 'lucky' }] } });
+  await page.goto(`/lists/${list.id}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('button', { name: 'Français' }).click();
+  // The lucky exclusion would hide what is wanted: off for this check.
+  await sheet.getByRole('button', { name: 'Déjà chanceux' }).click();
+  const code = sheet.locator('code').first();
+  await expect(code).not.toContainText('1-3');
+  await sheet.getByRole('button', { name: 'Avec les pré-évolutions' }).click();
+  await expect(code).toHaveText(/(^|[&,])1-3([&,]|$)|1,2,3/);
+  await expect(code).toContainText('femelle');
+  await expect(code).toContainText('chanceux');
+  // Remembered on this device.
+  await page.reload();
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  await expect(page.locator('dialog[open]').getByRole('button', { name: 'Avec les pré-évolutions' })).toHaveAttribute('aria-pressed', 'true');
+});
