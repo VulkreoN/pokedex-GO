@@ -227,7 +227,7 @@ export function PokedexPage() {
             {multi && <p className="mb-2 text-xs text-ink-3">{t.multi_hint}</p>}
             {(exploded ? cards.length : rows.length) === 0 && <Empty>{t.nothing_here}</Empty>}
             {exploded && (
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {cards.map(({ species, group, id }) => (
                   <li key={id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 190px' }}>
                     <VariantCard
@@ -250,7 +250,7 @@ export function PokedexPage() {
               </ul>
             )}
             {!exploded && (
-              <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              <ul className="stagger grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {sortedRows.map((s) => {
                   const idx = dataset.data;
                   const cover = idx.coverOf.get(s.dex)!;

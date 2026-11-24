@@ -1,3 +1,6 @@
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type Modifier } from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { ListSummary, ListVisibility } from '@mydexpogo/shared';
@@ -54,8 +57,17 @@ export function ListsPage() {
     const ids = (lists.data ?? []).map((l) => l.id);
     const j = i + by;
     if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
-    reorder.mutate(ids);
+    reorder.mutate(arrayMove(ids, i, j));
+  };
+  // Dragged by the handle: a finger, the mouse or the keyboard (space, arrows, space).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    const ids = (lists.data ?? []).map((l) => l.id);
+    if (!over || active.id === over.id) return;
+    reorder.mutate(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
   };
 
   const submit = async (e: FormEvent) => {
@@ -89,7 +101,7 @@ export function ListsPage() {
           <FriendLists lists={friendLists.data} pending={friendLists.isPending} />
         </main>
       ) : (
-      <main className="mx-auto max-w-3xl px-3 pb-24">
+      <main className={`mx-auto max-w-3xl px-3 ${ordering ? 'pb-40' : 'pb-24'}`}>
         {lists.isPending && <Spinner />}
         {lists.data?.length === 0 && (
           <Empty>
@@ -106,24 +118,31 @@ export function ListsPage() {
             </button>
           </div>
         )}
-        <ul className="space-y-2">
-          {lists.data?.map((l, i) =>
-            ordering ? (
-              <li key={l.id} className="card flex items-center gap-2 p-2 pl-3">
-                <span className="min-w-0 flex-1 truncate font-bold">{l.name}</span>
-                <IconButton label={t.move_up} className="h-10 w-10 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
-                </IconButton>
-                <IconButton label={t.move_down} className="h-10 w-10 disabled:opacity-30" disabled={i === lists.data!.length - 1} onClick={() => move(i, 1)}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-                </IconButton>
-              </li>
-            ) : (
-              <ListCard key={l.id} l={l} />
-            ),
-          )}
-        </ul>
+        {ordering ? (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={onDragEnd}>
+            <SortableContext items={(lists.data ?? []).map((l) => l.id)} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-2">
+                {lists.data?.map((l, i) => <SortableRow key={l.id} l={l} first={i === 0} last={i === lists.data!.length - 1} onMove={(by) => move(i, by)} />)}
+              </ul>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <ul className="stagger space-y-2">
+            {lists.data?.map((l) => <ListCard key={l.id} l={l} />)}
+          </ul>
+        )}
       </main>
+      )}
+      {ordering && tab === 'mine' && (
+        // Stays on screen however far the list scrolls.
+        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[64px] z-20 px-3">
+          <div className="mx-auto flex max-w-3xl justify-center">
+            <button type="button" onClick={() => setOrdering(false)} className="toast-in pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-sky px-6 font-semibold text-white shadow-lg hover:brightness-110">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+              {t.pick_done}
+            </button>
+          </div>
+        </div>
       )}
       <Sheet open={open} onClose={() => setOpen(false)} title={t.new_list}>
         <form onSubmit={submit} className="space-y-3">
@@ -134,6 +153,40 @@ export function ListsPage() {
         </form>
       </Sheet>
     </>
+  );
+}
+
+/** Collections only move up and down. */
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
+/** A collection while reordering: dragged by its handle, or moved with the arrows. */
+function SortableRow({ l, first, last, onMove }: { l: ListSummary; first: boolean; last: boolean; onMove: (by: number) => void }) {
+  const t = useT();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: l.id });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`card relative flex items-center gap-1 p-2 ${isDragging ? 'z-10 scale-[1.03] shadow-2xl ring-2 ring-go' : ''} transition-[box-shadow,scale]`}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={t.drag_to_move(l.name)}
+        className={`flex h-10 w-9 shrink-0 touch-none items-center justify-center rounded-lg text-ink-3 hover:bg-paper-2 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+      </button>
+      <span className="min-w-0 flex-1 truncate font-bold">{l.name}</span>
+      <IconButton label={t.move_up} className="h-10 w-10 disabled:opacity-30" disabled={first} onClick={() => onMove(-1)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+      </IconButton>
+      <IconButton label={t.move_down} className="h-10 w-10 disabled:opacity-30" disabled={last} onClick={() => onMove(1)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </IconButton>
+    </li>
   );
 }
 
@@ -162,7 +215,7 @@ function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSumma
 export function PinButton({ on, label, onClick, className = '' }: { on: boolean; label: string; onClick: () => void; className?: string }) {
   return (
     <button type="button" aria-pressed={on} aria-label={label} title={label} onClick={onClick} className={`flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-paper-2 ${on ? 'text-shiny' : 'text-ink-3'} ${className}`}>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" /></svg>
+      <svg key={String(on)} className={on ? 'pop' : ''} width="20" height="20" viewBox="0 0 24 24" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" /></svg>
     </button>
   );
 }
@@ -182,7 +235,7 @@ function FriendLists({ lists, pending }: { lists: ListSummary[] | undefined; pen
       {pinned.length > 0 && (
         <section className="mb-5">
           <h2 className="mb-2 text-base font-bold">{t.pinned} <span className="tnum font-normal text-ink-3">{pinned.length}</span></h2>
-          <ul className="space-y-2">{pinned.map((l) => <ListCard key={l.id} l={{ ...l, description: l.description ? `${l.ownerName} · ${l.description}` : l.ownerName }} showVisibility={false} pinnable />)}</ul>
+          <ul className="stagger space-y-2">{pinned.map((l) => <ListCard key={l.id} l={{ ...l, description: l.description ? `${l.ownerName} · ${l.description}` : l.ownerName }} showVisibility={false} pinnable />)}</ul>
         </section>
       )}
       {[...byOwner.values()].map((ls) => (
@@ -191,7 +244,7 @@ function FriendLists({ lists, pending }: { lists: ListSummary[] | undefined; pen
             {ls[0]!.ownerFavorite && <span className="mr-1 text-shiny" aria-hidden="true">★</span>}
             <Link to={`/friends/${ls[0]!.ownerId}`} className="hover:underline">{ls[0]!.ownerName}</Link> <span className="tnum font-normal text-ink-3">{ls.length}</span>
           </h2>
-          <ul className="space-y-2">{ls.map((l) => <ListCard key={l.id} l={l} showVisibility={false} pinnable />)}</ul>
+          <ul className="stagger space-y-2">{ls.map((l) => <ListCard key={l.id} l={l} showVisibility={false} pinnable />)}</ul>
         </section>
       ))}
     </>

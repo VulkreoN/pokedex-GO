@@ -442,7 +442,7 @@
     "774.fMETEOR": "774.fBLUE"
   },
   "upcoming": {
-    "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax.",
+    "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax. artwork: PokeAPI official artwork ids of each form (normal, and shiny unless listed in noShinyArtwork).",
     "megas": [
       "36.fMEGA",
       "154.fMEGA",
@@ -492,6 +492,58 @@
       "869.fGIGANTAMAX",
       "879.fGIGANTAMAX",
       "892.fGIGANTAMAX"
+    ],
+    "artwork": {
+      "36.fMEGA": 10278,
+      "154.fMEGA": 10282,
+      "160.fMEGA": 10283,
+      "478.fMEGA": 10285,
+      "500.fMEGA": 10286,
+      "530.fMEGA": 10287,
+      "545.fMEGA": 10288,
+      "560.fMEGA": 10289,
+      "604.fMEGA": 10290,
+      "668.fMEGA": 10295,
+      "670.fMEGA": 10296,
+      "689.fMEGA": 10298,
+      "691.fMEGA": 10299,
+      "701.fMEGA": 10300,
+      "718.fMEGA": 10301,
+      "780.fMEGA": 10302,
+      "358.fMEGA": 10306,
+      "485.fMEGA": 10311,
+      "491.fMEGA": 10312,
+      "623.fMEGA": 10313,
+      "678.fMEGA": 10314,
+      "740.fMEGA": 10315,
+      "768.fMEGA": 10316,
+      "801.fMEGA": 10317,
+      "807.fMEGA": 10319,
+      "952.fMEGA": 10320,
+      "970.fMEGA": 10321,
+      "978.fMEGA": 10322,
+      "998.fMEGA": 10325,
+      "359.fMEGA_Z": 10307,
+      "445.fMEGA_Z": 10309,
+      "448.fMEGA_Z": 10310,
+      "133.fGIGANTAMAX": 10205,
+      "809.fGIGANTAMAX": 10208,
+      "823.fGIGANTAMAX": 10212,
+      "826.fGIGANTAMAX": 10213,
+      "834.fGIGANTAMAX": 10214,
+      "839.fGIGANTAMAX": 10215,
+      "841.fGIGANTAMAX": 10216,
+      "842.fGIGANTAMAX": 10217,
+      "844.fGIGANTAMAX": 10218,
+      "851.fGIGANTAMAX": 10220,
+      "858.fGIGANTAMAX": 10221,
+      "869.fGIGANTAMAX": 10223,
+      "879.fGIGANTAMAX": 10224,
+      "892.fGIGANTAMAX": 10226
+    },
+    "noShinyArtwork": [
+      "978.fMEGA",
+      "445.fMEGA_Z"
     ]
   }
 }

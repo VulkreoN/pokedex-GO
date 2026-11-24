@@ -100,6 +100,19 @@ test('collections can be put in any order', async ({ page }) => {
   await expect(page.locator('main li').first()).toContainText('Première');
   await page.reload();
   await expect(page.locator('main li').first()).toContainText('Première');
+  // Dragged by the handle: the second one goes back on top.
+  await page.getByRole('button', { name: 'Réorganiser' }).click();
+  const handle = page.getByRole('button', { name: /^Déplacer Deuxième/ });
+  const target = page.getByRole('button', { name: /^Déplacer Première/ });
+  const from = (await handle.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + ((to.y - from.y) * i) / 10 - 10);
+  await page.mouse.up();
+  await expect(page.locator('main li').first()).toContainText('Deuxième');
+  await page.reload();
+  await expect(page.locator('main li').first()).toContainText('Deuxième');
 });
 
 test('the game string can show pre-evolutions too, keeping gender and luck', async ({ page }) => {

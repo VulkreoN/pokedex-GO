@@ -33,7 +33,7 @@ export function Chip({ active, className = '', ...props }: ButtonHTMLAttributes<
       type="button"
       aria-pressed={active}
       {...props}
-      className={`chip inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`chip inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60 ${
         active ? 'chip-active border-ink bg-ink text-card' : 'border-line bg-card text-ink-2 hover:border-ink-3'
       } ${className}`}
     />
@@ -88,7 +88,7 @@ export function Progress({ done, total }: { done: number; total: number }) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   return (
     <div className="track h-2 w-full overflow-hidden rounded-full bg-paper-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div className="h-full rounded-full bg-go transition-[width]" style={{ width: `${pct}%` }} />
+      <div className="h-full rounded-full bg-go transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
     </div>
   );
 }

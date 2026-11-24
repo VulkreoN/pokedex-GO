@@ -105,6 +105,7 @@ export function App() {
             <ScrollToTop />
             <ErrorBoundary>
             <AnnouncementBanner />
+            <PageFade>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/dex" element={<PokedexPage />} />
@@ -127,6 +128,7 @@ export function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </PageFade>
             </ErrorBoundary>
             <SelectionBar />
             <BottomNav />
@@ -136,4 +138,10 @@ export function App() {
       </LangContext.Provider>
     </QueryClientProvider>
   );
+}
+
+/** Each page fades in when the address changes (not on a query string change, e.g. a tab). */
+function PageFade({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <div key={pathname} className="page-enter">{children}</div>;
 }

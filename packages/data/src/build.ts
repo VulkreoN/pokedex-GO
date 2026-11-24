@@ -222,7 +222,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   }
   log(`game master: ${speciesByDex.size} species, ${[...speciesByDex.values()].reduce((n, s) => n + s.gmForms.size, 0)} forms`);
 
-  const overridesFile = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { megas?: string[]; upcoming?: { megas?: string[]; gmax?: string[] } };
+  const overridesFile = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { megas?: string[]; upcoming?: { megas?: string[]; gmax?: string[]; artwork?: Record<string, number>; noShinyArtwork?: string[] } };
 
   /* Pictures: the mirror's list (PokeMiners file names), Dynamax duplicates skipped (a trait, not a look) */
   const groups = new Map<string, AssetGroup>();
@@ -405,12 +405,17 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     variants[variants.length - 1]!.datamined = true;
   }
   // Megas and Gigantamax of the main games that Pokémon GO does not have yet: shown as not released, with the
-  // species' artwork until the game ships a picture (then the game master and PokeMiners take over).
-  for (const key of [...(overridesFile.upcoming?.megas ?? []), ...(overridesFile.upcoming?.gmax ?? [])]) {
+  // form's official artwork (PokeAPI) until the game ships its own picture (then the game master and PokeMiners
+  // take over: the key then exists and this is skipped).
+  const upcoming = overridesFile.upcoming;
+  for (const key of [...(upcoming?.megas ?? []), ...(upcoming?.gmax ?? [])]) {
     const m = /^(\d+)\.f([A-Z_]+)$/.exec(key);
     const sp = m && speciesByDex.get(Number(m[1]));
     if (!m || !sp || variants.some((v) => v.key === key)) continue;
-    push(sp, { dex: sp.dex, form: m[2]!, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${sp.dex}.png` }, m[2]!, null, null);
+    const art = upcoming?.artwork?.[key];
+    const g: AssetGroup = { dex: sp.dex, form: m[2]!, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${art ?? sp.dex}.png` };
+    if (art && !upcoming?.noShinyArtwork?.includes(key)) g.shiny = `${POKEAPI_ARTWORK}shiny/${art}.png`;
+    push(sp, g, m[2]!, null, null);
     variants[variants.length - 1]!.datamined = true;
   }
   for (const sp of speciesByDex.values()) {

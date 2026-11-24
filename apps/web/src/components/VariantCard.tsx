@@ -37,7 +37,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
       >
         <div className="relative">
           {selectable && (
-            <span className={`absolute -left-3 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] ${selected ? 'border-go bg-go text-white' : 'border-line bg-card text-transparent'}`}>✓</span>
+            <span key={String(selected)} className={`absolute -left-3 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] ${selected ? 'pop border-go bg-go text-white' : 'border-line bg-card text-transparent'}`}>✓</span>
           )}
           <Sprite idx={idx} variant={v} shiny={shiny && v.hasShiny} muted={shinyMissing} size={88} />
           {(() => {

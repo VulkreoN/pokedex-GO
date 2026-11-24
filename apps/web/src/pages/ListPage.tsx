@@ -312,7 +312,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         )}
         {cards.length > 0 && (picking || owner) && <p className="pb-2 pt-1.5 text-xs text-ink-3">{picking ? t.pick_hint : t.list_owner_hint}</p>}
         {cards.length > 0 && !picking && !owner && <div className="pb-2" />}
-        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-5">
           {cards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
             const sp = v && idx.speciesByDex.get(v.dex);
@@ -327,7 +327,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                 <div className={`card relative flex h-full flex-col items-center px-1 pb-2 pt-1 ${isPicked ? 'ring-[3px] ring-sky' : allDone ? 'ring-2 ring-go' : myOffers ? 'ring-2 ring-sky' : ''}`}>
                   {picking && (
                     <span className={`pointer-events-none absolute left-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 ${isPicked ? 'border-sky bg-sky text-white' : 'border-line bg-card'}`} aria-hidden="true">
-                      {isPicked && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
+                      {isPicked && <svg className="pop" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>}
                     </span>
                   )}
                   {owner && !picking && (
@@ -351,7 +351,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                       <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone} size={72} />
                       {c.shiny && <Sparkle className={`absolute -right-1 top-0 ${allDone ? 'text-shiny' : 'text-ink-3'}`} />}
                       {allDone && (
-                        <span className="absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
+                        <span className="pop absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
                         </span>
                       )}
@@ -381,7 +381,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                             }`}
                           >
                             {genderSymbol(m.gender)}
-                            {m.done && <span className="text-[10px]">✓</span>}
+                            {m.done && <span className="pop text-[10px]">✓</span>}
                           </button>
                         );
                       })}
