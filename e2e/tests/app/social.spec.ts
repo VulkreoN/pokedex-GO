@@ -38,6 +38,7 @@ test("a friend's list updates live while I look at it", async ({ browser }) => {
   const s = await friends(browser, 2);
   await s.friend.goto(`/lists/${s.listId}`);
   await expect(s.friend.getByText('0 / 4 attrapés')).toBeVisible();
+  await expect(s.friend.locator('html')).toHaveAttribute('data-live', 'ready');
   // The owner catches one; the friend's open page follows without reloading.
   await s.owner.request.put(`/api/lists/${s.listId}/entries`, { data: { entries: [{ variantKey: '25', gender: 'm', shiny: false, done: true }] } });
   await expect(s.friend.getByText('1 / 4 attrapés')).toBeVisible({ timeout: 10_000 });
@@ -83,14 +84,17 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
 });
 
 test('a friend request lights the bell live', async ({ browser }) => {
-  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.4.1' } });
-  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.4.2' } });
+  const ip = () => `10.7.4.${1 + Math.floor(Math.random() * 250)}`;
+  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': ip() } });
+  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': ip() } });
   const pa = await a.newPage();
   const pb = await b.newPage();
   const ua = await apiRegister(pa.request, uniq('bell'));
   const ub = await apiRegister(pb.request, uniq('asker'));
   await pa.goto('/dex');
   await expect(pa.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
+  // Live from here: slow machines (CI) could send the request before the page listens.
+  await expect(pa.locator('html')).toHaveAttribute('data-live', 'ready');
   await pb.request.post('/api/friends/requests', { data: { friendCode: ua.friendCode } });
   await expect(pa.getByRole('link', { name: 'Notifications (1)' })).toBeVisible({ timeout: 10_000 });
   await pa.goto('/notifications');
