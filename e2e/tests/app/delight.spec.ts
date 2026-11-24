@@ -46,3 +46,21 @@ test('copy buttons say "Copied ✓"; species have their cry; the header takes th
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-team', 'valor');
 });
+
+test('notifications can be cleared one by one or all at once', async ({ browser }) => {
+  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.12.${Math.floor(Math.random() * 250)}.1` } });
+  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.12.${Math.floor(Math.random() * 250)}.2` } });
+  const pa = await a.newPage();
+  const pb = await b.newPage();
+  const ua = await apiRegister(pa.request);
+  await apiRegister(pb.request);
+  await pb.request.post('/api/friends/requests', { data: { friendCode: ua.friendCode } });
+  await pa.goto('/notifications');
+  await expect(pa.getByText(/veut être ton ami/)).toBeVisible();
+  await pa.getByRole('button', { name: 'Effacer cette notification' }).first().click();
+  await expect(pa.getByText(/veut être ton ami/)).toHaveCount(0);
+  await pa.reload();
+  await expect(pa.getByText(/veut être ton ami/)).toHaveCount(0);
+  await a.close();
+  await b.close();
+});

@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router';
 import type { AppNotification } from '@mydexpogo/shared';
-import { Button, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Button, Empty, IconButton, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useDataset } from '../lib/dataset.js';
-import { useMarkRead, useNotifications } from '../lib/social.js';
+import { useDeleteNotification, useMarkRead, useNotifications } from '../lib/social.js';
 
 function target(n: AppNotification): string {
   if (n.type === 'raid') return '/game';
@@ -20,6 +20,7 @@ export function NotificationsPage() {
   const q = useNotifications();
   const dataset = useDataset();
   const read = useMarkRead();
+  const clear = useDeleteNotification();
   const unread = q.data?.unread ?? 0;
   // Opening the inbox counts as seeing it; rows stay highlighted until the next visit.
   useEffect(() => {
@@ -57,19 +58,29 @@ export function NotificationsPage() {
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-2">
         {q.isPending && <Spinner />}
         {q.data?.items.length === 0 && <Empty>{t.notifications_empty}</Empty>}
-        {unread > 0 && (
-          <Button tone="ghost" className="mb-2 w-full" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>
+        {!!q.data?.items.length && (
+          <div className="mb-2 flex gap-2">
+            {unread > 0 && <Button tone="ghost" className="flex-1" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
+            {q.data.items.some((n) => n.type !== 'account') && (
+              <Button tone="ghost" className="flex-1" onClick={() => { if (confirm(t.notifications_clear_confirm)) clear.mutate(undefined); }}>{t.notifications_clear}</Button>
+            )}
+          </div>
         )}
         <ul className="space-y-2">
           {q.data?.items.map((n) => (
-            <li key={n.id}>
-              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
+            <li key={n.id} className="relative">
+              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 ${n.type !== 'account' ? 'pr-12' : ''} ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold">{text(n)}</span>
                   <span className="tnum block text-xs text-ink-3">{when.format(new Date(n.createdAt))}</span>
                 </span>
               </Link>
+              {n.type !== 'account' && (
+                <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </IconButton>
+              )}
             </li>
           ))}
         </ul>

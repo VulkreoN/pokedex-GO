@@ -21,6 +21,22 @@ export function useOffer(listId: string) {
 export const useNotifications = (enabled = true) =>
   useQuery({ queryKey: ['notifications'], queryFn: () => api<{ items: AppNotification[]; unread: number }>('/notifications'), enabled, refetchInterval: 5 * 60_000 });
 
+/** Deletes one notification (or all, without an id); account changes stay. Gone from the page at once. */
+export function useDeleteNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id?: string) => api(`/notifications${id ? `/${id}` : ''}`, { method: 'DELETE' }),
+    onMutate: (id) => {
+      qc.setQueryData<{ items: AppNotification[]; unread: number }>(['notifications'], (old) => {
+        if (!old) return old;
+        const items = old.items.filter((n) => n.type === 'account' || (id ? n.id !== id : false));
+        return { items, unread: items.filter((n) => !n.readAt).length };
+      });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
 export function useMarkRead() {
   const qc = useQueryClient();
   return useMutation({

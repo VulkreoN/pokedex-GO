@@ -583,6 +583,24 @@ describe('admin panel', () => {
     expect(items[0].actor.username).toBe(admin.user.username);
   });
 
+  it('clears notifications one by one or all at once, but keeps the ones about the account', async () => {
+    const u = await register(name('clear'));
+    const f = await register(name('clearf'));
+    await f.post('/friends/requests', { friendCode: u.user.friendCode });
+    await admin.patch(`/users/${u.user.id}/role`, { role: 'manager' });
+    const before = (await u.get('/notifications')).body.items;
+    const request = before.find((n: any) => n.type === 'friend_request');
+    expect(request).toBeTruthy();
+    expect((await u.del(`/notifications/${request.id}`)).status).toBe(200);
+    expect((await u.get('/notifications')).body.items.map((n: any) => n.id)).not.toContain(request.id);
+    // Someone else's notification cannot be deleted.
+    const account = before.find((n: any) => n.type === 'account');
+    await f.del(`/notifications/${account.id}`);
+    await u.del(`/notifications/${account.id}`);
+    expect((await u.del('/notifications')).status).toBe(200);
+    expect((await u.get('/notifications')).body.items.map((n: any) => n.type)).toEqual(['account']);
+  });
+
   it('closes sign-ups, opens them by invitation, caps them per day', async () => {
     try {
       await admin.put('/admin/signups', { mode: 'closed', dailyCap: null });
