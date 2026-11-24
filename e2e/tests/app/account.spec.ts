@@ -301,4 +301,8 @@ test('the welcome tour: game language, a first list, friends, notifications; not
   expect((await (await page.request.get('/api/auth/me')).json()).user.onboarded).toBe(true);
   await page.goto('/dex');
   await expect(page.getByRole('link', { name: 'Continuer' })).toHaveCount(0);
+  // It can be replayed from Me.
+  await page.goto('/me');
+  await page.getByRole('link', { name: /Revoir la visite guidée/ }).click();
+  await expect(page).toHaveURL(/\/welcome$/);
 });
