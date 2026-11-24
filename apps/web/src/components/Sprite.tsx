@@ -9,6 +9,8 @@ import { imageUrl, type DatasetIndex } from '../lib/dataset.js';
 export function Sprite({ idx, variant, shiny = false, muted = false, dim = false, size = 64, className = '' }: { idx: DatasetIndex; variant: Variant; shiny?: boolean; muted?: boolean; dim?: boolean; size?: number; className?: string }) {
   const [failed, setFailed] = useState(false);
   const url = imageUrl(idx, variant, shiny) ?? imageUrl(idx, variant, false);
+  // Official artwork (forms GO does not have yet) fills its square; game pictures keep a wide margin. Shown smaller.
+  const artwork = !!url && isArtwork(url);
   if (!url || failed) {
     return (
       <div className={`flex items-center justify-center rounded-full bg-paper-2 ${className}`} style={{ width: size, height: size }} aria-hidden>
@@ -25,7 +27,7 @@ export function Sprite({ idx, variant, shiny = false, muted = false, dim = false
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}
-      className={`${muted ? 'silhouette' : ''} ${dim ? 'opacity-50 saturate-[0.6]' : ''} select-none object-contain ${className}`}
+      className={`${muted ? 'silhouette' : ''} ${dim ? 'opacity-50 saturate-[0.6]' : ''} ${artwork ? 'scale-[0.72]' : ''} select-none object-contain ${className}`}
       style={{ width: size, height: size }}
       draggable={false}
     />
@@ -39,3 +41,6 @@ export function Sparkle({ className = '' }: { className?: string }) {
     </svg>
   );
 }
+
+/** A main-series artwork rather than a game picture (no transparent margin around the Pokémon). */
+export const isArtwork = (url: string) => url.includes('/official-artwork/');

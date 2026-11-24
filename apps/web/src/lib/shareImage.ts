@@ -9,6 +9,7 @@ import { canvasPen, drawGender } from './genderGlyph.js';
 import { localized } from './i18n.js';
 import { mapLimit, toDataUrl } from './pdf.js';
 import { qrModules } from './qr.js';
+import { isArtwork } from '../components/Sprite.js';
 
 export interface ImageLabels {
   by: (name: string) => string;
@@ -104,6 +105,7 @@ export async function renderListImages(idx: DatasetIndex, list: ListDetail, lang
     const sp = v && idx.speciesByDex.get(v.dex);
     return v && sp ? [{ c, v, sp }] : [];
   });
+  const pictureUrls = rows.map(({ c, v }) => imageUrl(idx, v, c.shiny) ?? imageUrl(idx, v, false));
   const pictures = await mapLimit(rows, 8, async ({ c, v }) => {
     const url = imageUrl(idx, v, c.shiny) ?? imageUrl(idx, v, false);
     const data = url ? await toDataUrl(url) : null;
@@ -200,11 +202,13 @@ export async function renderListImages(idx: DatasetIndex, list: ListDetail, lang
     }
     const pic = pictures[i];
     // Game pictures have a wide transparent margin: drawn larger than the box they fill.
-    const S = 210 * k;
+    // Official artwork has no margin: drawn smaller, lower, to sit like a game picture.
+    const art = isArtwork(pictureUrls[i] ?? '');
+    const S = (art ? 150 : 210) * k;
     if (pic) {
       ctx.globalAlpha = caught ? 0.45 : 1;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(pic, x + (CARD_W - S) / 2, y - 2 * k, S, S);
+      ctx.drawImage(pic, x + (CARD_W - S) / 2, y + (art ? 30 : -2) * k, S, S);
       ctx.globalAlpha = 1;
     }
     if (c.shiny) sparkle(ctx, x + CARD_W - 34 * k, y + 36 * k, 14 * k);
