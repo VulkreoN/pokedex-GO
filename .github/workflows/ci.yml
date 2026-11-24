@@ -14,9 +14,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push cancels the run still going on the same branch, main included: only the latest commit is tested and
+# released (it holds the earlier ones), instead of every push queueing a full run behind the previous one. A run
+# cancelled during its release is harmless: the image tags are per commit, and release-k8s never rolls back.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -99,7 +102,8 @@ jobs:
             ${{ steps.name.outputs.image }}:latest
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+          # A slow or failing cache upload must not fail the build.
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }},ignore-error=true
 
   release-k8s:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.K8S_RELEASE == 'true'
