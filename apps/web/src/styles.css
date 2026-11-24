@@ -146,4 +146,22 @@ h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.0
 /* Something just got ticked. */
 .pop { animation: pop 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .toast-in { animation: toast-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Shiny stars twinkle softly. */
+@keyframes twinkle { 0%, 100% { transform: scale(0.85) rotate(0deg); opacity: 0.75; } 50% { transform: scale(1.12) rotate(12deg); opacity: 1; } }
+.twinkle { animation: twinkle 2.4s ease-in-out infinite; transform-origin: center; }
+/* A shiny just ticked: its star flares. */
+@keyframes flare { 0% { transform: scale(0.6); filter: drop-shadow(0 0 0 currentColor); } 40% { transform: scale(1.8) rotate(25deg); filter: drop-shadow(0 0 6px currentColor); } 100% { transform: scale(1); } }
+.flare { animation: flare 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both, twinkle 2.4s ease-in-out 0.6s infinite; }
+/* Loading: a Poké Ball that wobbles, grey cards that pulse. */
+@keyframes wobble { 0%, 60%, 100% { transform: rotate(0deg); } 70% { transform: rotate(-18deg); } 80% { transform: rotate(14deg); } 90% { transform: rotate(-8deg); } }
+.pokeball-wobble { animation: wobble 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
+@keyframes shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.skeleton { background: var(--paper-2); animation: shimmer 1.3s ease-in-out infinite; }
+/* Team colours for the header (Me). */
+[data-team='valor'] { --sky-top: #f2594b; --sky-bottom: #c62f45; }
+[data-team='mystic'] { --sky-top: #3f8fe0; --sky-bottom: #2551b8; }
+[data-team='instinct'] { --sky-top: #d98e04; --sky-bottom: #b5520e; }
+.dark[data-team='valor'] { --sky-top: #8e2a32; --sky-bottom: #5f1a2b; }
+.dark[data-team='mystic'] { --sky-top: #1f4e8c; --sky-bottom: #1a2f66; }
+.dark[data-team='instinct'] { --sky-top: #8a6a16; --sky-bottom: #6b4314; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

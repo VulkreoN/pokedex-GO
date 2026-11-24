@@ -6,8 +6,8 @@ import { FriendQr } from '../components/FriendQr.js';
 import { InstallBanner } from '../components/InstallBanner.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { useToast } from '../components/toast.js';
-import { Button, Chip, Spinner } from '../components/ui.js';
-import { api, copyText } from '../lib/api.js';
+import { Button, Chip, CopyButton, Spinner } from '../components/ui.js';
+import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { useCreateList } from '../lib/lists.js';
@@ -137,7 +137,7 @@ export function WelcomePage() {
             <div className="text-sm opacity-80">{t.my_code}</div>
             <div className="tnum text-[26px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
             <FriendQr code={me.data.friendCode} size={160} />
-            <Button tone="ghost" className="bg-white/15 text-inherit hover:bg-white/25" onClick={async () => { if (await copyText(me.data!.friendCode)) toast(t.copied); }}>{t.copy}</Button>
+            <CopyButton tone="ghost" className="bg-white/15 text-inherit hover:bg-white/25" text={me.data!.friendCode} />
           </div>,
           <Button tone="primary" className="flex-1" onClick={next}>{t.welcome_next}</Button>,
         )}

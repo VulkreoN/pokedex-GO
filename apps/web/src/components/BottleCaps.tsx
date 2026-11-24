@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { candidateSearch, HYPER_TRAINING, type HtStat } from '../lib/hyperTraining.js';
-import { copyText } from '../lib/api.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { Button, Chip } from './ui.js';
-import { useToast } from './toast.js';
+import { Button, Chip, CopyButton } from './ui.js';
 
 /** Hyper Training helper: candidate search string, rules, and the task for each IV step. */
 export function BottleCaps() {
   const t = useT();
   const { lang } = useLang();
-  const toast = useToast();
   const [shinyOnly, setShinyOnly] = useState(true);
   const [stat, setStat] = useState<HtStat>('atk');
   const [current, setCurrent] = useState(0);
@@ -24,7 +21,7 @@ export function BottleCaps() {
         <p className="mt-1 text-sm text-ink-2">{t.caps_candidates_hint}</p>
         <code className="mt-2 block break-all rounded-xl bg-paper-2 px-3 py-2 text-sm">{search}</code>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button tone="primary" onClick={async () => { if (await copyText(search)) toast(t.copied); }}>{t.copy}</Button>
+          <CopyButton tone="primary" text={search} />
           <Chip active={shinyOnly} onClick={() => setShinyOnly((v) => !v)}>{t.caps_shiny_only}</Chip>
         </div>
       </section>

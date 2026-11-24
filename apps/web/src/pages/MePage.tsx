@@ -16,6 +16,7 @@ import { fmtCode } from './FriendsPage.js';
 import { relativeTime, useAdminStats, useDataStatus } from '../lib/admin.js';
 import type { Role } from '@mydexpogo/shared';
 import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
+import { TEAMS, setTeam, useTeam } from '../lib/team.js';
 
 export function MePage() {
   const t = useT();
@@ -37,6 +38,7 @@ export function MePage() {
   const toast = useToast();
 
   const pick = (th: Theme) => { setTheme(th); applyTheme(th); };
+  const team = useTeam();
   const ds = dataset.data?.ds;
 
   return (
@@ -101,6 +103,15 @@ export function MePage() {
           <div className="flex gap-2">
             {(['auto', 'light', 'dark'] as Theme[]).map((th) => (
               <Chip key={th} active={theme === th} onClick={() => pick(th)}>{{ auto: t.theme_auto, light: t.theme_light, dark: t.theme_dark }[th]}</Chip>
+            ))}
+          </div>
+          <h3 className="mb-2 mt-4 text-sm font-semibold text-ink-2">{t.team_colour}</h3>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.team_colour}>
+            {TEAMS.map((tm) => (
+              <Chip key={tm} active={team === tm} onClick={() => setTeam(tm)}>
+                {tm !== 'none' && <span className={`h-3 w-3 rounded-full ${{ mystic: 'bg-[#3f8fe0]', valor: 'bg-[#e2453d]', instinct: 'bg-[#e0a010]' }[tm]}`} aria-hidden="true" />}
+                {t.team_names[tm]}
+              </Chip>
             ))}
           </div>
         </section>

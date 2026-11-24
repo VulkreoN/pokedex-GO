@@ -6,7 +6,7 @@ import { ListHistory } from '../components/ListHistory.js';
 import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, IconButton, Progress, Sheet, TextField, TopBar } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -40,7 +40,7 @@ function ListView({ query, id, token }: { query: Q; id?: string; token?: string 
   const t = useT();
   const dataset = useDataset();
   const me = useMe();
-  if (query.isPending || dataset.isPending) return <Spinner />;
+  if (query.isPending || dataset.isPending) return <main className="mx-auto max-w-3xl px-3 pt-20"><CardsSkeleton count={9} className="grid-cols-3 sm:grid-cols-5" /></main>;
   if (query.isError || !query.data || !dataset.data) {
     return (
       <>
@@ -123,15 +123,26 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
   const reward = (members: ListDetailEntry[], value: boolean) => {
     const changed = new Set(members.map((m) => `${m.variantKey}|${m.gender}|${m.shiny}|${m.tag}`));
-    const completes = value && list.entries.length > 0 && list.entries.every((e) => e.done || changed.has(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`));
-    if (completes) {
+    const total = list.entries.length;
+    const before = list.entries.filter((e) => e.done).length;
+    const after = list.entries.filter((e) => (changed.has(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`) ? value : e.done)).length;
+    // A quarter, half, three quarters crossed on the way up: a step worth a sound and a word.
+    const step = [75, 50, 25].find((p) => before * 100 < p * total && after * 100 >= p * total);
+    if (value && total > 0 && after === total) {
       feedback('success');
       celebrate();
+    } else if (value && step) {
+      feedback('milestone');
+      toast(t.milestone(step));
     } else feedback(value ? 'tick' : 'untick');
   };
+  const writeDone = (members: ListDetailEntry[], value: boolean | ((m: ListDetailEntry) => boolean)) =>
+    upsert.mutateAsync({ id: list.id, entries: members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: typeof value === 'function' ? value(m) : value, note: m.note })) });
   const setDone = (members: ListDetailEntry[], value: boolean) => {
     reward(members, value);
-    upsert.mutate({ id: list.id, entries: members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) });
+    void writeDone(members, value);
+    // Unticking by mistake is easy with a finger: it can be taken back.
+    if (!value) toast(t.unticked(members.length), { action: { label: t.undo, onClick: () => void writeDone(members, true) } });
   };
   const setOffer = (m: ListDetailEntry, on: boolean) => {
     feedback(on ? 'tick' : 'untick');
@@ -194,12 +205,18 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
     for (let k = 0; k < items.length; k += 1000) await send(items.slice(k, k + 1000));
   };
   const bulkDone = (value: boolean) => {
-    reward(pickedMembers.filter((m) => m.done !== value), value);
+    const changing = pickedMembers.filter((m) => m.done !== value);
+    reward(changing, value);
+    if (changing.length) toast(value ? t.ticked_many(changing.length) : t.unticked(changing.length), { action: { label: t.undo, onClick: () => void writeDone(changing, !value) } });
     return bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
   };
   const bulkRemove = () => {
     if (!confirm(t.pick_confirm_remove(pickedMembers.length))) return;
-    void bulk(() => inParts(pickedMembers, (part) => remove.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, shiny: m.shiny, tag: m.tag, gender: m.gender })) })));
+    const gone = pickedMembers;
+    void bulk(async () => {
+      await inParts(gone, (part) => remove.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, shiny: m.shiny, tag: m.tag, gender: m.gender })) }));
+      toast(t.removed(gone.length), { action: { label: t.undo, onClick: () => void inParts(gone, (part) => writeDone(part, (m) => m.done)) } });
+    });
   };
   const bulkOffer = () => bulk(async () => { for (const m of pickedMembers.filter((m) => !m.done && !m.offeredByMe)) await offer.mutateAsync({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on: true }); });
   const toBasket = () => {
@@ -368,7 +385,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                   >
                     <div className="relative">
                       <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone} size={72} />
-                      {c.shiny && <Sparkle className={`absolute -right-1 top-0 ${allDone ? 'text-shiny' : 'text-ink-3'}`} />}
+                      {c.shiny && <Sparkle key={String(allDone)} className={`absolute -right-1 top-0 ${allDone ? 'flare text-shiny' : 'text-ink-3'}`} />}
                       {allDone && (
                         <span className="pop absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
@@ -557,7 +574,16 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             ))}
             <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="block"><Button className="w-full">{t.nav_dex}</Button></Link>
             {owner && (
-              <Button tone="danger" className="w-full" onClick={async () => { await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] }); setSelected(null); }}>
+              <Button
+                tone="danger"
+                className="w-full"
+                onClick={async () => {
+                  const gone = selected.members;
+                  await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] });
+                  setSelected(null);
+                  toast(t.removed(1), { action: { label: t.undo, onClick: () => void writeDone(gone, (m) => m.done) } });
+                }}
+              >
                 {t.remove_entry}
               </Button>
             )}

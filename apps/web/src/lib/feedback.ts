@@ -56,8 +56,8 @@ function note(a: AudioContext, at: number, from: number, to: number, dur: number
   osc.stop(at + dur + 0.02);
 }
 
-export type FeedbackKind = 'tick' | 'untick' | 'drop' | 'success';
-const VIBRATIONS: Record<FeedbackKind, number | number[]> = { tick: 12, untick: 8, drop: 18, success: [20, 60, 30] };
+export type FeedbackKind = 'tick' | 'untick' | 'drop' | 'milestone' | 'success';
+const VIBRATIONS: Record<FeedbackKind, number | number[]> = { tick: 12, untick: 8, drop: 18, milestone: [15, 40, 15], success: [20, 60, 30] };
 
 export function feedback(kind: FeedbackKind) {
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
@@ -69,6 +69,8 @@ export function feedback(kind: FeedbackKind) {
   if (kind === 'tick') note(a, t, 880, 1320, 0.09, 0.08);
   else if (kind === 'untick') note(a, t, 520, 360, 0.09, 0.06);
   else if (kind === 'drop') note(a, t, 220, 140, 0.12, 0.1);
+  // Two rising notes: a step taken.
+  else if (kind === 'milestone') [659.25, 987.77].forEach((f, i) => note(a, t + i * 0.09, f, f * 1.01, 0.16, 0.07));
   // C, E, G, high C: a little "done".
   else [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => note(a, t + i * 0.08, f, f * 1.01, 0.22, 0.07));
 }

@@ -17,6 +17,7 @@ import { ListsPage } from './pages/ListsPage.js';
 import { MePage } from './pages/MePage.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
+import { applyTeam } from './lib/team.js';
 
 /** Pages not everyone opens load on demand, then are fetched in the background once the app is idle. */
 const pageLoaders = {
@@ -109,6 +110,7 @@ export function App() {
   };
   useEffect(() => {
     applyTheme(getTheme());
+    applyTeam();
     document.documentElement.lang = lang;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => applyTheme(getTheme());

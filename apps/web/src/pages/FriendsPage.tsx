@@ -2,8 +2,8 @@ import { useFollowList } from '../lib/social.js';
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../components/toast.js';
-import { Button, Empty, Progress, Spinner, TextField, TopBar } from '../components/ui.js';
-import { ApiError, copyText } from '../lib/api.js';
+import { Button, CopyButton, Empty, Progress, Spinner, TextField, TopBar } from '../components/ui.js';
+import { ApiError } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { useT, type T } from '../lib/i18n.js';
 import { PinButton } from './ListsPage.js';
@@ -76,7 +76,7 @@ export function FriendsPage() {
             <div className="text-sm opacity-70">{t.my_code}</div>
             <div className="tnum mt-1 text-[28px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
             <div className="mt-2 flex gap-2">
-              <Button tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" onClick={async () => { if (await copyText(me.data!.friendCode)) toast(t.copied); }}>{t.copy}</Button>
+              <CopyButton tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" text={me.data!.friendCode} />
               <Button tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" aria-expanded={showQr} onClick={() => setShowQr((v) => !v)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" /></svg>
                 {showQr ? t.qr_hide : t.qr_show}

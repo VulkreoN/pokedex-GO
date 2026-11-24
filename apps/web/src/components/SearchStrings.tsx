@@ -1,15 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
-import { copyText } from '../lib/api.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions } from '../lib/searchString.js';
-import { useToast } from './toast.js';
-import { Button, Chip } from './ui.js';
+import { Chip, CopyButton } from './ui.js';
 
 export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
   const t = useT();
-  const toast = useToast();
   const { lang } = useLang();
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [gameLang, setGameLangState] = useState<GameLang>(() => savedGameLang(lang));
@@ -99,15 +96,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
                 )}
               </p>
             )}
-            <Button
-              tone="primary"
-              className="mt-2 w-full"
-              onClick={async () => {
-                if (await copyText(s.text)) toast(t.copied);
-              }}
-            >
-              {t.copy}
-            </Button>
+            <CopyButton tone="primary" className="mt-2 w-full" text={s.text} />
           </li>
         ))}
       </ul>

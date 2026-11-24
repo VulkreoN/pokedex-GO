@@ -5,7 +5,7 @@ import { AddToListSheet, groupVariants, type VariantGroup } from '../components/
 import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSheet.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { VariantCard, variantForGender, type GenderFilter } from '../components/VariantCard.js';
-import { Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
+import { Button, CardsSkeleton, Chip, Empty, Sheet, TopBar } from '../components/ui.js';
 import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
 import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
@@ -212,7 +212,7 @@ export function PokedexPage() {
       </TopBar>
 
       <main className="mx-auto max-w-3xl px-3 pb-28">
-        {dataset.isPending && <Spinner />}
+        {dataset.isPending && <CardsSkeleton count={12} />}
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
         <WelcomeResume />
         <InstallBanner />

@@ -200,7 +200,14 @@ function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSumma
     <li className="relative">
       <Link to={`/lists/${l.id}`} className="card block p-3 transition hover:brightness-[0.98]">
         <div className="flex items-center gap-2">
-          <span className={`min-w-0 flex-1 truncate text-[17px] font-bold ${pinnable ? 'pr-9' : ''}`}>{l.name}</span>
+          <span className={`min-w-0 flex-1 truncate text-[17px] font-bold ${pinnable ? 'pr-9' : ''}`}>
+            {l.entryCount > 0 && l.doneCount === l.entryCount && (
+              <span className="mr-1.5 inline-block text-shiny" role="img" aria-label={t.collection_complete} title={t.collection_complete}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="-mt-1 inline" aria-hidden="true"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5Z" /></svg>
+              </span>
+            )}
+            {l.name}
+          </span>
           {showVisibility && <VisibilityIcon v={l.visibility} />}
         </div>
         {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}

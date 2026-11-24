@@ -25,12 +25,13 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
   useEffect(() => {
     if (!group) return;
     const v: Variant = group.variants[0]!;
-    setReleased(v.datamined ? false : true);
     setEn(group.label?.en ?? '');
     setFr(group.label?.fr ?? '');
     const o = overrides.data?.find((x) => x.variantKey === v.key);
     const g = o?.genders;
     setGenders(!g ? 'auto' : g.length === 0 ? 'none' : g.length === 2 ? 'mf' : g[0] === 'm' ? 'm' : 'f');
+    // What managers set, not what players see: a variant left on automatic stays so when only its name changes.
+    setReleased(o?.released ?? null);
     setShinyOut(o?.shinyReleased ?? null);
     setNoEvolve(o?.noEvolve ?? null);
     setNoMega(o?.noMega ?? null);

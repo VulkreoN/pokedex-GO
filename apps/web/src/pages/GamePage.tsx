@@ -3,11 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { XEmbed } from '../components/XEmbed.js';
 import { BottleCaps } from '../components/BottleCaps.js';
 import { useToast } from '../components/toast.js';
-import { api, copyText } from '../lib/api.js';
+import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { useDataset } from '../lib/dataset.js';
 import { useTheme } from '../lib/theme.js';
-import { Button, TextField } from '../components/ui.js';
+import { Button, CopyButton, TextField } from '../components/ui.js';
 import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
@@ -229,7 +229,7 @@ function Events() {
                 {c.rewards.length > 0 && <div className="mt-0.5 text-xs text-ink-2">{c.rewards.join(' · ')}</div>}
                 <div className="mt-2 flex items-center gap-2">
                   <code className="flex-1 truncate rounded-lg bg-paper-2 px-2 py-1.5 text-sm">{c.code}</code>
-                  <Button className="min-h-9 px-3 text-sm" onClick={async () => { if (await copyText(c.code)) toast(t.copied); }}>{t.copy}</Button>
+                  <CopyButton className="min-h-9 px-3 text-sm" text={c.code} />
                   <a href={c.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-xl bg-go px-3 text-sm font-semibold text-white">{t.redeem}</a>
                 </div>
               </li>

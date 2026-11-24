@@ -3,8 +3,8 @@ import { Link, Navigate, useSearchParams } from 'react-router';
 import type { Role } from '@mydexpogo/shared';
 import { ClientErrors } from '../components/ClientErrors.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, Chip, Empty, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
-import { api, copyText } from '../lib/api.js';
+import { Badge, Button, Chip, CopyButton, Empty, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import {
   relativeTime,
@@ -233,7 +233,7 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
               <p className="text-xs">{t.admin_code_once}</p>
               <div className="mt-1 flex items-center gap-2">
                 <code className="tnum flex-1 text-base font-bold">{issued}</code>
-                <Button className="min-h-8 px-3 text-xs" onClick={async () => { if (await copyText(issued)) toast(t.copied); }}>{t.copy}</Button>
+                <CopyButton className="min-h-8 px-3 text-xs" text={issued} />
               </div>
             </div>
           )}
@@ -306,7 +306,7 @@ function Signups() {
             <p className="text-xs">{t.admin_code_once}</p>
             <div className="mt-1 flex items-center gap-2">
               <code className="tnum flex-1 text-base font-bold">{code}</code>
-              <Button className="min-h-8 px-3 text-xs" onClick={async () => { if (await copyText(code)) toast(t.copied); }}>{t.copy}</Button>
+              <CopyButton className="min-h-8 px-3 text-xs" text={code} />
             </div>
           </div>
         )}

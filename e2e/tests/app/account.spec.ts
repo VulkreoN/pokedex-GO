@@ -184,7 +184,8 @@ test('a manager marks a datamined variant released from its card, for everyone',
   expect((await admin.request.patch(`/api/users/${m.id}/role`, { data: { role: 'manager' } })).status()).toBe(200);
 
   const ds = await (await mgr.request.get('/api/data/pokedex.json')).json();
-  const target = ds.variants.find((v: any) => v.datamined && v.kind === 'costume' && v.label && !v.gender);
+  // Not one the gender review test corrects at the same time (recent Pikachu costumes).
+  const target = ds.variants.find((v: any) => v.datamined && v.kind === 'costume' && v.label && !v.gender && !v.gendersGuessed && v.dex !== 25);
   const sp = ds.species.find((s: any) => s.dex === target.dex);
   const cardName = `Ajouter ${sp.name.fr ?? sp.name.en} ${target.label.fr ?? target.label.en}`;
   const cardOf = (p: typeof mgr) => p.locator('li', { has: p.getByRole('button', { name: cardName, exact: true }) });

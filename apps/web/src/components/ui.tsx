@@ -4,6 +4,8 @@ import { useMe } from '../lib/auth.js';
 import { useNotifications } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
 import { useTheme } from '../lib/theme.js';
+import { copyText } from '../lib/api.js';
+import { feedback } from '../lib/feedback.js';
 
 type Tone = 'primary' | 'quiet' | 'danger' | 'ghost';
 const tones: Record<Tone, string> = {
@@ -218,7 +220,59 @@ export function Spinner() {
   const t = useT();
   return (
     <div className="flex justify-center py-16" role="status" aria-label={t.loading}>
-      <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-line border-t-go" />
+      <Pokeball className="pokeball-wobble h-9 w-9" />
     </div>
+  );
+}
+
+/** Copies a text; the button itself says "Copied ✓" for a moment, with a small sound. */
+export function CopyButton({ text, label, className = '', tone, disabled }: { text: string; label?: string; className?: string; tone?: Tone; disabled?: boolean }) {
+  const t = useT();
+  const [done, setDone] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <Button
+      tone={tone}
+      disabled={disabled}
+      className={className}
+      onClick={async () => {
+        if (!(await copyText(text))) return;
+        feedback('tick');
+        setDone(true);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setDone(false), 2000);
+      }}
+    >
+      {done ? <span key="done" className="pop" role="status">{t.copied_check}</span> : (label ?? t.copy)}
+    </Button>
+  );
+}
+
+/** A Poké Ball, drawn in the page's colours. */
+export function Pokeball({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.4" />
+      <path d="M2 16a14 14 0 0 1 28 0Z" fill="#ef5350" stroke="var(--ink)" strokeWidth="2.4" strokeLinejoin="round" />
+      <path d="M2 16h28" stroke="var(--ink)" strokeWidth="2.4" />
+      <circle cx="16" cy="16" r="4.2" fill="var(--card)" stroke="var(--ink)" strokeWidth="2.4" />
+    </svg>
+  );
+}
+
+/** Grey cards that pulse while a grid of Pokémon loads. */
+export function CardsSkeleton({ count = 9, className = 'grid-cols-3 sm:grid-cols-4' }: { count?: number; className?: string }) {
+  const t = useT();
+  return (
+    <ul className={`grid gap-2 py-2 ${className}`} role="status" aria-label={t.loading}>
+      {Array.from({ length: count }, (_, i) => (
+        <li key={i} className="card flex h-[170px] flex-col items-center gap-2 p-3" style={{ animationDelay: `${i * 60}ms` }}>
+          <span className="skeleton mt-2 h-16 w-16 rounded-full" />
+          <span className="skeleton h-3 w-3/4 rounded" />
+          <span className="skeleton h-2.5 w-1/2 rounded" />
+        </li>
+      ))}
+    </ul>
   );
 }

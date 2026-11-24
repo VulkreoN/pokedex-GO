@@ -6,9 +6,8 @@ import { LeagueIcon } from '../components/PvpTops.js';
 import { PvpokeCard } from '../components/PvpokeCard.js';
 import { LEAGUE_LIST, PVPOKE_URL, formOf, leagueName, moveName, pvpokeRanks, pvpokeUrl, usePvpDetails, usePvpRankings, type League, type RankedDetail, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Button, Chip, CopyButton, Empty, Spinner, TopBar } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
-import { copyText } from '../lib/api.js';
 import { savedGameLang } from '../lib/searchString.js';
 import { useMe } from '../lib/auth.js';
 import { useDeleteMyPvp, useMyPvp, useSaveMyPvp, type MyPvpPokemon } from '../lib/myPvp.js';
@@ -559,7 +558,7 @@ function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: League; p: Pv
       <code className="mt-1 block break-all text-[13px]">{s.text}</code>
       <div className="mt-1.5 flex items-center gap-2">
         <p className="tnum flex-1 text-[11px] text-ink-3">{t.pvp_search_scope(s.top, s.matched)}</p>
-        <Button className="min-h-8 px-3 text-xs" onClick={async () => { if (await copyText(s.text)) toast(t.copied); }}>{t.copy}</Button>
+        <CopyButton className="min-h-8 px-3 text-xs" text={s.text} />
       </div>
     </div>
   );

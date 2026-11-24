@@ -35,8 +35,10 @@ export function Sprite({ idx, variant, shiny = false, muted = false, dim = false
 }
 
 export function Sparkle({ className = '' }: { className?: string }) {
+  // Each star twinkles on its own beat.
+  const [delay] = useState(() => `${(Math.random() * 2.4).toFixed(2)}s`);
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" className={className} aria-hidden>
+    <svg viewBox="0 0 24 24" width="14" height="14" className={`twinkle ${className}`} style={{ animationDelay: delay }} aria-hidden>
       <path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" fill="currentColor" />
     </svg>
   );
