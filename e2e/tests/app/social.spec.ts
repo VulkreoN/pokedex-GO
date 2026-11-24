@@ -4,8 +4,10 @@ import { apiCreateList, apiRegister, expect, test, uniq } from '../fixtures.js';
 
 /** Two friends in two browsers; the owner has a list. */
 async function friends(browser: Browser, ip: number) {
-  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.7.${ip}.1` } });
-  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.7.${ip}.2` } });
+  // Fresh addresses each time (friend requests are rate-limited per IP), so the test can also be repeated.
+  const last = () => 1 + Math.floor(Math.random() * 250);
+  const a = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.7.${ip}.${last()}` } });
+  const b = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': `10.8.${ip}.${last()}` } });
   const owner = await a.newPage();
   const friend = await b.newPage();
   const uo = await apiRegister(owner.request, uniq('own'));
@@ -62,11 +64,16 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await expect(s.owner.getByRole('link', { name: 'Notifications (1)' })).toBeVisible();
   await s.owner.getByRole('link', { name: 'Notifications (1)' }).click();
   await expect(s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`)).toBeVisible();
-  await s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`).click();
+  // Opening it marks it read (the page changes in the app; the test reloads afterwards, so it waits for the answer).
+  await Promise.all([
+    s.owner.waitForResponse((r) => r.url().includes('/api/notifications/read')),
+    s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`).click(),
+  ]);
   await expect(s.owner).toHaveURL(new RegExp(`/lists/${s.listId}$`));
   await s.owner.goto('/dex'); // the bell lives on top-level pages
   await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible({ timeout: 10_000 }); // read
   await s.owner.goto(`/lists/${s.listId}`);
+  await expect(s.owner.locator('html')).toHaveAttribute('data-live', 'ready');
 
   // Taking it back removes the mark.
   await bulbasaur.click();

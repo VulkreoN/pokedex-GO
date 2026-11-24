@@ -59,8 +59,13 @@ jobs:
           path: apps/api/.data/cache
           key: data-sources-${{ steps.week.outputs.n }}
           restore-keys: data-sources-
+      # The headless shell only (no full browser to download); cached between runs, system libraries installed each time.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Browser for the end-to-end tests
-        run: pnpm --filter @mydexpogo/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @mydexpogo/e2e exec playwright install --with-deps --only-shell chromium
       - name: Test battery
         run: scripts/test-all.sh
       - if: failure()
@@ -70,9 +75,9 @@ jobs:
           path: e2e/test-results
           retention-days: 7
 
+  # Built while the tests run (the release waits for both); only the commit's tag here, "latest" once tests pass.
   images:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -97,17 +102,36 @@ jobs:
           file: apps/${{ matrix.app }}/Dockerfile
           push: true
           build-args: APP_VERSION=${{ github.sha }}
-          tags: |
-            ${{ steps.name.outputs.image }}:${{ github.sha }}
-            ${{ steps.name.outputs.image }}:latest
+          tags: ${{ steps.name.outputs.image }}:${{ github.sha }}
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.app }}
           # A slow or failing cache upload must not fail the build.
           cache-to: type=gha,mode=max,scope=${{ matrix.app }},ignore-error=true
 
+  # The tested images become "latest" (what the Docker Compose setup pulls by default): a retag, no rebuild.
+  latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          for app in api web; do
+            image="ghcr.io/${GITHUB_REPOSITORY,,}-$app"
+            docker buildx imagetools create -t "$image:latest" "$image:${GITHUB_SHA}"
+          done
+
   release-k8s:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.K8S_RELEASE == 'true'
-    needs: images
+    needs: [test, images]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -160,12 +184,12 @@ jobs:
         if: vars.DOMAIN != '' && steps.tag.outputs.released == 'true'
         run: |
           pnpm install --frozen-lockfile --filter @mydexpogo/e2e
-          pnpm --filter @mydexpogo/e2e exec playwright install --with-deps chromium
+          pnpm --filter @mydexpogo/e2e exec playwright install --with-deps --only-shell chromium
           DEPLOY_URL=https://${{ vars.DOMAIN }} pnpm --filter @mydexpogo/e2e e2e:deploy
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: images
+    needs: [test, images, latest]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

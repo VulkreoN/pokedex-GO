@@ -9,7 +9,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: true,
   // GitHub runners have 2 cores: fewer browsers at once, and one retry (a test passing on retry is reported "flaky").
-  workers: process.env.CI ? 2 : 3,
+  // CI runners have 4 cores; locally, half of the machine.
+  workers: process.env.CI ? 4 : '50%',
   retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   use: {

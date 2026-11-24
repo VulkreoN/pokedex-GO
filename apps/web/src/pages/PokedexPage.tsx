@@ -12,6 +12,7 @@ import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
 import { BulkManageSheet } from '../components/BulkManageSheet.js';
 import { useMe } from '../lib/auth.js';
+import { feedback } from '../lib/feedback.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 /** Appeared in the last 45 days. */
@@ -130,12 +131,14 @@ export function PokedexPage() {
     return out;
   }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, q, gender, sort]);
 
-  const toggleTick = (id: string, g: VariantGroup) =>
+  const toggleTick = (id: string, g: VariantGroup) => {
+    feedback(ticked.has(id) ? 'untick' : 'tick');
     setTicked((m) => {
       const n = new Map(m);
       n.has(id) ? n.delete(id) : n.set(id, defaultPick(g, gender, shiny));
       return n;
     });
+  };
   const reset = () => {
     setKinds(ALL_KINDS);
     setOnlyDatamined(false);

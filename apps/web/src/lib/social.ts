@@ -25,7 +25,16 @@ export function useMarkRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids?: string[]) => api('/notifications/read', { body: ids ? { ids } : {} }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    // The bell clears at once; the server's answer (and the live event to other tabs) confirms it.
+    onMutate: (ids) => {
+      qc.setQueryData<{ items: AppNotification[]; unread: number }>(['notifications'], (old) => {
+        if (!old) return old;
+        const now = new Date().toISOString();
+        const items = old.items.map((n) => (!n.readAt && (!ids || ids.includes(n.id)) ? { ...n, readAt: now } : n));
+        return { items, unread: items.filter((n) => !n.readAt).length };
+      });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }
 
@@ -56,6 +65,8 @@ export function useRealtime(loggedIn: boolean) {
     if (!loggedIn || typeof EventSource === 'undefined') return;
     const es = new EventSource('/api/stream', { withCredentials: true });
     es.addEventListener('ready', () => {
+      // A mark for tests (and dev tools): this page now gets live events.
+      document.documentElement.dataset.live = 'ready';
       // Whatever happened between the page load and this connection (or during a reconnect) sent no event here:
       // re-read everything social. Only what is on screen is fetched again, the rest is just marked stale.
       for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
@@ -75,7 +86,10 @@ export function useRealtime(loggedIn: boolean) {
         void qc.invalidateQueries({ queryKey: ['announcement'] });
       }
     });
-    return () => es.close();
+    return () => {
+      es.close();
+      delete document.documentElement.dataset.live;
+    };
   }, [loggedIn, qc]);
 }
 

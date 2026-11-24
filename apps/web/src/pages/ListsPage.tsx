@@ -8,6 +8,7 @@ import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, T
 import { useAllFriendLists } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
 import { useCreateList, useLists, usePinList, useReorderLists } from '../lib/lists.js';
+import { feedback } from '../lib/feedback.js';
 
 export function VisibilityField({ value, onChange }: { value: ListVisibility; onChange: (v: ListVisibility) => void }) {
   const t = useT();
@@ -57,6 +58,7 @@ export function ListsPage() {
     const ids = (lists.data ?? []).map((l) => l.id);
     const j = i + by;
     if (j < 0 || j >= ids.length) return;
+    feedback('drop');
     reorder.mutate(arrayMove(ids, i, j));
   };
   // Dragged by the handle: a finger, the mouse or the keyboard (space, arrows, space).
@@ -67,6 +69,7 @@ export function ListsPage() {
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     const ids = (lists.data ?? []).map((l) => l.id);
     if (!over || active.id === over.id) return;
+    feedback('drop');
     reorder.mutate(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
   };
 
@@ -214,7 +217,7 @@ function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSumma
 /** A star: pinned things come first. */
 export function PinButton({ on, label, onClick, className = '' }: { on: boolean; label: string; onClick: () => void; className?: string }) {
   return (
-    <button type="button" aria-pressed={on} aria-label={label} title={label} onClick={onClick} className={`flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-paper-2 ${on ? 'text-shiny' : 'text-ink-3'} ${className}`}>
+    <button type="button" aria-pressed={on} aria-label={label} title={label} onClick={() => { feedback(on ? 'untick' : 'tick'); onClick(); }} className={`flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-paper-2 ${on ? 'text-shiny' : 'text-ink-3'} ${className}`}>
       <svg key={String(on)} className={on ? 'pop' : ''} width="20" height="20" viewBox="0 0 24 24" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" /></svg>
     </button>
   );

@@ -57,11 +57,20 @@ pg() {
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
+# Typecheck and the production build run in the background while the unit tests and the test API start;
+# each is waited for right before what needs it (and its output shown if it failed).
+waitfor() {
+  local pid=$1 name=$2 log=$3
+  if ! wait "$pid"; then echo "$name FAILED:"; cat "$log"; exit 1; fi
+  echo "$name ok"
+}
+
 step "1/5 Typecheck, unit tests, production build"
-pnpm -r typecheck
+pnpm -r typecheck >"$WORK/typecheck.log" 2>&1 &
+TC_PID=$!
+pnpm --filter @mydexpogo/web build >"$WORK/build.log" 2>&1 &
+BUILD_PID=$!
 pnpm -r test
-pnpm --filter @mydexpogo/web build >/dev/null
-echo "build ok"
 
 step "2/5 Throwaway API on a fresh database"
 if [ -z "${TEST_PG_ADMIN_URL:-}" ]; then
@@ -85,8 +94,11 @@ curl -sf "$API_URL/api/health" >/dev/null || { echo "API did not start"; exit 1;
 for _ in $(seq 1 120); do [ "$(curl -s -o /dev/null -w '%{http_code}' "$API_URL/api/data/pokedex.json")" = 200 ] && break; sleep 2; done
 echo "API up on $API_URL with dataset ready"
 
+waitfor "$TC_PID" typecheck "$WORK/typecheck.log"
+
 step "3/5 API integration tests"
 pnpm --filter @mydexpogo/api test:int
+waitfor "$BUILD_PID" build "$WORK/build.log"
 
 if [ "$E2E" = 1 ]; then
   step "4/5 Browser end-to-end tests"

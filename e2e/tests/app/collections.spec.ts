@@ -152,3 +152,21 @@ test('a long game search can be cut into strings under a chosen length', async (
   await expect.poll(() => sheet.locator('code').count()).toBeGreaterThan(1);
   for (const text of await sheet.locator('code').allTextContents()) expect(text.length).toBeLessThanOrEqual(500);
 });
+
+test('the last Pokémon of a collection brings confetti; sounds can be switched off in Me', async ({ page }) => {
+  await apiRegister(page.request);
+  const id = await apiCreateList(page.request, 'Presque', ['81', '25:m']);
+  await page.request.put(`/api/lists/${id}/entries`, { data: { entries: [{ variantKey: '81', gender: '', shiny: false, done: true }] } });
+  await page.goto(`/lists/${id}`);
+  await page.getByRole('button', { name: 'Pikachu', exact: true }).click();
+  await expect(page.locator('body > canvas[aria-hidden="true"]')).toHaveCount(1);
+  await expect(page.getByText('2 / 2 attrapés')).toBeVisible();
+  await expect(page.locator('body > canvas[aria-hidden="true"]')).toHaveCount(0, { timeout: 5000 }); // gone after the burst
+
+  await page.goto('/me');
+  const sounds = page.getByRole('button', { name: /^Sons/ });
+  await expect(sounds).toHaveAttribute('aria-pressed', 'true');
+  await sounds.click();
+  await expect(sounds).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => localStorage.getItem('fx-sounds'))).toBe('0');
+});

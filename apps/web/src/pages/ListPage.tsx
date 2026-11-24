@@ -20,6 +20,7 @@ import { exportListPdf, fileSlug } from '../lib/pdf.js';
 import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, renderListImages, sharePictures, type ImageLayout } from '../lib/shareImage.js';
 import { exportSearchText } from '../lib/searchString.js';
 import { selection } from '../lib/selection.js';
+import { celebrate, feedback } from '../lib/feedback.js';
 
 export function ListPage() {
   const { id } = useParams<{ id: string }>();
@@ -119,9 +120,23 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   );
   const done = list.entries.filter((e) => e.done).length;
 
-  const setDone = (members: ListDetailEntry[], value: boolean) =>
+  /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
+  const reward = (members: ListDetailEntry[], value: boolean) => {
+    const changed = new Set(members.map((m) => `${m.variantKey}|${m.gender}|${m.shiny}|${m.tag}`));
+    const completes = value && list.entries.length > 0 && list.entries.every((e) => e.done || changed.has(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`));
+    if (completes) {
+      feedback('success');
+      celebrate();
+    } else feedback(value ? 'tick' : 'untick');
+  };
+  const setDone = (members: ListDetailEntry[], value: boolean) => {
+    reward(members, value);
     upsert.mutate({ id: list.id, entries: members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) });
-  const setOffer = (m: ListDetailEntry, on: boolean) => offer.mutate({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on });
+  };
+  const setOffer = (m: ListDetailEntry, on: boolean) => {
+    feedback(on ? 'tick' : 'untick');
+    offer.mutate({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on });
+  };
 
   /** Owner: one gender caught / not caught. Friend: "I have this one" for that gender, if still hunted. */
   const toggleMember = (m: ListDetailEntry) => {
@@ -144,7 +159,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
     (sex === 'all' || !m.gender || m.gender === sex) && (version === 'all' || (version === 'shiny') === c.shiny);
   const pickedMembers = allCards.flatMap((c) => c.members.filter((m) => picked.has(memberId(c, m))));
   /** A card picks its genders that fit the filters (all of them when none fits); tapping again lets them go. */
-  const togglePick = (c: EntryCard) =>
+  const togglePick = (c: EntryCard) => {
+    feedback(c.members.some((m) => picked.has(memberId(c, m))) ? 'untick' : 'tick');
     setPicked((p) => {
       const fitting = c.members.filter((m) => fits(c, m));
       const ids = (fitting.length ? fitting : c.members).map((m) => memberId(c, m));
@@ -153,6 +169,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       else ids.forEach((id) => n.add(id));
       return n;
     });
+  };
   const toggleMemberPick = (c: EntryCard, m: ListDetailEntry) => setPicked((p) => { const n = new Set(p); const id = memberId(c, m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const pickAll = () => setPicked(new Set(cards.flatMap((c) => c.members.filter((m) => fits(c, m)).map((m) => memberId(c, m)))));
   /** A filter narrows what is already picked, so "All", then "Shiny", then "♀" leaves the shiny females. */
@@ -176,8 +193,10 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const inParts = async <T,>(items: T[], send: (part: T[]) => Promise<unknown>) => {
     for (let k = 0; k < items.length; k += 1000) await send(items.slice(k, k + 1000));
   };
-  const bulkDone = (value: boolean) =>
-    bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
+  const bulkDone = (value: boolean) => {
+    reward(pickedMembers.filter((m) => m.done !== value), value);
+    return bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
+  };
   const bulkRemove = () => {
     if (!confirm(t.pick_confirm_remove(pickedMembers.length))) return;
     void bulk(() => inParts(pickedMembers, (part) => remove.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, shiny: m.shiny, tag: m.tag, gender: m.gender })) })));

@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactNode } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
@@ -9,23 +9,42 @@ import { useMe } from './lib/auth.js';
 import { LangContext, detectLang } from './lib/i18n.js';
 import { applyTheme, getTheme } from './lib/theme.js';
 import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
-import { GamePage } from './pages/GamePage.js';
-import { PvpPage } from './pages/PvpPage.js';
-import { PvpTeamPage } from './pages/PvpTeamPage.js';
-import { PvpBattlePage } from './pages/PvpBattlePage.js';
-import { AdminPage } from './pages/AdminPage.js';
-import { WelcomePage } from './pages/WelcomePage.js';
 import { AnnouncementBanner } from './components/AnnouncementBanner.js';
-import { NotificationsPage } from './pages/NotificationsPage.js';
 import { useRealtime } from './lib/social.js';
 import { reportError } from './lib/errorReport.js';
 import { ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
-import { LoginPage } from './pages/LoginPage.js';
 import { MePage } from './pages/MePage.js';
-import { ReviewPage } from './pages/ReviewPage.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
+
+/** Pages not everyone opens load on demand, then are fetched in the background once the app is idle. */
+const pageLoaders = {
+  GamePage: () => import('./pages/GamePage.js').then((m) => ({ default: m.GamePage })),
+  PvpPage: () => import('./pages/PvpPage.js').then((m) => ({ default: m.PvpPage })),
+  PvpTeamPage: () => import('./pages/PvpTeamPage.js').then((m) => ({ default: m.PvpTeamPage })),
+  PvpBattlePage: () => import('./pages/PvpBattlePage.js').then((m) => ({ default: m.PvpBattlePage })),
+  AdminPage: () => import('./pages/AdminPage.js').then((m) => ({ default: m.AdminPage })),
+  WelcomePage: () => import('./pages/WelcomePage.js').then((m) => ({ default: m.WelcomePage })),
+  NotificationsPage: () => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })),
+  LoginPage: () => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })),
+  ReviewPage: () => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })),
+};
+const GamePage = lazy(pageLoaders.GamePage);
+const PvpPage = lazy(pageLoaders.PvpPage);
+const PvpTeamPage = lazy(pageLoaders.PvpTeamPage);
+const PvpBattlePage = lazy(pageLoaders.PvpBattlePage);
+const AdminPage = lazy(pageLoaders.AdminPage);
+const WelcomePage = lazy(pageLoaders.WelcomePage);
+const NotificationsPage = lazy(pageLoaders.NotificationsPage);
+const LoginPage = lazy(pageLoaders.LoginPage);
+const ReviewPage = lazy(pageLoaders.ReviewPage);
+
+function prefetchPages() {
+  const run = () => Object.values(pageLoaders).forEach((load) => void load().catch(() => {}));
+  if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 5000 });
+  else setTimeout(run, 3000);
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: (count, err) => !(err instanceof Error && 'status' in err) && count < 2, refetchOnWindowFocus: true } },
@@ -106,6 +125,7 @@ export function App() {
             <ErrorBoundary>
             <AnnouncementBanner />
             <PageFade>
+            <Suspense fallback={<Spinner />}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/dex" element={<PokedexPage />} />
@@ -128,6 +148,7 @@ export function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
             </PageFade>
             </ErrorBoundary>
             <SelectionBar />
@@ -143,5 +164,6 @@ export function App() {
 /** Each page fades in when the address changes (not on a query string change, e.g. a tab). */
 function PageFade({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  useEffect(prefetchPages, []);
   return <div key={pathname} className="page-enter">{children}</div>;
 }

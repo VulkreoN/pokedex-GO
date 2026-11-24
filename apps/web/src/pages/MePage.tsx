@@ -15,6 +15,7 @@ import { applyTheme, getTheme, type Theme } from '../lib/theme.js';
 import { fmtCode } from './FriendsPage.js';
 import { relativeTime, useAdminStats, useDataStatus } from '../lib/admin.js';
 import type { Role } from '@mydexpogo/shared';
+import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
 
 export function MePage() {
   const t = useT();
@@ -64,6 +65,7 @@ export function MePage() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
           </Link>
         )}
+        <FeedbackSettings />
         {isAdmin && <AdminCard />}
         {me.data && <PushSettings />}
         {me.data ? null : (
@@ -180,5 +182,29 @@ function AdminCard() {
       </span>
       {waiting > 0 && <span className="tnum rounded-full bg-berry px-2 py-0.5 text-sm font-bold text-white">{waiting}</span>}
     </Link>
+  );
+}
+
+/** Sounds and vibrations on ticks, saved on this device. */
+function FeedbackSettings() {
+  const t = useT();
+  const sounds = useFeedbackPref('sounds');
+  const haptics = useFeedbackPref('haptics');
+  const row = (label: string, hint: string, on: boolean, k: 'sounds' | 'haptics') => (
+    <button type="button" aria-pressed={on} onClick={() => setFeedbackPref(k, !on)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className="block text-xs text-ink-3">{hint}</span>
+      </span>
+      <span className={`relative h-6 w-10 shrink-0 rounded-full transition ${on ? 'bg-go' : 'bg-line'}`} aria-hidden="true">
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+  return (
+    <section aria-label={t.feedback_title} className="card divide-y divide-line overflow-hidden">
+      {row(t.feedback_sounds, t.feedback_sounds_hint, sounds, 'sounds')}
+      {'vibrate' in navigator && row(t.feedback_haptics, t.feedback_haptics_hint, haptics, 'haptics')}
+    </section>
   );
 }
