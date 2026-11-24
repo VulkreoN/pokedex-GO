@@ -61,6 +61,48 @@ export const overrideRoutes = new Hono<AuthEnv>()
       overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
     });
   })
+  /**
+   * Managers: the same change on many variants at once (released, shiny out, can't evolve). A field left out is
+   * not touched, and each variant keeps its other corrections (name, genders). One journal line per variant.
+   */
+  .patch(
+    '/',
+    requireRole('manager'),
+    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional() })),
+    async (c) => {
+      const { keys, ...patch } = c.req.valid('json');
+      if (!keys.every(isValidVariantKey)) return c.json({ error: 'invalid_variant_key' }, 400);
+      const me = c.get('user').id;
+      const was = new Map(await Promise.all(keys.map(async (k) => [k, await dataService.shownState(k)] as const)));
+      const befores = new Map<string, typeof schema.variantOverrides.$inferSelect>();
+      for (const k of keys) {
+        const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k)).limit(1);
+        if (before) befores.set(k, before);
+        const values = {
+          variantKey: k,
+          released: patch.released !== undefined ? patch.released : (before?.released ?? null),
+          labelEn: before?.labelEn ?? null,
+          labelFr: before?.labelFr ?? null,
+          genders: before?.genders ?? null,
+          shinyReleased: patch.shinyReleased !== undefined ? patch.shinyReleased : (before?.shinyReleased ?? null),
+          noEvolve: patch.noEvolve !== undefined ? patch.noEvolve : (before?.noEvolve ?? null),
+          updatedBy: me,
+          updatedAt: new Date(),
+        };
+        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null) {
+          await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k));
+        } else {
+          await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
+        }
+      }
+      dataService.invalidateOverrides();
+      for (const k of keys) {
+        const before = befores.get(k);
+        await audit(me, 'override.set', 'variant', k, { before: before ? overrideState(before) : null, after: patch, was: was.get(k), now: await dataService.shownState(k), bulk: keys.length });
+      }
+      return c.json({ ok: true, count: keys.length });
+    },
+  )
   .put('/:key', requireRole('manager'), zValidator('json', overrideBody), async (c) => {
     const key = c.req.param('key');
     if (!isValidVariantKey(key)) return c.json({ error: 'invalid_variant_key' }, 400);

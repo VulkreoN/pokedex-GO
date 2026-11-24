@@ -1,4 +1,4 @@
-import { clipboard, expect, test } from '../fixtures.js';
+import { adminLogin, clipboard, expect, test } from '../fixtures.js';
 
 test.describe('without an account', () => {
   test('home sends visitors to the login page, which lets them browse anyway', async ({ page }) => {
@@ -465,4 +465,25 @@ test('search finds costumes by their name, and unreleased forms can be hidden', 
   await page.locator('dialog[open]').getByRole('button', { name: 'Masquer les non sortis' }).click();
   await page.locator('dialog[open]').getByRole('button', { name: /^Voir / }).click();
   await expect(card).toHaveCount(0);
+});
+
+test('a manager marks several cards "shiny not out" at once from the multi-select', async ({ browser }) => {
+  const ctx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.9.1' } });
+  const page = await ctx.newPage();
+  await adminLogin(page.request);
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill('bulbizarre');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  await page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true }).click();
+  await page.getByPlaceholder('Nom ou numéro').fill('salamèche');
+  await page.getByRole('button', { name: 'Ajouter Salamèche', exact: true }).click();
+  await page.getByRole('button', { name: 'Gérer', exact: true }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('button', { name: 'Shiny pas sorti' }).click();
+  await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText('2 cartes mises à jour')).toBeVisible();
+  const o = (await (await page.request.get('/api/overrides')).json()).overrides.filter((x: { variantKey: string }) => x.variantKey === '1' || x.variantKey === '4');
+  expect(o.map((x: { shinyReleased: boolean }) => x.shinyReleased)).toEqual([false, false]);
+  await page.request.patch('/api/overrides', { data: { keys: ['1', '4'], shinyReleased: null } });
+  await ctx.close();
 });

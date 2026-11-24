@@ -627,6 +627,20 @@ describe('admin panel', () => {
     expect((await admin.get('/admin/audit')).body.entries.map((e: any) => e.action)).toContain('override.reset');
   });
 
+  it('applies one correction to many variants, keeping the rest of each', async () => {
+    // Many at once: only the field sent changes, the rest of each correction stays.
+    const keys = ds.variants.filter((x) => x.kind === 'costume').slice(0, 3).map((x) => x.key);
+    await admin.put(`/overrides/${encodeURIComponent(keys[0]!)}`, { released: null, label: { en: 'Kept name' } });
+    expect((await alice.patch('/overrides', { keys, shinyReleased: false })).status).toBe(403);
+    expect((await admin.patch('/overrides', { keys, shinyReleased: false })).status).toBe(200);
+    const after = (await anon.get('/overrides')).body.overrides.filter((o: any) => keys.includes(o.variantKey));
+    expect(after).toHaveLength(3);
+    expect(after.every((o: any) => o.shinyReleased === false)).toBe(true);
+    expect(after.find((o: any) => o.variantKey === keys[0]).label).toEqual({ en: 'Kept name' });
+    await admin.patch('/overrides', { keys, shinyReleased: null });
+    await admin.del(`/overrides/${encodeURIComponent(keys[0]!)}`);
+  });
+
   it('takes players reports for managers, and shows one announcement banner to everyone', async () => {
     expect((await anon.post('/reports', { variantKey: '25', kind: 'name' })).status).toBe(401);
     const r = await alice.post('/reports', { variantKey: '25', kind: 'name', message: 'wrong costume name' });

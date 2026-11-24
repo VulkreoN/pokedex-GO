@@ -24,6 +24,19 @@ export const useDataStatus = () => useQuery({ queryKey: ['data-status'], queryFn
 export const useOverrides = (enabled: boolean) =>
   useQuery({ queryKey: ['overrides'], queryFn: () => api<{ overrides: Override[] }>('/overrides').then((r) => r.overrides), enabled });
 
+/** The same correction on many variants; a field left undefined is not touched. */
+export function useBulkOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { keys: string[]; released?: boolean | null; shinyReleased?: boolean | null; noEvolve?: boolean | null }) =>
+      api<{ ok: true; count: number }>('/overrides', { method: 'PATCH', body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['overrides'] });
+      qc.invalidateQueries({ queryKey: ['dataset'] });
+    },
+  });
+}
+
 export function useSetOverride() {
   const qc = useQueryClient();
   return useMutation({

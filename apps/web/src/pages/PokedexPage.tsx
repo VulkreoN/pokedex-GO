@@ -10,6 +10,7 @@ import { familyOrder, matchesQuery, normalize, pvpOf, useDataset } from '../lib/
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
 import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
+import { BulkManageSheet } from '../components/BulkManageSheet.js';
 import { useMe } from '../lib/auth.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
@@ -41,6 +42,7 @@ export function PokedexPage() {
   const me = useMe();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const [managing, setManaging] = useState<VariantGroup | null>(null);
+  const [bulkManaging, setBulkManaging] = useState(false);
   /** PvP mode: rank 1 IVs in Great and Ultra League on every card. Remembered per device. */
   const [pvpMode, setPvpModeState] = useState(() => {
     try {
@@ -282,6 +284,7 @@ export function PokedexPage() {
         <div className="pb-safe fixed inset-x-0 bottom-[64px] z-20 px-3">
           <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
             <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
+            {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}
             <Button tone="ghost" className="min-h-9 bg-white px-3 text-sm text-go-ink hover:bg-white" onClick={() => setBulkOpen(true)}>{t.add}</Button>
           </div>
         </div>
@@ -346,6 +349,7 @@ export function PokedexPage() {
 
       {dataset.data && <AddToListSheet idx={dataset.data} group={adding} initialShiny={shiny} onClose={() => setAdding(null)} />}
       {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
+      {isManager && <BulkManageSheet open={bulkManaging} groups={[...ticked.values()].map((p) => p.group)} onClose={() => setBulkManaging(false)} onDone={() => { setTicked(new Map()); setMulti(false); }} />}
       <BulkAddSheet
         open={bulkOpen}
         picks={[...ticked.values()]}
