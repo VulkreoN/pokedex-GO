@@ -1,5 +1,7 @@
 import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { persistOptions } from './lib/persist.js';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { ToastProvider } from './components/toast.js';
@@ -119,7 +121,12 @@ export function App() {
   }, [lang]);
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={persistOptions}
+      // What was kept shows at once, and is all checked again with the server right after.
+      onSuccess={() => void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'dataset' })}
+    >
       <LangContext.Provider value={{ lang, setLang }}>
         <ToastProvider>
           <BrowserRouter>
@@ -159,7 +166,7 @@ export function App() {
           </BrowserRouter>
         </ToastProvider>
       </LangContext.Provider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
 

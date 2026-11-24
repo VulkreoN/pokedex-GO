@@ -64,3 +64,37 @@ test('notifications can be cleared one by one or all at once', async ({ browser 
   await a.close();
   await b.close();
 });
+
+test('the app opens from what this device kept, even when the server does not answer; logging out wipes it', async ({ page }) => {
+  await apiRegister(page.request);
+  await apiCreateList(page.request, 'Gardée', ['1']);
+  await page.goto('/lists');
+  await expect(page.getByText('Gardée')).toBeVisible();
+  await page.goto('/dex');
+  await expect(page.getByRole('button', { name: /^Ajouter Bulbizarre/ }).first().or(page.getByText('Bulbizarre').first())).toBeVisible();
+  await page.waitForTimeout(2500); // the cache is written behind (throttled)
+
+  // The server is gone: collections and the Pokédex still show.
+  await page.route('**/api/**', (r) => r.abort());
+  await page.goto('/lists');
+  await expect(page.getByText('Gardée')).toBeVisible();
+  await page.goto('/dex');
+  await expect(page.getByText('Bulbizarre').first()).toBeVisible();
+  await page.unroute('**/api/**');
+
+  // Logging out leaves nothing of the account on the device.
+  await page.goto('/me');
+  await page.getByRole('button', { name: 'Se déconnecter' }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.waitForTimeout(2500);
+  const kept = await page.evaluate(() => new Promise<string>((ok) => {
+    const req = indexedDB.open('keyval-store');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('keyval', 'readonly').objectStore('keyval').get('app-cache');
+      tx.onsuccess = () => ok(String(tx.result ?? ''));
+      tx.onerror = () => ok('');
+    };
+    req.onerror = () => ok('');
+  }));
+  expect(kept).not.toContain('Gardée');
+});

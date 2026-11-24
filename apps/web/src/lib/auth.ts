@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@mydexpogo/shared';
 import { disablePush } from './social.js';
 import { api } from './api.js';
+import { forgetDeviceCache } from './persist.js';
 
 export function useMe() {
   return useQuery({
@@ -28,6 +29,7 @@ export function useLogout() {
     // This device stops receiving the account's push notifications before the session ends.
     mutationFn: async () => {
       await disablePush().catch(() => {});
+      await forgetDeviceCache();
       return api<{ ok: true }>('/auth/logout', { method: 'POST' });
     },
     onSuccess: () => {

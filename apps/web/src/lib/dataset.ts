@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { neutralKey, variantImageUrl, type Dataset, type EntryGender, type PvpPokemon, type Species, type Variant } from '@mydexpogo/shared';
+import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export interface DatasetIndex {
   ds: Dataset;
@@ -36,13 +37,40 @@ export function normalize(s: string): string {
   return s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
 }
 
+/** The Pokédex as last downloaded, kept on the device with its ETag. */
+const SAVED_KEY = 'dataset';
+type Saved = { etag: string | null; ds: Dataset };
+
+async function download(): Promise<Saved> {
+  const res = await fetch('/api/data/pokedex.json');
+  if (!res.ok) throw new Error('dataset');
+  const saved = { etag: res.headers.get('etag'), ds: (await res.json()) as Dataset };
+  void idbSet(SAVED_KEY, saved).catch(() => {});
+  return saved;
+}
+
+/**
+ * The Pokédex opens from the copy kept on the device, at once, and the server's is checked behind (a 304 when
+ * nothing changed); a newer one (data update, a manager's correction) replaces it on screen. Without a copy, or
+ * when asked to refresh (after a correction), it waits for the server.
+ */
 export function useDataset() {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: ['dataset'],
     queryFn: async () => {
-      const res = await fetch('/api/data/pokedex.json');
-      if (!res.ok) throw new Error('dataset');
-      return buildIndex((await res.json()) as Dataset);
+      if (!qc.getQueryData(['dataset'])) {
+        const saved = await idbGet<Saved>(SAVED_KEY).catch(() => undefined);
+        if (saved?.ds) {
+          void download()
+            .then((fresh) => {
+              if (fresh.etag !== saved.etag) qc.setQueryData(['dataset'], buildIndex(fresh.ds));
+            })
+            .catch(() => {});
+          return buildIndex(saved.ds);
+        }
+      }
+      return buildIndex((await download()).ds);
     },
     staleTime: Infinity,
     gcTime: Infinity,
