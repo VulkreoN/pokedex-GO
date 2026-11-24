@@ -9,7 +9,7 @@ import { useToast } from '../components/toast.js';
 import { Badge, Button, CardsSkeleton, Chip, Empty, IconButton, Progress, Sheet, TextField, TopBar } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
-import { entryVariant, genderSymbol, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
+import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, type ListAccess } from '../lib/lists.js';
 import { useUpsertEntries } from '../lib/lists.js';
@@ -72,6 +72,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const [sharing, setSharing] = useState(false);
   const [exportMissing, setExportMissing] = useState(true);
   const [view, setView] = useState<View>('missing');
+  const [query, setQuery] = useState('');
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<EntryCard | null>(null);
@@ -107,21 +108,30 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   };
   const rank = useMemo(() => new Map(idx.ds.variants.map((v, i) => [v.key, i])), [idx]);
   const allCards = useMemo(() => cardsOf(list.entries), [list.entries]);
+  // Search by name, number or costume / form name ("sorcière"), like the Pokédex; any word may match.
+  const words = useMemo(() => normalize(query).split(/\s+/).filter(Boolean), [query]);
   const cards = useMemo(
     () =>
       sortCards(
-        allCards.filter((c) => view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c))),
+        allCards.filter((c) => {
+          if (!(view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c)))) return false;
+          if (!words.length) return true;
+          const v = idx.variantByKey.get(c.variantKey) ?? entryVariant(idx, c.variantKey, 'm');
+          if (!v) return false;
+          const label = normalize(`${v.label?.en ?? ''} ${v.label?.fr ?? ''}`);
+          return words.some((w) => matchesQuery(idx, v.dex, w) || (!/^\d+$/.test(w) && label.includes(w)));
+        }),
         sort,
         {
           rank: (k) => rank.get(k) ?? Number.MAX_SAFE_INTEGER,
           name: (k) => localized(idx.speciesByDex.get(idx.variantByKey.get(k)?.dex ?? 0)?.name, lang) ?? '',
         },
       ),
-    [allCards, view, sort, rank, idx, lang],
+    [allCards, view, words, sort, rank, idx, lang],
   );
   const done = list.entries.filter((e) => e.done).length;
   // A big collection builds its first cards at once, the next ones as they come near the screen.
-  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}`);
+  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}|${query}`);
 
   /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
   /** Plays the reward, and returns the milestone reached (25, 50, 75) for the message, if any. */
@@ -327,7 +337,19 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             )}
           </Empty>
         )}
-        {list.entries.length > 0 && cards.length === 0 && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
+        {allCards.length > 8 && (
+          <input
+            type="search"
+            inputMode="search"
+            placeholder={t.list_search}
+            aria-label={t.list_search}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="mt-2 min-h-10 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:outline-none"
+          />
+        )}
+        {list.entries.length > 0 && cards.length === 0 && words.length > 0 && <Empty>{t.list_search_none(query.trim())}</Empty>}
+        {list.entries.length > 0 && cards.length === 0 && !words.length && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
         {cards.length > 0 && (owner || (loggedIn && list.entries.length > 0)) && (
           <div className="flex items-center gap-3 pt-2 text-xs text-ink-3">
             {list.entries.length > 1 ? (
@@ -613,6 +635,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   );
 }
 
+/** The phone's own share menu (Messages, Discord…), where there is one; computers usually keep "Copy link". */
+const canShareLink = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function' && matchMedia('(pointer: coarse)').matches;
+
 function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }: { open: boolean; onClose: () => void; list: ListDetail; shareUrl: string | null; onSave: (b: { name: string; description: string | null; visibility: ListVisibility }) => Promise<void>; onShare: (on: boolean) => Promise<void>; onDelete: () => Promise<void> }) {
   const t = useT();
   const toast = useToast();
@@ -632,6 +657,9 @@ function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }:
             <div className="space-y-2">
               <code className="block break-all rounded-lg bg-paper-2 p-2 text-xs">{shareUrl}</code>
               <div className="flex gap-2">
+                {canShareLink() && (
+                  <Button tone="primary" className="flex-1" onClick={() => void navigator.share({ title: list.name, url: shareUrl }).catch(() => {})}>{t.share_link}</Button>
+                )}
                 <Button className="flex-1" onClick={async () => { if (await copyText(shareUrl)) toast(t.link_copied); }}>{t.copy_link}</Button>
                 <Button tone="ghost" onClick={() => onShare(false)}>{t.share_off}</Button>
               </div>

@@ -170,3 +170,22 @@ test('the last Pokémon of a collection brings confetti; sounds can be switched 
   await expect(sounds).toHaveAttribute('aria-pressed', 'false');
   expect(await page.evaluate(() => localStorage.getItem('fx-sounds'))).toBe('0');
 });
+
+test('a collection can be searched by name, number or costume', async ({ page }) => {
+  await apiRegister(page.request);
+  const ds = await (await page.request.get('/api/data/pokedex.json')).json();
+  const costume = (ds.variants as { key: string; kind: string; dex: number; label?: { fr?: string } }[]).find((v) => v.kind === 'costume' && v.dex === 25 && v.label?.fr)!;
+  const id = await apiCreateList(page.request, 'Cherche', ['1', '4', '7', '10', '13', '16', '19', '23', '81', `${costume.key}:m`]);
+  await page.goto(`/lists/${id}`);
+  const search = page.getByRole('searchbox', { name: 'Chercher dans la collection' });
+  const cards = page.locator('main ul > li');
+  await expect(cards).toHaveCount(10);
+  await search.fill('salameche');
+  await expect(cards).toHaveCount(1);
+  await search.fill('81');
+  await expect(cards).toHaveCount(1);
+  await search.fill(costume.label!.fr!.split(' ')[0]!);
+  await expect(cards.first()).toBeVisible();
+  await search.fill('mewtwo');
+  await expect(page.getByText('Aucun Pokémon ne correspond à « mewtwo » ici.')).toBeVisible();
+});
