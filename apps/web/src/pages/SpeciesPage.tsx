@@ -76,18 +76,30 @@ export function SpeciesPage() {
           {species.rarity !== 'normal' && <Badge tone="muted">{t[`rarity_${species.rarity}`]}</Badge>}
           {!species.released && <Badge tone="datamined">{t.unreleased_species}</Badge>}
           {species.shinyReleased === false && <Badge tone="muted">{t.no_shiny}</Badge>}
-          <CryButton dex={dex} name={localized(species.name, lang)} />
           {idx.pvpByKey.has(String(dex)) && (
             <Link to={`/pvp/${dex}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-semibold text-ink-2 hover:border-ink-3">
               <LeagueIcon league="great" size={16} />
               PvP
             </Link>
           )}
-          <span className="ml-auto" />
-          <Chip active={!shiny} onClick={() => setShiny(false)}>{t.normal}</Chip>
-          <Chip active={shiny} onClick={() => setShiny(true)}>
-            <Sparkle className={shiny ? 'text-shiny' : ''} /> {t.shiny}
-          </Chip>
+          {/* Right side: the cry, and normal / shiny as one switch. */}
+          <span className="ml-auto flex items-center gap-1.5">
+            <CryButton dex={dex} name={localized(species.name, lang)} />
+            <span className="inline-flex rounded-full bg-paper-2 p-0.5">
+              {([false, true] as const).map((s) => (
+                <button
+                  key={String(s)}
+                  type="button"
+                  aria-pressed={shiny === s}
+                  onClick={() => setShiny(s)}
+                  className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${shiny === s ? 'bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+                >
+                  {s && <Sparkle className={shiny ? 'text-shiny' : ''} />}
+                  {s ? t.shiny : t.normal}
+                </button>
+              ))}
+            </span>
+          </span>
         </div>
 
         {long && (
@@ -199,9 +211,8 @@ function CryButton({ dex, name }: { dex: number; name: string }) {
     void audio.play().catch(() => setPlaying(false));
   };
   return (
-    <button type="button" onClick={play} aria-label={t.cry(name)} title={t.cry(name)} className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-semibold text-ink-2 transition hover:border-ink-3 active:scale-[0.96] ${playing ? 'border-sky text-sky' : ''}`}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={playing ? 'pop' : ''}><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>
-      {t.cry_short}
+    <button type="button" onClick={play} aria-label={t.cry(name)} title={t.cry(name)} className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-2 transition hover:bg-paper-2 active:scale-[0.92] ${playing ? 'bg-sky/15 text-sky' : ''}`}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={playing ? 'pop' : ''}><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>
     </button>
   );
 }
