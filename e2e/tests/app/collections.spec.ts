@@ -132,10 +132,10 @@ test('a long game search can be cut into strings under a chosen length', async (
   await page.goto(`/lists/${id}`);
   await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
   const sheet = page.locator('dialog[open]');
-  await sheet.getByRole('button', { name: 'Sans limite' }).click();
+  await sheet.getByRole('button', { name: 'Aucune', exact: true }).click();
   await expect(sheet.locator('code')).toHaveCount(1);
   expect((await sheet.locator('code').first().textContent())!.length).toBeGreaterThan(500);
-  await sheet.getByRole('button', { name: '500 car.' }).click();
+  await sheet.getByRole('button', { name: '500', exact: true }).click();
   await expect.poll(() => sheet.locator('code').count()).toBeGreaterThan(1);
   for (const text of await sheet.locator('code').allTextContents()) expect(text.length).toBeLessThanOrEqual(500);
 });
