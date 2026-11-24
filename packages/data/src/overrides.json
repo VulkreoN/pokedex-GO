@@ -324,6 +324,10 @@
     "774.fVIOLET": {
       "en": "Violet Core",
       "fr": "Noyau Violet"
+    },
+    "MEGA_Z": {
+      "en": "Mega Z",
+      "fr": "Méga Z"
     }
   },
   "status": {
@@ -436,5 +440,58 @@
     "774.fMETEOR_INDIGO": "774.fINDIGO",
     "774.fMETEOR_VIOLET": "774.fVIOLET",
     "774.fMETEOR": "774.fBLUE"
+  },
+  "upcoming": {
+    "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax.",
+    "megas": [
+      "36.fMEGA",
+      "154.fMEGA",
+      "160.fMEGA",
+      "478.fMEGA",
+      "500.fMEGA",
+      "530.fMEGA",
+      "545.fMEGA",
+      "560.fMEGA",
+      "604.fMEGA",
+      "668.fMEGA",
+      "670.fMEGA",
+      "689.fMEGA",
+      "691.fMEGA",
+      "701.fMEGA",
+      "718.fMEGA",
+      "780.fMEGA",
+      "358.fMEGA",
+      "485.fMEGA",
+      "491.fMEGA",
+      "623.fMEGA",
+      "678.fMEGA",
+      "740.fMEGA",
+      "768.fMEGA",
+      "801.fMEGA",
+      "807.fMEGA",
+      "952.fMEGA",
+      "970.fMEGA",
+      "978.fMEGA",
+      "998.fMEGA",
+      "359.fMEGA_Z",
+      "445.fMEGA_Z",
+      "448.fMEGA_Z"
+    ],
+    "gmax": [
+      "133.fGIGANTAMAX",
+      "809.fGIGANTAMAX",
+      "823.fGIGANTAMAX",
+      "826.fGIGANTAMAX",
+      "834.fGIGANTAMAX",
+      "839.fGIGANTAMAX",
+      "841.fGIGANTAMAX",
+      "842.fGIGANTAMAX",
+      "844.fGIGANTAMAX",
+      "851.fGIGANTAMAX",
+      "858.fGIGANTAMAX",
+      "869.fGIGANTAMAX",
+      "879.fGIGANTAMAX",
+      "892.fGIGANTAMAX"
+    ]
   }
 }

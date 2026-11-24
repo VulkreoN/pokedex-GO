@@ -106,7 +106,7 @@ function textsToMap(t: Texts): Map<string, string> {
 function kindOf(form: string | null, costume: string | null, isGmCostume: boolean): VariantKind {
   if (costume) return 'costume';
   if (!form) return 'base';
-  if (/^(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/.test(form)) return 'mega';
+  if (/^(MEGA|MEGA_X|MEGA_Y|MEGA_Z|PRIMAL)$/.test(form)) return 'mega';
   if (/^(GIGANTAMAX|ETERNAMAX)$/.test(form)) return 'gmax';
   if (/^(ALOLA|GALAR|HISUI|PALDEA)/.test(form)) return 'regional';
   if (isGmCostume || looksLikeCostume(form)) return 'costume';
@@ -222,7 +222,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   }
   log(`game master: ${speciesByDex.size} species, ${[...speciesByDex.values()].reduce((n, s) => n + s.gmForms.size, 0)} forms`);
 
-  const overridesFile = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { megas?: string[] };
+  const overridesFile = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as { megas?: string[]; upcoming?: { megas?: string[]; gmax?: string[] } };
 
   /* Pictures: the mirror's list (PokeMiners file names), Dynamax duplicates skipped (a trait, not a look) */
   const groups = new Map<string, AssetGroup>();
@@ -402,6 +402,15 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (variants.some((v) => v.dex === sp.dex && v.img)) continue;
     const g: AssetGroup = { dex: sp.dex, form: null, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${sp.dex}.png` };
     push(sp, g, null, null, null);
+    variants[variants.length - 1]!.datamined = true;
+  }
+  // Megas and Gigantamax of the main games that Pokémon GO does not have yet: shown as not released, with the
+  // species' artwork until the game ships a picture (then the game master and PokeMiners take over).
+  for (const key of [...(overridesFile.upcoming?.megas ?? []), ...(overridesFile.upcoming?.gmax ?? [])]) {
+    const m = /^(\d+)\.f([A-Z_]+)$/.exec(key);
+    const sp = m && speciesByDex.get(Number(m[1]));
+    if (!m || !sp || variants.some((v) => v.key === key)) continue;
+    push(sp, { dex: sp.dex, form: m[2]!, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${sp.dex}.png` }, m[2]!, null, null);
     variants[variants.length - 1]!.datamined = true;
   }
   for (const sp of speciesByDex.values()) {
