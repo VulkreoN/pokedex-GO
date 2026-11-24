@@ -36,9 +36,35 @@ export function useFeedbackPref(k: Pref): boolean {
 let audio: AudioContext | null = null;
 function ctx(): AudioContext | null {
   if (typeof window === 'undefined' || !('AudioContext' in window)) return null;
-  audio ??= new AudioContext();
-  if (audio.state === 'suspended') void audio.resume();
+  audio ??= new AudioContext({ latencyHint: 'interactive' });
   return audio;
+}
+
+/**
+ * Phones start the audio engine paused and only let a touch wake it: it is woken on the first touch anywhere
+ * (with a silent sound, which iOS needs), and again when the app comes back to the screen. Sounds then start at once.
+ */
+function unlock() {
+  const a = ctx();
+  if (!a) return;
+  if (a.state !== 'running') void a.resume().catch(() => {});
+  const silent = a.createBuffer(1, 1, 22050);
+  const src = a.createBufferSource();
+  src.buffer = silent;
+  src.connect(a.destination);
+  src.start(0);
+}
+if (typeof window !== 'undefined') {
+  const first = () => {
+    unlock();
+    window.removeEventListener('pointerdown', first, true);
+    window.removeEventListener('touchend', first, true);
+  };
+  window.addEventListener('pointerdown', first, true);
+  window.addEventListener('touchend', first, true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && audio && audio.state !== 'running') void audio.resume().catch(() => {});
+  });
 }
 
 /** One soft note: a sine with a quick attack and a short fade, optionally gliding to another pitch. */
@@ -65,7 +91,16 @@ export function feedback(kind: FeedbackKind) {
   if (!read('sounds')) return;
   const a = ctx();
   if (!a) return;
-  const t = a.currentTime;
+  // Still waking up (first sound, or back from the background): play once it runs, not late or never.
+  if (a.state !== 'running') {
+    void a.resume().then(() => play(a, kind)).catch(() => {});
+    return;
+  }
+  play(a, kind);
+}
+
+function play(a: AudioContext, kind: FeedbackKind) {
+  const t = a.currentTime + 0.005;
   if (kind === 'tick') note(a, t, 880, 1320, 0.09, 0.08);
   else if (kind === 'untick') note(a, t, 520, 360, 0.09, 0.06);
   else if (kind === 'drop') note(a, t, 220, 140, 0.12, 0.1);

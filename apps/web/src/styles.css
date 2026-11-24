@@ -129,8 +129,9 @@ h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.0
 @keyframes toast-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
 /* Pages fade (opacity only: a transform would move the fixed bars while it runs). */
 .page-enter { animation: fade-in 0.22s ease-out both; }
-/* Lists of cards come in one after the other; past the first dozen, together. */
-.stagger > * { animation: rise 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: 0.3s; }
+/* Lists of cards: the first dozen come in one after the other. */
+.stagger > :nth-child(-n + 12) { animation: rise 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Past the first dozen, nothing to animate: a grid of a thousand cards stays cheap. */
 .stagger > :nth-child(1) { animation-delay: 0s; }
 .stagger > :nth-child(2) { animation-delay: 0.025s; }
 .stagger > :nth-child(3) { animation-delay: 0.05s; }

@@ -21,6 +21,7 @@ import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, renderList
 import { exportSearchText } from '../lib/searchString.js';
 import { selection } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
+import { useProgressive } from '../lib/progressive.js';
 
 export function ListPage() {
   const { id } = useParams<{ id: string }>();
@@ -119,6 +120,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
     [allCards, view, sort, rank, idx, lang],
   );
   const done = list.entries.filter((e) => e.done).length;
+  // A big collection builds its first cards at once, the next ones as they come near the screen.
+  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}`);
 
   /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
   const reward = (members: ListDetailEntry[], value: boolean) => {
@@ -349,7 +352,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         {cards.length > 0 && (picking || owner) && <p className="pb-2 pt-1.5 text-xs text-ink-3">{picking ? t.pick_hint : t.list_owner_hint}</p>}
         {cards.length > 0 && !picking && !owner && <div className="pb-2" />}
         <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-5">
-          {cards.map((c) => {
+          {shownCards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
             const sp = v && idx.speciesByDex.get(v.dex);
             if (!v || !sp) return null;
@@ -433,6 +436,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
               </li>
             );
           })}
+          {cardsMore && <li ref={cardsSentinel} aria-hidden="true" className="col-span-full h-1" />}
         </ul>
 
         {!owner && loggedIn && (

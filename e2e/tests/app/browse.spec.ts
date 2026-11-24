@@ -458,8 +458,10 @@ test('search finds costumes by their name, and unreleased forms can be hidden', 
   const released = new Set(ds.species.filter((x: any) => x.released).map((x: any) => x.dex));
   const unreleased = ds.variants.find((v: any) => v.datamined && v.label && !v.gender && released.has(v.dex));
   const sp = ds.species.find((s: any) => s.dex === unreleased.dex);
-  await page.getByPlaceholder('Nom ou numéro').fill(String(sp.dex));
-  const card = page.getByRole('button', { name: `Ajouter ${sp.name.fr ?? sp.name.en} ${unreleased.label.fr ?? unreleased.label.en}`, exact: true });
+  // Precise enough to bring the card among the first ones built (long grids build the rest as they scroll in).
+  const label = unreleased.label.fr ?? unreleased.label.en;
+  await page.getByPlaceholder('Nom ou numéro').fill(`${sp.name.fr ?? sp.name.en} ${label}`);
+  const card = page.getByRole('button', { name: `Ajouter ${sp.name.fr ?? sp.name.en} ${label}`, exact: true });
   await expect(card).toBeVisible();
   await page.getByRole('button', { name: 'Filtres' }).click();
   await page.locator('dialog[open]').getByRole('button', { name: 'Masquer les non sortis' }).click();
@@ -486,4 +488,15 @@ test('a manager marks several cards "shiny not out" at once from the multi-selec
   expect(o.map((x: { shinyReleased: boolean }) => x.shinyReleased)).toEqual([false, false]);
   await page.request.patch('/api/overrides', { data: { keys: ['1', '4'], shinyReleased: null } });
   await ctx.close();
+});
+
+test('long grids build more cards as they scroll in', async ({ page }) => {
+  await page.goto('/dex');
+  await page.getByPlaceholder('Nom ou numéro').fill('pikachu');
+  const cards = page.locator('main ul > li button[aria-label^="Ajouter Pikachu"]');
+  await expect(cards.first()).toBeVisible();
+  const first = await cards.count();
+  expect(first).toBeLessThanOrEqual(60);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 4000);
+  await expect.poll(() => cards.count()).toBeGreaterThan(first);
 });

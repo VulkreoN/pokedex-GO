@@ -50,7 +50,9 @@ function prefetchPages() {
 }
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: (count, err) => !(err instanceof Error && 'status' in err) && count < 2, refetchOnWindowFocus: true } },
+  // Data less than 30 s old is not asked again on each page or each return to the app; live events and the
+  // player's own actions refresh it at once anyway.
+  defaultOptions: { queries: { retry: (count, err) => !(err instanceof Error && 'status' in err) && count < 2, refetchOnWindowFocus: true, staleTime: 30_000 } },
 });
 
 function RequireAuth({ children }: { children: ReactNode }) {

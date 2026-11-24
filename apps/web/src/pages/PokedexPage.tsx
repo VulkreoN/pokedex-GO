@@ -14,6 +14,7 @@ import { BulkManageSheet } from '../components/BulkManageSheet.js';
 import { useMe } from '../lib/auth.js';
 import { feedback } from '../lib/feedback.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
+import { useProgressive } from '../lib/progressive.js';
 
 /** Appeared in the last 45 days. */
 export const isRecent = (iso: string | undefined) => !!iso && Date.now() - new Date(iso).getTime() < 45 * 86_400_000;
@@ -150,6 +151,10 @@ export function PokedexPage() {
     setSort('dex');
   };
   const resultCount = exploded ? t.variants_count(cards.length) : t.species_count(rows.length);
+  // Long grids build their first cards at once, the next ones as they come near the screen.
+  const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${gen}|${gender}|${sort}|${shiny}|${multi}`;
+  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, gridKey);
+  const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey);
   const check = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
 
   return (
@@ -231,7 +236,7 @@ export function PokedexPage() {
             {(exploded ? cards.length : rows.length) === 0 && <Empty>{t.nothing_here}</Empty>}
             {exploded && (
               <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {cards.map(({ species, group, id }) => (
+                {shownCards.map(({ species, group, id }) => (
                   <li key={id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 190px' }}>
                     <VariantCard
                       idx={dataset.data}
@@ -250,11 +255,12 @@ export function PokedexPage() {
                     />
                   </li>
                 ))}
+                {cardsMore && <li ref={cardsSentinel} aria-hidden="true" className="col-span-full h-1" />}
               </ul>
             )}
             {!exploded && (
               <ul className="stagger grid grid-cols-4 gap-2 sm:grid-cols-6">
-                {sortedRows.map((s) => {
+                {shownRows.map((s) => {
                   const idx = dataset.data;
                   const cover = idx.coverOf.get(s.dex)!;
                   const shown = gender === 'all' ? cover : variantForGender(groupVariants((idx.variantsByDex.get(s.dex) ?? []).filter((v) => v.kind === 'base'))[0] ?? { id: '', label: null, variants: [cover] }, gender);
@@ -277,6 +283,7 @@ export function PokedexPage() {
                     </li>
                   );
                 })}
+                {rowsMore && <li ref={rowsSentinel} aria-hidden="true" className="col-span-full h-1" />}
               </ul>
             )}
           </>
