@@ -140,8 +140,19 @@ export interface ToolEvolution {
   buddyKm?: number;
   daytime?: boolean;
   nighttime?: boolean;
-  /** A special task comes with it (Espeon, Umbreon…). */
+  /** A special task comes with it (Espeon, Umbreon…), in the game's words when known. */
   quest?: boolean;
+  questText?: LocalizedText;
+  /** Only during a full moon (Ursaring), at dusk (Rockruff), with the phone upside down (Inkay). */
+  fullMoon?: boolean;
+  dusk?: boolean;
+  upsideDown?: boolean;
+  /** Only this gender evolves this way (Kirlia -> Gallade). */
+  gender?: 'm' | 'f';
+  /** How many of the item (50 Zygarde Cells). */
+  itemCount?: number;
+  /** Chance-based: one of several outcomes (Dunsparce). */
+  random?: boolean;
 }
 export interface ToolPokemon {
   /** Variant key of the form ("94", "94.fMEGA", "26.fALOLA"). */
@@ -165,6 +176,8 @@ export interface ToolPokemon {
   evolutions?: ToolEvolution[];
   /** Mega Energy for the first Mega Evolution, then for the next ones. */
   megaEnergy?: [number, number];
+  /** A move it must know to Mega Evolve (Rayquaza: Dragon Ascent). */
+  megaMove?: string;
   /** Stardust and candy for a second charged move. */
   secondMove?: [number, number];
 }

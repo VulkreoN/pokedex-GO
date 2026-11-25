@@ -514,6 +514,11 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   // They open over the page; closed to go on.
   await page.keyboard.press('Escape');
   await expect(counters).toHaveCount(0);
+  // Special evolutions: the full moon group open, with its next dates; the task group shows the game's words.
+  await page.getByRole('button', { name: 'Évolutions spéciales' }).click();
+  await expect(page.getByText('Prochaines pleines lunes (heure de ton téléphone)')).toBeVisible();
+  await page.getByRole('button', { name: /Avec un objectif à remplir/ }).click();
+  await expect(page.getByText(/Fais 10\s+Excellents lancers/)).toBeVisible();
   // Power-up and trade costs.
   await page.getByRole('button', { name: 'Coûts', exact: true }).click();
   await expect(page.getByText('Poussière pour un échange')).toBeVisible();

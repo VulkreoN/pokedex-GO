@@ -63,7 +63,10 @@ test('a new player signs up, builds a list, copies it for the game and shares it
 
   // Making it private cuts the link.
   await page.locator('dialog[open]').getByText('Moi seulement').click();
+  // Saved before the visitor looks again.
+  const saved = page.waitForResponse((r) => /\/api\/lists\/[^/]+$/.test(r.url()) && r.request().method() === 'PATCH');
   await page.locator('dialog[open]').getByRole('button', { name: 'Enregistrer' }).click();
+  expect((await saved).ok()).toBe(true);
   await vp.reload();
   await expect(vp.getByText('Shinies à chasser')).toHaveCount(0);
   await visitor.close();

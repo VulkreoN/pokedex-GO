@@ -18,7 +18,14 @@ interface Branch {
   kmBuddyDistanceRequirement?: number;
   onlyDaytime?: boolean;
   onlyNighttime?: boolean;
-  questDisplay?: unknown[];
+  onlyFullMoon?: boolean;
+  onlyDuskPeriod?: boolean;
+  onlyUpsideDown?: boolean;
+  genderRequirement?: string;
+  evolutionItemRequirementCost?: number;
+  evolutionMoveRequirement?: string;
+  evolutionLikelihoodWeight?: number;
+  questDisplay?: { questRequirementTemplateId?: string }[];
 }
 interface GmEntry {
   templateId: string;
@@ -53,6 +60,8 @@ export interface ToolsContext {
   text: (key: string) => LocalizedText | undefined;
   /** A move's name from the game texts, by the number of its template ("0590"). */
   moveText: (num: string) => LocalizedText | undefined;
+  /** An evolution task's goal in the game's words ("Defeat 30 Ghost- or Psychic-type Pokémon"). */
+  questText: (templateId: string) => LocalizedText | undefined;
 }
 
 /** "GLAIVE_RUSH" -> "Glaive Rush", for a move the texts do not name yet. */
@@ -146,6 +155,7 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     for (const b of branches) {
       if (b.temporaryEvolution) {
         if (b.temporaryEvolutionEnergyCost) p.megaEnergy ??= [b.temporaryEvolutionEnergyCost, b.temporaryEvolutionEnergyCostSubsequent ?? b.temporaryEvolutionEnergyCost];
+        if (b.evolutionMoveRequirement) p.megaMove = String(b.evolutionMoveRequirement);
         continue;
       }
       const to = b.evolution && (keyOf.get(`${b.evolution}|${b.form ?? ''}`) ?? keyOf.get(`${b.evolution}|`));
@@ -159,7 +169,21 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
       if (b.kmBuddyDistanceRequirement) e.buddyKm = b.kmBuddyDistanceRequirement;
       if (b.onlyDaytime) e.daytime = true;
       if (b.onlyNighttime) e.nighttime = true;
-      if (b.questDisplay?.length) e.quest = true;
+      if (b.questDisplay?.length) {
+        e.quest = true;
+        // The everyday task, not a Community Day or event variant of it.
+        const ids = b.questDisplay.map((q) => q.questRequirementTemplateId).filter((x): x is string => !!x);
+        const id = ids.find((x) => !/_CD_|BUDDY_EVENT/.test(x)) ?? ids[0];
+        const text = id && ctx.questText(id);
+        if (text) e.questText = text;
+      }
+      if (b.onlyFullMoon) e.fullMoon = true;
+      if (b.onlyDuskPeriod) e.dusk = true;
+      if (b.onlyUpsideDown) e.upsideDown = true;
+      if (b.genderRequirement === 'MALE') e.gender = 'm';
+      if (b.genderRequirement === 'FEMALE') e.gender = 'f';
+      if (b.evolutionItemRequirementCost && b.evolutionItemRequirementCost > 1) e.itemCount = b.evolutionItemRequirementCost;
+      if (b.evolutionLikelihoodWeight) e.random = true;
       if (!evolutions.some((x) => x.to === e.to)) evolutions.push(e);
     }
     if (evolutions.length) p.evolutions = evolutions;

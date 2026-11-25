@@ -624,6 +624,15 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       }
       return names[id.replace(/_FAST$/, '')];
     },
+    questText: (id) => {
+      const q = (gm as { templateId: string; data: { evolutionQuestTemplate?: { goals?: { target?: number }[]; display?: { description?: string } } } }[]).find((t) => t.templateId === id)?.data.evolutionQuestTemplate;
+      const key = q?.display?.description?.toLowerCase();
+      if (!key) return undefined;
+      const target = String(q?.goals?.[0]?.target ?? '');
+      const en = texts.en.get(key)?.replace(/\{0\}/g, target);
+      const fr = texts.fr.get(key)?.replace(/\{0\}/g, target);
+      return en ? { en, fr: fr ?? en } : undefined;
+    },
     moveText: (num) => {
       const en = texts.en.get(`move_name_${num}`);
       const fr = texts.fr.get(`move_name_${num}`);

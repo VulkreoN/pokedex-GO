@@ -12,7 +12,7 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersSheet, CountersTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
+import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
 import { useTools } from '../lib/tools.js';
 import type { ToolPokemon } from '@mydexpogo/shared';
 import { dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
@@ -67,7 +67,7 @@ export function GamePage() {
 /** Small helpers for the game, one at a time. */
 function Tools() {
   const t = useT();
-  const tools = [['counters', t.tool_counters], ['costs', t.tool_costs], ['buddy', t.tool_buddy], ['league', t.tool_league], ['caps', t.tool_caps]] as const;
+  const tools = [['counters', t.tool_counters], ['evolutions', t.tool_evolutions], ['costs', t.tool_costs], ['buddy', t.tool_buddy], ['league', t.tool_league], ['caps', t.tool_caps]] as const;
   const [tool, setTool] = useState<(typeof tools)[number][0]>('counters');
   return (
     <>
@@ -75,6 +75,7 @@ function Tools() {
         {tools.map(([id, label]) => <Chip key={id} active={tool === id} onClick={() => setTool(id)}>{label}</Chip>)}
       </div>
       {tool === 'counters' && <CountersTool />}
+      {tool === 'evolutions' && <EvolutionsTool />}
       {tool === 'costs' && <CostsTool />}
       {tool === 'buddy' && <BuddyTool />}
       {tool === 'league' && <LeagueTool />}

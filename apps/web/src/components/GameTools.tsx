@@ -1,7 +1,7 @@
 /** The Game tab's tools: best counters (raids, Team GO Rocket, any Pokémon), costs, buddy distances, the GO Battle League. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { powerUpCost, rankCounters, weaknesses, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
+import { nextFullMoons, powerUpCost, rankCounters, weaknesses, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
 import { TypeBadge } from './TypeBadge.js';
 import { Badge, Chip, Empty, Sheet, Spinner } from './ui.js';
@@ -405,6 +405,93 @@ export function LeagueTool() {
         })}
       </ul>
       <p className="text-xs text-ink-3">{t.league_note} <Link to="/pvp" className="font-semibold text-sky">{t.nav_pvp}</Link></p>
+    </div>
+  );
+}
+
+/* ---------- Special evolutions ---------- */
+
+type EvoGroup = 'moon' | 'time' | 'upside' | 'quest' | 'buddy' | 'item' | 'lure' | 'trade' | 'gender' | 'random';
+const EVO_ORDER: EvoGroup[] = ['moon', 'time', 'upside', 'quest', 'buddy', 'item', 'lure', 'trade', 'gender', 'random'];
+const EVO_ICON: Record<EvoGroup, string> = { moon: '🌕', time: '🌗', upside: '🙃', quest: '🎯', buddy: '🚶', item: '💎', lure: '🧲', trade: '🔁', gender: '⚥', random: '🎲' };
+
+/** Pokémon that evolve in a particular way: full moon, day or night, a task, an item, a trade, a gender… */
+export function EvolutionsTool() {
+  const t = useT();
+  const { lang } = useLang();
+  const data = useToolData();
+  const [open, setOpen] = useState<EvoGroup | null>('moon');
+  const moons = useMemo(() => nextFullMoons(new Date(), 4), []);
+  if (typeof data === 'string') return <Loading state={data} />;
+  const { idx, tools } = data;
+  const byKey = new Map(tools.pokemon.map((p) => [p.key, p]));
+  // One row per (from species, to form): the forms of Burmy all evolve the same way.
+  const groups = new Map<EvoGroup, { from: ToolPokemon; to: ToolPokemon; e: NonNullable<ToolPokemon['evolutions']>[number] }[]>();
+  const seen = new Set<string>();
+  for (const p of tools.pokemon) {
+    if (!p.released) continue;
+    for (const e of p.evolutions ?? []) {
+      const to = byKey.get(e.to);
+      if (!to || seen.has(`${p.dex}>${e.to}`)) continue;
+      const g: EvoGroup | null = e.fullMoon ? 'moon' : e.daytime || e.nighttime || e.dusk ? 'time' : e.upsideDown ? 'upside' : e.quest && e.questText && !e.buddyKm ? 'quest' : e.buddyKm ? 'buddy' : e.item ? 'item' : e.lure ? 'lure' : e.tradeFree ? 'trade' : e.gender ? 'gender' : e.random ? 'random' : null;
+      if (!g) continue;
+      seen.add(`${p.dex}>${e.to}`);
+      (groups.get(g) ?? groups.set(g, []).get(g)!).push({ from: p, to, e });
+    }
+  }
+  const when = (d: Date) => d.toLocaleString(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-2">{t.evo_help}</p>
+      {EVO_ORDER.filter((g) => groups.has(g)).map((g) => (
+        <section key={g} className="card overflow-hidden">
+          <button type="button" aria-expanded={open === g} onClick={() => setOpen(open === g ? null : g)} className="flex w-full items-center gap-2 p-3 text-left">
+            <span className="text-xl" aria-hidden="true">{EVO_ICON[g]}</span>
+            <span className="flex-1 font-bold">{t.evo_group[g]}</span>
+            <span className="tnum text-sm text-ink-3">{groups.get(g)!.length}</span>
+          </button>
+          {open === g && (
+            <div className="border-t border-line p-3">
+              {g === 'moon' && (
+                <div className="mb-3 rounded-lg bg-paper-2 p-2 text-sm">
+                  <p className="font-semibold">{t.evo_next_moons}</p>
+                  <ul className="mt-1 space-y-0.5">{moons.map((d) => <li key={d.toISOString()} className="tnum">🌕 {when(d)}</li>)}</ul>
+                </div>
+              )}
+              <ul className="space-y-2">
+                {groups.get(g)!.map(({ from, to, e }) => {
+                  const notes = [
+                    e.fullMoon && t.evo_full_moon,
+                    e.daytime && t.costs_day,
+                    e.nighttime && t.costs_night,
+                    e.dusk && t.evo_dusk,
+                    e.upsideDown && t.evo_upside,
+                    e.questText && local(e.questText, lang),
+                    e.buddyKm && !e.questText && t.costs_buddy_km(e.buddyKm),
+                    e.item && `${e.itemCount ? `${e.itemCount} × ` : ''}${local(tools.items[e.item], lang, e.item)}`,
+                    e.lure && local(tools.items[e.lure], lang, e.lure),
+                    e.tradeFree && t.costs_trade_free,
+                    e.gender && (e.gender === 'm' ? t.evo_male : t.evo_female),
+                    e.random && t.evo_random,
+                    e.candy && t.costs_candies(e.candy),
+                  ].filter(Boolean);
+                  return (
+                    <li key={`${from.key}>${to.key}`} className="flex items-center gap-2">
+                      <Link to={`/dex/${from.dex}`} className="shrink-0"><FormSprite idx={idx} p={from} size={40} /></Link>
+                      <span className="text-ink-3" aria-hidden="true">→</span>
+                      <Link to={`/dex/${to.dex}`} className="shrink-0"><FormSprite idx={idx} p={to} size={40} /></Link>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{local(from.name, lang)} → {local(to.name, lang)}</p>
+                        <p className="text-xs text-ink-2">{notes.join(' · ')}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
