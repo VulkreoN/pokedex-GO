@@ -151,8 +151,12 @@ export interface ToolEvolution {
   gender?: 'm' | 'f';
   /** How many of the item (50 Zygarde Cells). */
   itemCount?: number;
-  /** Chance-based: one of several outcomes (Dunsparce). */
+  /** Chance-based: one of several outcomes (Dunsparce; Eevee's first three; Wurmple; Toxel). */
   random?: boolean;
+  /** Tyrogue: by its highest stat (Attack -> Hitmonlee, Defense -> Hitmonchan, both equal -> Hitmontop). */
+  byStat?: 'atk' | 'def' | 'equal';
+  /** Eevee: a nickname picks this one, once per nickname (Sparky -> Jolteon). */
+  nickname?: string;
 }
 export interface ToolPokemon {
   /** Variant key of the form ("94", "94.fMEGA", "26.fALOLA"). */

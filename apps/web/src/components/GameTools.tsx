@@ -488,13 +488,15 @@ export function LeagueTool() {
 /* ---------- Special evolutions ---------- */
 
 type Evo = NonNullable<ToolPokemon['evolutions']>[number];
-type EvoGroup = 'moon' | 'time' | 'upside' | 'quest' | 'buddy' | 'item' | 'lure' | 'trade' | 'gender' | 'random';
-const EVO_ORDER: EvoGroup[] = ['moon', 'time', 'upside', 'quest', 'buddy', 'item', 'lure', 'trade', 'gender', 'random'];
-const EVO_ICON: Record<EvoGroup, string> = { moon: '🌕', time: '🌗', upside: '🙃', quest: '🎯', buddy: '🚶', item: '💎', lure: '🧲', trade: '🔁', gender: '⚥', random: '🎲' };
+type EvoGroup = 'moon' | 'time' | 'upside' | 'quest' | 'buddy' | 'item' | 'lure' | 'trade' | 'gender' | 'stats' | 'random' | 'nickname';
+const EVO_ORDER: EvoGroup[] = ['moon', 'time', 'upside', 'quest', 'buddy', 'item', 'lure', 'trade', 'gender', 'stats', 'random', 'nickname'];
+const EVO_ICON: Record<EvoGroup, string> = { moon: '🌕', time: '🌗', upside: '🙃', quest: '🎯', buddy: '🚶', item: '💎', lure: '🧲', trade: '🔁', gender: '⚥', stats: '📊', random: '🎲', nickname: '🏷️' };
 
 /** The group an evolution goes in, by its most particular condition; null for candy alone. */
 const evoGroup = (e: Evo): EvoGroup | null =>
-  e.fullMoon ? 'moon' : e.daytime || e.nighttime || e.dusk ? 'time' : e.upsideDown ? 'upside' : e.quest && e.questText && !e.buddyKm ? 'quest' : e.buddyKm ? 'buddy' : e.item ? 'item' : e.lure ? 'lure' : e.tradeFree ? 'trade' : e.gender ? 'gender' : e.random ? 'random' : null;
+  e.fullMoon ? 'moon' : e.daytime || e.nighttime || e.dusk ? 'time' : e.upsideDown ? 'upside' : e.quest && e.questText && !e.buddyKm ? 'quest' : e.buddyKm ? 'buddy' : e.item ? 'item' : e.lure ? 'lure' : e.tradeFree ? 'trade' : e.gender ? 'gender' : e.byStat ? 'stats' : e.random ? 'random' : null;
+/** Its groups: the usual one, and Eevee's nickname trick besides. */
+const evoGroups = (e: Evo): EvoGroup[] => [evoGroup(e), e.nickname ? ('nickname' as const) : null].filter((g): g is EvoGroup => !!g);
 
 /** What it takes, in words: "pendant la pleine lune · 100 bonbons". */
 function useEvoNotes() {
@@ -513,7 +515,9 @@ function useEvoNotes() {
       e.lure && local(tools.items[e.lure], lang, e.lure),
       e.tradeFree && t.costs_trade_free,
       e.gender && (e.gender === 'm' ? t.evo_male : t.evo_female),
+      e.byStat && t.evo_by_stat[e.byStat],
       e.random && t.evo_random,
+      e.nickname && t.evo_nickname(e.nickname),
       e.candy && t.costs_candies(e.candy),
     ].filter(Boolean).join(' · ');
 }
@@ -566,9 +570,8 @@ export function EvolutionsTool() {
   const matches = (p: ToolPokemon) => words.every((w) => (/^\d+$/.test(w) ? String(p.dex) === w : normalize(`${p.name.en} ${p.name.fr ?? ''}`).includes(w)));
   const groups = new Map<EvoGroup, ReturnType<typeof evolutionLinks>>();
   for (const link of evolutionLinks(tools)) {
-    const g = evoGroup(link.e);
-    if (!g || (words.length && !matches(link.from) && !matches(link.to))) continue;
-    (groups.get(g) ?? groups.set(g, []).get(g)!).push(link);
+    if (words.length && !matches(link.from) && !matches(link.to)) continue;
+    for (const g of evoGroups(link.e)) (groups.get(g) ?? groups.set(g, []).get(g)!).push(link);
   }
   const when = (d: Date) => d.toLocaleString(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   return (

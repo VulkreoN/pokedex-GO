@@ -67,6 +67,10 @@ export interface ToolsContext {
 /** "GLAIVE_RUSH" -> "Glaive Rush", for a move the texts do not name yet. */
 const humanize = (token: string) => token.toLowerCase().replace(/_fast$/, '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
+/** Eevee's nickname trick: once per nickname, the same in every language. */
+const EEVEE_NICKNAMES: Record<string, string> = { '134': 'Rainer', '135': 'Sparky', '136': 'Pyro', '196': 'Sakura', '197': 'Tamao', '470': 'Linnea', '471': 'Rea', '700': 'Kira' };
+const TYROGUE: Record<string, 'atk' | 'def' | 'equal'> = { '106': 'atk', '107': 'def', '237': 'equal' };
+
 const typeOf = (t?: string) => (t ? (t.replace('POKEMON_TYPE_', '').toLowerCase() as PokemonType) : null);
 const tokenOf = (pokemonId: string, form?: string) => {
   if (!form) return null;
@@ -186,6 +190,14 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
       if (b.evolutionLikelihoodWeight) e.random = true;
       if (!evolutions.some((x) => x.to === e.to)) evolutions.push(e);
     }
+    // Several branches with only candy (Eevee's first three, Wurmple, Toxel): the game picks one at random; Tyrogue
+    // by its highest stat.
+    const plain = evolutions.filter((e) => Object.keys(e).every((k) => k === 'to' || k === 'candy' || k === 'candyPurified'));
+    if (plain.length > 1) {
+      if (p.dex === 236) for (const e of plain) e.byStat = TYROGUE[e.to] ?? undefined;
+      else for (const e of plain) e.random = true;
+    }
+    if (p.dex === 133) for (const e of evolutions) if (EEVEE_NICKNAMES[e.to]) e.nickname = EEVEE_NICKNAMES[e.to];
     if (evolutions.length) p.evolutions = evolutions;
   }
 
