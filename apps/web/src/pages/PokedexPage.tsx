@@ -1,5 +1,5 @@
-import { useDeferredValue, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigationType } from 'react-router';
 import type { Species, Variant, VariantKind } from '@mydexpogo/shared';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
 import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSheet.js';
@@ -24,20 +24,31 @@ export const isRecent = (iso: string | undefined) => !!iso && Date.now() - new D
 const KINDS: VariantKind[] = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'];
 const ALL_KINDS = new Set(KINDS);
 
+/**
+ * Where the Pokédex was when a Pokémon was opened: search, filters, how far down. Going back puts it all back; coming
+ * from elsewhere (the menu) starts afresh.
+ */
+const memory: {
+  query: string; kinds: Set<VariantKind> | null; onlyDatamined: boolean; hideDatamined: boolean; gen: number; shiny: boolean;
+  gender: GenderFilter; forceExploded: boolean; sort: 'dex' | 'new' | 'family'; scrollY: number; built: number;
+} = { query: '', kinds: null, onlyDatamined: false, hideDatamined: false, gen: 0, shiny: false, gender: 'all', forceExploded: false, sort: 'dex', scrollY: 0, built: 0 };
+
 export function PokedexPage() {
+  const back = useNavigationType() === 'POP';
+  const [restore] = useState(() => (back ? { ...memory } : null));
   const t = useT();
   const { lang } = useLang();
   const dataset = useDataset();
-  const [query, setQuery] = useState('');
-  const [kinds, setKinds] = useState<Set<VariantKind>>(ALL_KINDS);
-  const [onlyDatamined, setOnlyDatamined] = useState(false);
+  const [query, setQuery] = useState(restore?.query ?? '');
+  const [kinds, setKinds] = useState<Set<VariantKind>>(restore?.kinds ?? ALL_KINDS);
+  const [onlyDatamined, setOnlyDatamined] = useState(restore?.onlyDatamined ?? false);
   /** The other way round: only what is in the game. */
-  const [hideDatamined, setHideDatamined] = useState(false);
-  const [gen, setGen] = useState(0);
-  const [shiny, setShiny] = useState(false);
-  const [gender, setGender] = useState<GenderFilter>('all');
-  const [forceExploded, setForceExploded] = useState(false);
-  const [sort, setSort] = useState<'dex' | 'new' | 'family'>('dex');
+  const [hideDatamined, setHideDatamined] = useState(restore?.hideDatamined ?? false);
+  const [gen, setGen] = useState(restore?.gen ?? 0);
+  const [shiny, setShiny] = useState(restore?.shiny ?? false);
+  const [gender, setGender] = useState<GenderFilter>(restore?.gender ?? 'all');
+  const [forceExploded, setForceExploded] = useState(restore?.forceExploded ?? false);
+  const [sort, setSort] = useState<'dex' | 'new' | 'family'>(restore?.sort ?? 'dex');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
@@ -154,8 +165,21 @@ export function PokedexPage() {
   const resultCount = exploded ? t.variants_count(cards.length) : t.species_count(rows.length);
   // Long grids build their first cards at once, the next ones as they come near the screen.
   const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${gen}|${gender}|${sort}|${shiny}|${multi}`;
-  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, gridKey);
-  const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey);
+  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, gridKey, 60, restore?.built);
+  const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey, 60, restore?.built);
+  // Remembered as it changes, so a Pokémon opened from here comes back to the same place.
+  Object.assign(memory, { query, kinds, onlyDatamined, hideDatamined, gen, shiny, gender, forceExploded, sort, built: Math.max(shownCards.length, shownRows.length) });
+  useEffect(() => {
+    const save = () => { memory.scrollY = window.scrollY; };
+    window.addEventListener('scroll', save, { passive: true });
+    return () => window.removeEventListener('scroll', save);
+  }, []);
+  // Back from a Pokémon: down to where the player was, once the cards are there.
+  const ready = !!dataset.data;
+  useEffect(() => {
+    if (!ready || !restore?.scrollY) return;
+    requestAnimationFrame(() => window.scrollTo(0, restore.scrollY));
+  }, [ready, restore]);
   const check = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
 
   return (
@@ -254,6 +278,7 @@ export function PokedexPage() {
                       pick={ticked.get(id)}
                       onPick={(p) => setTicked((m) => new Map(m).set(id, p))}
                       showPvp={pvpMode}
+                      openOnTap
                       onAdd={(g) => (multi ? toggleTick(id, g) : setAdding(g))}
                       onManage={isManager && !multi ? setManaging : undefined}
                     />

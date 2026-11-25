@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-25-dex',
+    date: '2026-11-25',
+    fr: [
+      'Pokédex : en revenant d’un Pokémon, tu retrouves ta recherche, tes filtres et l’endroit où tu étais dans la liste.',
+      'Dans les résultats d’une recherche ou d’un filtre, toucher un Pokémon ouvre sa fiche ; « + Ajouter » est juste en dessous.',
+      'Évolutions spéciales : les évolutions au hasard (Évoli, Chenipotte, Coquiperl, Ceribou, Toxizap…), Debugant selon ses IV, et l’astuce des surnoms pour les 8 Évolitions.',
+    ],
+    en: [
+      'Pokédex: back from a Pokémon, your search, filters and place in the list are as you left them.',
+      'In search or filter results, tapping a Pokémon opens it; “+ Add” is right below.',
+      'Special evolutions: random ones (Eevee, Wurmple, Clamperl, Cherubi, Toxel…), Tyrogue by its IVs, and the nickname trick for all 8 Eeveelutions.',
+    ],
+  },
+  {
     id: '2026-11-25-events',
     date: '2026-11-25',
     fr: [

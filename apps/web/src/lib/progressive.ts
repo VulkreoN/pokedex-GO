@@ -4,11 +4,19 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
-export function useProgressive<T>(items: T[], resetKey: unknown, step = 60) {
-  const [count, setCount] = useState(step);
+/** `initial`: as many cards as were built before, when a page comes back to where it was. */
+export function useProgressive<T>(items: T[], resetKey: unknown, step = 60, initial = step) {
+  const [count, setCount] = useState(Math.max(step, initial));
   const sentinel = useRef<HTMLLIElement | null>(null);
-  // A new search or filter starts from the top again; ticking a card does not.
-  useEffect(() => setCount(step), [resetKey, step]);
+  // A new search or filter starts from the top again; ticking a card does not. Not on the first build.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setCount(step);
+  }, [resetKey, step]);
   useEffect(() => {
     const el = sentinel.current;
     if (!el || count >= items.length) return;

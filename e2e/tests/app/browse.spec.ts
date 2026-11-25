@@ -542,3 +542,28 @@ test("a Pokémon's page tells how it evolves and how it is evolved into", async 
   await page.goto('/dex/216');
   await expect(page.getByRole('region', { name: 'Évolution' }).getByText(/Teddiursa → Ursaring/)).toBeVisible();
 });
+
+test('back from a Pokémon, the Pokédex is where it was: same search, same place down the list', async ({ page }) => {
+  await page.goto('/dex');
+  // A search result opens the Pokémon; adding is the button under it.
+  const search = page.getByPlaceholder('Nom ou numéro');
+  await search.fill('pikachu');
+  await page.getByRole('link', { name: /^Pikachu/ }).first().click();
+  await expect(page).toHaveURL(/\/dex\/25$/);
+  await page.goBack();
+  await expect(search).toHaveValue('pikachu');
+  await expect(page.getByRole('button', { name: /^Ajouter Pikachu/ }).first()).toBeVisible();
+  // Far down the whole list, then back.
+  await search.fill('');
+  await page.getByRole('link', { name: 'Bulbizarre' }).first().waitFor();
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 2500);
+  await page.waitForTimeout(300);
+  const before = await page.evaluate(() => window.scrollY);
+  expect(before).toBeGreaterThan(3000);
+  // A card on screen, tapped where it is (no scrolling to it).
+  const href = await page.evaluate(() => [...document.querySelectorAll<HTMLAnchorElement>('main li a[href^="/dex/"]')].find((a) => { const r = a.getBoundingClientRect(); return r.top > 150 && r.bottom < innerHeight - 150; })?.getAttribute('href'));
+  await page.locator(`main li a[href="${href}"]`).click();
+  await expect(page).toHaveURL(/\/dex\/\d+$/);
+  await page.goBack();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 400);
+});

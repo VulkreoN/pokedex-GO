@@ -2,7 +2,7 @@ import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from '
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { persistOptions } from './lib/persist.js';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { ToastProvider } from './components/toast.js';
 import { SelectionBar } from './components/SelectionBar.js';
@@ -65,11 +65,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** A new page opens at the top; going back leaves the page to put itself where it was (the Pokédex does). */
 function ScrollToTop() {
   const { pathname } = useLocation();
+  const how = useNavigationType();
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+    if (how !== 'POP') window.scrollTo(0, 0);
+  }, [pathname, how]);
   return null;
 }
 
