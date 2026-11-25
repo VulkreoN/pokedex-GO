@@ -61,6 +61,8 @@ async function pageOf(link: string): Promise<{ featured: EventMon[]; spawns: Eve
   if (!res.ok) throw new Error(`event page: HTTP ${res.status}`);
   const html = await res.text();
   const parsed = { at: Date.now(), featured: sectionMons(html, 'featured-pokémon'), spawns: sectionMons(html, 'spawns') };
+  // A spawns heading but nothing read: Leek Duck's markup probably changed.
+  if (/<h2[^>]*id="spawns"/.test(html) && /pkmn-list-item/.test(html) && !parsed.spawns.length && !parsed.featured.length) console.warn(`event spawns: nothing read on ${link}, markup changed?`);
   pages.set(link, parsed);
   return parsed;
 }
