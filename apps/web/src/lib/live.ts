@@ -280,13 +280,16 @@ const runningNow = (e: GameEvent, now: number) => e.eventType === 'raid-battles'
 
 /**
  * The bosses in raids right now, by level. Leek Duck's boss list lags behind on change days, its announcements do
- * not: where a level has a dated announcement under way, its bosses are the ones (left-overs of last week go), with
- * the list's CP and types when it has them. Levels without announcements (1 and 3 stars) follow the list.
+ * not: where a 5-star level has a dated announcement under way, its bosses are the ones (left-overs of last week go),
+ * with the list's CP and types when it has them. Megas add the announced one to the list's. Levels without
+ * announcements (1 and 3 stars) follow the list.
  */
 export function currentRaidBosses(raids: RaidBoss[], events: GameEvent[], now = Date.now()): CurrentBoss[] {
   const running = events.filter((e) => runningNow(e, now) && eventTier(e));
   const announced = new Set(running.map((e) => eventTier(e)!));
   const listed = new Map(raids.map((b) => [pictureKey(b.image), b]));
+  // Bosses an announcement that is over names (Leek Duck clears its dates, or they are past).
+  const ended = new Set(events.filter((e) => e.eventType === 'raid-battles' && !runningNow(e, now) && eventStatus(e, now) !== 'upcoming').flatMap((e) => (e.extraData?.raidbattles?.bosses ?? []).map((b) => pictureKey(b.image))));
   const out: CurrentBoss[] = [];
   const seen = new Set<string>();
   for (const e of running) {
@@ -305,8 +308,10 @@ export function currentRaidBosses(raids: RaidBoss[], events: GameEvent[], now = 
     if (!tier) continue;
     const key = `${tier}|${pictureKey(b.image)}`;
     if (seen.has(key)) continue;
-    // Its level has this week's announcement and it is not in it: last week's boss, gone from the game.
-    if (announced.has(tier)) continue;
+    if (ended.has(pictureKey(b.image))) continue;
+    // 5 stars: the week's announcement names them all, so one missing from it is last week's boss. Megas run several
+    // side by side (the announcement names only the week's new one): kept unless an announcement that is over names it.
+    if (announced.has(tier) && tier !== 'mega') continue;
     seen.add(key);
     out.push({ tier, name: b.name, image: b.image, canBeShiny: !!b.canBeShiny, combatPower: b.combatPower, types: b.types, boostedWeather: b.boostedWeather });
   }
