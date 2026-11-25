@@ -4,7 +4,7 @@
  */
 import type { ListDetail } from '@mydexpogo/shared';
 import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
-import { cardDone, cardMissing, cardsOf } from './cards.js';
+import { cardDone, cardsOf, missingCards } from './cards.js';
 import { localized } from './i18n.js';
 import { qrModules } from './qr.js';
 import { drawGender } from './genderGlyph.js';
@@ -91,7 +91,7 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   const img = 24;
 
   // One cell per card (variant x normal/shiny x trait); its genders are listed under the name.
-  const cards = cardsOf(list.entries).filter((c) => !opts.onlyMissing || cardMissing(c));
+  const cards = opts.onlyMissing ? missingCards(cardsOf(list.entries)) : cardsOf(list.entries);
   const rows = cards
     .map((c) => {
       const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');

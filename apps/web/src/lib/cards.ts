@@ -46,3 +46,9 @@ export function sortCards(cards: EntryCard[], sort: CardSort, order: { rank: (ke
   }
   return out;
 }
+
+/** For exports of what is missing: each card keeps only its genders still to catch (a caught ♂ is not shown at all). */
+export const missingCards = (cards: EntryCard[]) => cards.flatMap((c) => {
+  const members = c.members.filter((m) => !m.done);
+  return members.length ? [{ ...c, members }] : [];
+});

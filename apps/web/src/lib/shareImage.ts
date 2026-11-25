@@ -3,7 +3,7 @@
  * with a QR code, since a phone cannot copy text out of a picture but its camera reads a QR code.
  */
 import type { Lang, ListDetail } from '@mydexpogo/shared';
-import { cardDone, cardMissing, cardsOf } from './cards.js';
+import { cardDone, cardsOf, missingCards } from './cards.js';
 import { entryVariant, imageUrl, tagLabel, type DatasetIndex } from './dataset.js';
 import { canvasPen, drawGender } from './genderGlyph.js';
 import { localized } from './i18n.js';
@@ -97,7 +97,7 @@ export async function renderListImages(idx: DatasetIndex, list: ListDetail, lang
   const CARD_W = (W - 2 * PAD - (COLS - 1) * GAP) / COLS;
   const CARD_H = Math.round(320 * k);
 
-  const all = cardsOf(list.entries).filter((c) => !opts.onlyMissing || cardMissing(c));
+  const all = opts.onlyMissing ? missingCards(cardsOf(list.entries)) : cardsOf(list.entries);
   const shown = layout === 'preview' && all.length > MAX_CARDS ? all.slice(0, MAX_CARDS - 1) : all;
   const more = all.length - shown.length;
   const rows = shown.flatMap((c) => {
