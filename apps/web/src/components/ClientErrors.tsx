@@ -39,7 +39,7 @@ export function ClientErrors() {
                   <span className="tnum shrink-0 rounded-md bg-berry/10 px-1.5 text-xs font-bold text-berry">×{e.count}</span>
                 </div>
                 <div className="tnum mt-0.5 text-xs text-ink-3">
-                  {[relativeTime(e.lastSeen, lang), e.url, device(e.userAgent), e.appVersion?.slice(0, 7)].filter(Boolean).join(' · ')}
+                  {[relativeTime(e.lastSeen, lang), e.url, device(e.userAgent), e.appVersion && `v${e.appVersion}`].filter(Boolean).join(' · ')}
                 </div>
               </summary>
               {e.stack && <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-paper-2 p-2 text-[11px] leading-snug">{e.stack}</pre>}

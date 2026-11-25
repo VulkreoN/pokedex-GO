@@ -34,7 +34,7 @@ app.use(secureHeaders());
 if (env.corsOrigin) app.use(cors({ origin: env.corsOrigin.split(','), credentials: true }));
 
 // The deploy job checks this version to know the new release is the one answering.
-app.get('/health', (c) => c.json({ ok: true, version: env.appVersion }));
+app.get('/health', (c) => c.json({ ok: true, version: env.appVersion, commit: env.appCommit }));
 app.route('/auth', authRoutes);
 app.route('/lists', listRoutes);
 app.route('/shared', sharedRoutes);

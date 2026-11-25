@@ -17,7 +17,7 @@ export function reportError(error: unknown, context?: string) {
     void fetch('/api/client-errors', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message, stack, url: location.href, appVersion: import.meta.env.VITE_APP_VERSION || undefined }),
+      body: JSON.stringify({ message, stack, url: location.href, appVersion: import.meta.env.VITE_APP_VERSION ? `${import.meta.env.VITE_APP_VERSION}+${String(import.meta.env.VITE_APP_COMMIT ?? '').slice(0, 7)}` : undefined }),
       keepalive: true,
     }).catch(() => {});
   } catch {}

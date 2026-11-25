@@ -127,7 +127,7 @@ function Health() {
   return (
     <>
       <section className="card p-3 text-sm">
-        <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_version}</span><span className="tnum font-semibold">{h.version.slice(0, 7)}</span></div>
+        <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_version}</span><span className="tnum font-semibold">{h.version === 'dev' ? 'dev' : `v${h.version}`}</span></div>
         <div className="mt-1 flex justify-between gap-2"><span className="text-ink-2">{t.admin_started}</span><span className="tnum font-semibold">{relativeTime(h.startedAt, lang)}</span></div>
         <div className="mt-1 flex justify-between gap-2"><span className="text-ink-2">{t.data_next}</span><span className="tnum font-semibold">{h.dataset.running ? t.data_running : relativeTime(h.dataset.nextRunAt, lang)}</span></div>
       </section>

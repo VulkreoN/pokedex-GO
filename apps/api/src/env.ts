@@ -3,6 +3,7 @@ export const env = {
   port: Number(process.env.PORT ?? 3000),
   /** Release (git commit) baked into the image by CI; 'dev' locally. */
   appVersion: process.env.APP_VERSION ?? 'dev',
+  appCommit: process.env.APP_COMMIT ?? 'dev',
   corsOrigin: process.env.CORS_ORIGIN ?? '',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   isProd: process.env.NODE_ENV === 'production',

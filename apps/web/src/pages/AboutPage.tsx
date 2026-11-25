@@ -6,6 +6,7 @@ import { useLang, useT } from '../lib/i18n.js';
 
 const DISCORD = 'https://discord.gg/9P6XF7SPge';
 const VERSION = import.meta.env.VITE_APP_VERSION || 'dev';
+const COMMIT = (import.meta.env.VITE_APP_COMMIT as string | undefined) || '';
 const BUILT = import.meta.env.VITE_BUILD_DATE as string | undefined;
 
 /** Who made the app, where to talk about it, which version runs, and where its data comes from. */
@@ -45,7 +46,7 @@ export function AboutPage() {
         <section className="card p-4 text-sm">
           <h2 className="mb-2 text-base font-bold">{t.about_version_title}</h2>
           <dl className="space-y-1 text-ink-2">
-            <div className="flex justify-between gap-3"><dt>{t.about_version}</dt><dd className="tnum font-semibold text-ink">{VERSION === 'dev' ? 'dev' : VERSION.slice(0, 7)}</dd></div>
+            <div className="flex justify-between gap-3"><dt>{t.about_version}</dt><dd className="tnum text-right font-semibold text-ink">{VERSION === 'dev' ? 'dev' : `v${VERSION}`}{COMMIT && COMMIT !== 'dev' && <span className="block text-xs font-normal text-ink-3">{COMMIT.slice(0, 7)}</span>}</dd></div>
             {BUILT && <div className="flex justify-between gap-3"><dt>{t.about_built}</dt><dd className="tnum text-right font-semibold text-ink">{date(BUILT)}</dd></div>}
             {ds && (
               <div className="flex justify-between gap-3">
