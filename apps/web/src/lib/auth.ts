@@ -23,6 +23,15 @@ export function useAuthMutation(kind: 'login' | 'register') {
   });
 }
 
+/** The friend code of the game, in place of the one made at sign-up. */
+export function useSetFriendCode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (friendCode: string) => api<{ user: PublicUser }>('/auth/friend-code', { method: 'PUT', body: { friendCode } }).then((r) => r.user),
+    onSuccess: (user) => qc.setQueryData(['me'], user),
+  });
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({

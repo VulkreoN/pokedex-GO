@@ -428,6 +428,20 @@ describe('friends', () => {
     expect((await alice.post('/friends/requests', { friendCode: bob.user.friendCode })).status).toBe(409);
   });
 
+  it('a player can switch to the friend code of the game; the old one stops working, friends stay', async () => {
+    const old = bob.user.friendCode;
+    const game = `9${Date.now()}`.slice(0, 12);
+    expect((await bob.put('/auth/friend-code', { friendCode: '123' })).status).toBe(400);
+    expect((await bob.put('/auth/friend-code', { friendCode: alice.user.friendCode })).status).toBe(409);
+    const r = await bob.put('/auth/friend-code', { friendCode: game.replace(/(\d{4})(?=\d)/g, '$1 ') });
+    expect(r.status).toBe(200);
+    expect(r.body.user.friendCode).toBe(game);
+    expect((await bob.get('/auth/me')).body.user.friendCode).toBe(game);
+    expect((await admin.post('/friends/requests', { friendCode: old })).status).toBe(404);
+    expect((await alice.get('/friends')).body.friends.map((f: any) => f.friendCode)).toEqual([game]);
+    bob.user.friendCode = game;
+  });
+
   it('shows friends my non-private lists only', async () => {
     const theirs = await bob.get(`/friends/${alice.user.id}/lists`);
     expect(theirs.status).toBe(200);

@@ -223,3 +223,15 @@ test("a friend's QR code, read from a screenshot, fills in the friend code", asy
   await a.close();
   await b.close();
 });
+
+test('my friend code can be replaced by the one of the game', async ({ page }) => {
+  await apiRegister(page.request);
+  await page.goto('/friends');
+  await page.getByRole('button', { name: 'Modifier' }).click();
+  const sheet = page.locator('dialog[open]');
+  const game = `8${Date.now()}`.slice(0, 12);
+  await sheet.getByLabel('Code ami du jeu').fill(game.replace(/(\d{4})(?=\d)/g, '$1 '));
+  await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText('Code ami mis à jour')).toBeVisible();
+  await expect(page.getByText(game.replace(/(\d{4})(?=\d)/g, '$1 '), { exact: true })).toBeVisible();
+});

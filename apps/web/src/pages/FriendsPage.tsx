@@ -2,9 +2,9 @@ import { useFollowList } from '../lib/social.js';
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../components/toast.js';
-import { Button, CopyButton, Empty, Progress, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Button, CopyButton, Empty, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { ApiError } from '../lib/api.js';
-import { useMe } from '../lib/auth.js';
+import { useMe, useSetFriendCode } from '../lib/auth.js';
 import { useT, type T } from '../lib/i18n.js';
 import { PinButton } from './ListsPage.js';
 import { useFriendLists, useFriendRequests, useFriends, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest } from '../lib/lists.js';
@@ -19,6 +19,7 @@ export function errorMessage(t: T, e: unknown): string {
       invalid_credentials: t.err_invalid_credentials,
       username_taken: t.err_username_taken,
       invalid_code: t.err_invalid_code,
+      friend_code_taken: t.err_friend_code_taken,
       not_found: t.err_not_found,
       already_friends: t.err_already_friends,
       already_requested: t.err_already_requested,
@@ -37,6 +38,51 @@ export function errorMessage(t: T, e: unknown): string {
   return t.err_generic;
 }
 
+/** Puts the friend code of the game on the account, typed or read from a screenshot of its QR code. */
+function FriendCodeSheet({ open, onClose, current }: { open: boolean; onClose: () => void; current: string }) {
+  const t = useT();
+  const toast = useToast();
+  const save = useSetFriendCode();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await save.mutateAsync(code);
+      toast(t.my_code_saved);
+      setCode('');
+      onClose();
+    } catch (err) {
+      setError(errorMessage(t, err));
+    }
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title={t.my_code_edit_title}>
+      <form onSubmit={submit} className="space-y-3">
+        <p className="text-sm text-ink-2">{t.my_code_edit_help}</p>
+        <TextField label={t.my_code_game} placeholder={fmtCode(current)} inputMode="numeric" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} />
+        {error && <p className="text-sm text-berry">{error}</p>}
+        <div className="flex gap-2">
+          <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>QR</Button>
+          <Button tone="primary" type="submit" className="flex-1" disabled={save.isPending || code.replace(/\D/g, '').length !== 12}>{t.save}</Button>
+        </div>
+        <p className="text-xs text-ink-3">{t.my_code_edit_note}</p>
+      </form>
+      <QrScanSheet
+        open={scanning}
+        onClose={() => setScanning(false)}
+        onCode={(c) => {
+          setScanning(false);
+          setCode(fmtCode(c));
+          setError(null);
+        }}
+      />
+    </Sheet>
+  );
+}
+
 export function FriendsPage() {
   const t = useT();
   const toast = useToast();
@@ -51,6 +97,7 @@ export function FriendsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [editingCode, setEditingCode] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,7 +120,10 @@ export function FriendsPage() {
       <main className="mx-auto max-w-3xl space-y-5 px-3 pb-24">
         {me.data && (
           <section className="sky-header rounded-card p-4">
-            <div className="text-sm opacity-70">{t.my_code}</div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm opacity-70">{t.my_code}</span>
+              <button type="button" onClick={() => setEditingCode(true)} className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20">{t.my_code_edit}</button>
+            </div>
             <div className="tnum mt-1 text-[28px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
             <div className="mt-2 flex gap-2">
               <CopyButton tone="ghost" className="bg-white/10 text-inherit hover:bg-white/20 dark:bg-black/10 dark:hover:bg-black/20" text={me.data!.friendCode} />
@@ -90,6 +140,8 @@ export function FriendsPage() {
             )}
           </section>
         )}
+
+        {me.data && <FriendCodeSheet open={editingCode} onClose={() => setEditingCode(false)} current={me.data.friendCode} />}
 
         <form onSubmit={submit} className="space-y-2">
           <TextField label={t.add_friend} placeholder={t.friend_code_placeholder} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />

@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createSession, destroySession, hashPassword, publicUser, requireAuth, userFromRequest, verifyPassword, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
-import { hashToken, newFriendCode, newId } from '../lib/ids.js';
+import { hashToken, newFriendCode, newId, normalizeFriendCode } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
 import { env } from '../env.js';
 import { getSetting } from '../lib/settings.js';
@@ -100,6 +100,25 @@ export const authRoutes = new Hono<AuthEnv>()
   .post('/onboarded', requireAuth, async (c) => {
     await db.update(schema.users).set({ onboardedAt: new Date() }).where(eq(schema.users.id, c.get('user').id));
     return c.json({ ok: true });
+  })
+  /**
+   * Logged-in: use the friend code of the game instead of the one made at sign-up, so friends add the same code in
+   * both. The old code stops working; friends already made stay friends. A code already taken is refused.
+   */
+  .put('/friend-code', requireAuth, rateLimit({ windowMs: 60_000, max: 10 }), zValidator('json', z.object({ friendCode: z.string().max(40) })), async (c) => {
+    const me = c.get('user');
+    const code = normalizeFriendCode(c.req.valid('json').friendCode);
+    if (!code) return c.json({ error: 'invalid_code' }, 400);
+    if (code === me.friendCode) return c.json({ user: publicUser(me) });
+    const [clash] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.friendCode, code)).limit(1);
+    if (clash) return c.json({ error: 'friend_code_taken' }, 409);
+    try {
+      await db.update(schema.users).set({ friendCode: code }).where(eq(schema.users.id, me.id));
+    } catch {
+      // Taken between the check and the update.
+      return c.json({ error: 'friend_code_taken' }, 409);
+    }
+    return c.json({ user: publicUser({ ...me, friendCode: code }) });
   })
   /** Logged-in: change the password, every other session is closed. */
   .post('/password', requireAuth, zValidator('json', z.object({ current: z.string(), password: z.string().min(8).max(200) })), async (c) => {
