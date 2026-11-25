@@ -12,6 +12,7 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
+import { BuddyTool, CostsTool, CountersTool, LeagueTool } from '../components/GameTools.js';
 import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
@@ -62,13 +63,17 @@ export function GamePage() {
 /** Small helpers for the game, one at a time. */
 function Tools() {
   const t = useT();
-  const tools = [['caps', t.tool_caps]] as const;
-  const [tool, setTool] = useState<(typeof tools)[number][0]>('caps');
+  const tools = [['counters', t.tool_counters], ['costs', t.tool_costs], ['buddy', t.tool_buddy], ['league', t.tool_league], ['caps', t.tool_caps]] as const;
+  const [tool, setTool] = useState<(typeof tools)[number][0]>('counters');
   return (
     <>
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 flex flex-wrap gap-2">
         {tools.map(([id, label]) => <Chip key={id} active={tool === id} onClick={() => setTool(id)}>{label}</Chip>)}
       </div>
+      {tool === 'counters' && <CountersTool />}
+      {tool === 'costs' && <CostsTool />}
+      {tool === 'buddy' && <BuddyTool />}
+      {tool === 'league' && <LeagueTool />}
       {tool === 'caps' && <BottleCaps />}
     </>
   );

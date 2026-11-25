@@ -114,6 +114,69 @@ export interface PvpPokemon {
   /** Rank 1 IVs per league at level 50 (no best buddy): [attack, defense, HP, level, CP]. */
   top?: { great: PvpTop; ultra: PvpTop };
 }
+/** A move as raids, gyms and Team GO Rocket use it (not the PvP numbers). */
+export interface ToolMove {
+  type: PokemonType;
+  power: number;
+  /** Milliseconds one use takes. */
+  duration: number;
+  /** Fast moves: energy gained; charged moves: energy spent. */
+  energy: number;
+}
+/** One way a Pokémon evolves, and what it takes. */
+export interface ToolEvolution {
+  /** Key of the form it becomes. */
+  to: string;
+  candy?: number;
+  /** Candy for a purified Pokémon, when it differs. */
+  candyPurified?: number;
+  /** Game item id ("ITEM_SUN_STONE"), named in ToolsData.items. */
+  item?: string;
+  /** Lure module needed nearby ("ITEM_TROY_DISK_MOSSY"). */
+  lure?: string;
+  /** Free when the Pokémon was received in a trade. */
+  tradeFree?: boolean;
+  /** Walked as buddy first, in km. */
+  buddyKm?: number;
+  daytime?: boolean;
+  nighttime?: boolean;
+  /** A special task comes with it (Espeon, Umbreon…). */
+  quest?: boolean;
+}
+export interface ToolPokemon {
+  /** Variant key of the form ("94", "94.fMEGA", "26.fALOLA"). */
+  key: string;
+  dex: number;
+  name: LocalizedText;
+  types: PokemonType[];
+  atk: number;
+  def: number;
+  sta: number;
+  released: boolean;
+  mega?: boolean;
+  /** It exists as a Shadow Pokémon (Team GO Rocket, Shadow raids). */
+  shadow?: boolean;
+  /** Move ids it can learn; `elite` are the ones only an Elite TM or an event gives. */
+  quick: string[];
+  charged: string[];
+  elite?: string[];
+  /** Km walked as buddy for one candy. */
+  buddyKm?: number;
+  evolutions?: ToolEvolution[];
+  /** Mega Energy for the first Mega Evolution, then for the next ones. */
+  megaEnergy?: [number, number];
+  /** Stardust and candy for a second charged move. */
+  secondMove?: [number, number];
+}
+/** What the Tools tab needs, served apart from the Pokédex (only loaded there). */
+export interface ToolsData {
+  version: string;
+  moves: Record<string, ToolMove>;
+  moveNames: Record<string, LocalizedText>;
+  items: Record<string, LocalizedText>;
+  pokemon: ToolPokemon[];
+}
+
 export interface PvpData {
   /** CP multiplier per whole level: cpm[0] is level 1. */
   cpm: number[];

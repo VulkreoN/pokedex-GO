@@ -20,12 +20,14 @@ import {
   type PokemonType,
   type Rarity,
   type Species,
+  type ToolsData,
   type Variant,
   type VariantKind,
 } from '@mydexpogo/shared';
 import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, POKEAPI_HOME, SOURCES, existingUrls, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
+import { extractTools } from './tools.js';
 import { extractPvp } from './pvp.js';
 
 export interface BuildOptions {
@@ -46,6 +48,8 @@ export type ManualOverrides = Record<string, { released?: boolean | null; label?
 
 export interface BuildResult {
   dataset: Dataset;
+  /** The Tools tab's data (raid moves, evolution costs, buddy distances), served apart. */
+  tools?: ToolsData;
   stats: { species: number; released: number; variants: number; datamined: number; byKind: Record<string, number> };
 }
 
@@ -595,6 +599,39 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     log(`pvp: ${pvp.pokemon.length} battle forms, ${Object.keys(pvp.moves).length} move names`);
   }
 
+  // The Tools tab: same forms as the PvP data, plus Megas, their moves and costs.
+  const variantByKey = new Map(variants.map((v) => [v.key, v]));
+  const names = pvp?.moves ?? moveNames(gm as { templateId: string }[], texts);
+  const tools = extractTools(gm as Parameters<typeof extractTools>[0], {
+    isCostume: (dex, token) => speciesByDex.get(dex)?.gmForms.get(token) === true || looksLikeCostume(token),
+    released: (dex) => speciesFull.get(dex)?.released === true,
+    megaReleased: (key) => variantByKey.has(key) && !variantByKey.get(key)!.datamined,
+    dexOf: (id) => speciesById.get(id)?.dex,
+    name: (dex, token) => {
+      const sp = speciesFull.get(dex)!;
+      const label = token ? labelFor(sp, token, null) : null;
+      if (!label) return sp.name;
+      const fr = sp.name.fr ?? sp.name.en;
+      return { en: `${sp.name.en} (${label.en})`, fr: `${fr} (${label.fr ?? label.en})` };
+    },
+    text: (id) => {
+      if (id.startsWith('ITEM_')) {
+        const k = `${id.toLowerCase()}_name`;
+        const en = texts.en.get(k);
+        const fr = texts.fr.get(k);
+        // Some French texts are placeholders ("Pièce ??????"): the English name then.
+        return en ? { en, fr: fr && !/\?\?/.test(fr) ? fr : en } : undefined;
+      }
+      return names[id.replace(/_FAST$/, '')];
+    },
+    moveText: (num) => {
+      const en = texts.en.get(`move_name_${num}`);
+      const fr = texts.fr.get(`move_name_${num}`);
+      return en ? { en, fr: fr ?? en } : fr ? { en: fr, fr } : undefined;
+    },
+  }, '');
+  log(`tools: ${tools.pokemon.length} forms, ${Object.keys(tools.moves).length} moves`);
+
   const body = JSON.stringify({ species, variants });
   const hash = createHash('sha256').update(body).digest('hex').slice(0, 8);
   const now = new Date();
@@ -619,7 +656,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     byKind,
   };
   log(`dataset v${dataset.version}: ${stats.species} species, ${stats.variants} variants (${stats.datamined} datamined)`);
-  return { dataset, stats };
+  tools.version = dataset.version;
+  return { dataset, stats, tools };
 }
 
 /** Recorded for variants that existed before first-seen tracking began and whose name gives no date. */
@@ -725,9 +763,10 @@ if (isCli) {
     offline: args.get('offline') === 'true',
   };
   buildDataset({ fetch: fetchOpts })
-    .then(async ({ dataset, stats }) => {
+    .then(async ({ dataset, stats, tools }) => {
       await mkdir(outDir, { recursive: true });
       await writeFile(path.join(outDir, 'pokedex.json'), JSON.stringify(dataset));
+      if (tools) await writeFile(path.join(outDir, 'tools.json'), JSON.stringify(tools));
       await writeFile(path.join(outDir, 'manifest.json'), JSON.stringify({ version: dataset.version, generatedAt: dataset.generatedAt, speciesCount: stats.species, variantCount: stats.variants }, null, 2));
       const archive = await updateEventArchive(outDir, fetchOpts.offline).catch((e: Error) => (console.warn(`event archive not updated: ${e.message}`), null));
       if (archive) console.log(`events archive: ${archive.total} events (${archive.added} new)`);

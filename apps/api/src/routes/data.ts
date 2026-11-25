@@ -27,6 +27,15 @@ export const dataRoutes = new Hono<AuthEnv>()
     c.header('content-type', 'application/json; charset=utf-8');
     return c.body(served.body);
   })
+  .get('/tools.json', async (c) => {
+    const tools = await dataService.getTools();
+    if (!tools) return c.json({ error: 'dataset_not_ready' }, 503);
+    if (c.req.header('if-none-match') === tools.etag) return c.body(null, 304);
+    c.header('etag', tools.etag);
+    c.header('cache-control', 'no-cache');
+    c.header('content-type', 'application/json; charset=utf-8');
+    return c.body(tools.body);
+  })
   .get('/events-archive.json', (c) => {
     c.header('cache-control', 'no-cache');
     c.header('content-type', 'application/json; charset=utf-8');

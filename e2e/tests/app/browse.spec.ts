@@ -192,6 +192,7 @@ test.describe('game tab', () => {
     await page.goto('/game');
     await page.getByRole('tab', { name: 'Outils', exact: true }).click();
     await expect(page).toHaveURL(/\/game\?tab=tools$/); // kept when coming back
+    await page.getByRole('button', { name: 'Capsules', exact: true }).click();
     await page.getByRole('button', { name: 'Copier', exact: true }).click();
     expect(await clipboard(page)).toBe('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow&shiny');
     await page.getByRole('button', { name: 'Chromatiques seulement' }).click();
@@ -499,4 +500,24 @@ test('long grids build more cards as they scroll in', async ({ page }) => {
   expect(first).toBeLessThanOrEqual(60);
   for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 4000);
   await expect.poll(() => cards.count()).toBeGreaterThan(first);
+});
+
+test('game tools: counters for any Pokémon, power-up and trade costs, buddy distances', async ({ page }) => {
+  await page.goto('/game?tab=tools');
+  // Counters against Mewtwo, picked by name.
+  await page.getByRole('button', { name: 'Autre Pokémon' }).click();
+  await page.getByRole('searchbox', { name: 'Choisir un Pokémon' }).fill('mewtwo');
+  await page.getByRole('button', { name: /^#150 Mewtwo/ }).click();
+  const counters = page.getByRole('region', { name: 'Contres de Mewtwo' });
+  await expect(counters.getByRole('listitem')).toHaveCount(12);
+  await expect(counters.getByText('Faible contre')).toBeVisible();
+  // Power-up and trade costs.
+  await page.getByRole('button', { name: 'Coûts', exact: true }).click();
+  await expect(page.getByText('Poussière pour un échange')).toBeVisible();
+  await expect(page.getByRole('cell', { name: /^1\s000\s000$/ })).toBeVisible();
+  // Buddy distances.
+  await page.getByRole('button', { name: 'Distance copain' }).click();
+  await page.getByRole('searchbox', { name: 'Choisir un Pokémon' }).fill('pikachu');
+  await page.getByRole('button', { name: /^#25 Pikachu/ }).first().click();
+  await expect(page.getByText('1 km', { exact: true }).first()).toBeVisible();
 });

@@ -35,7 +35,7 @@ export interface DataStatus {
   pipelineVersion?: number;
 }
 
-const FILES = { dataset: 'pokedex.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json', firstSeen: 'first-seen.json' };
+const FILES = { dataset: 'pokedex.json', tools: 'tools.json', events: 'events-archive.json', status: 'status.json', seen: 'seen-species.json', firstSeen: 'first-seen.json' };
 const SCRAPEDDUCK = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/';
 
 const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string }[] = [
@@ -205,7 +205,7 @@ class DataService {
       const liveEvents = await fetchLiveEvents().catch((e: Error) => (console.log(`  events unavailable: ${e.message}`), [] as Awaited<ReturnType<typeof fetchLiveEvents>>));
       const merged = mergeEvents(this.events, liveEvents);
       await this.collectSeenSpecies(merged.all);
-      const { dataset, stats } = await buildDataset({
+      const { dataset, stats, tools } = await buildDataset({
         fetch: { cacheDir: path.join(env.dataDir, 'cache'), maxAgeHours: 0, offline: false },
         extraReleased: this.seenSpecies,
         knownSince: this.firstSeen ?? {},
@@ -222,6 +222,10 @@ class DataService {
       console.log(`  first-seen: ${Object.keys(next).length} keys (+${added})`);
       this.raw = dataset;
       this.served = null;
+      if (tools) {
+        this.tools = { etag: `"${tools.version}"`, body: JSON.stringify(tools) };
+        await writeFile(path.join(env.dataDir, FILES.tools), this.tools.body);
+      }
       this.events = merged.all;
       this.eventsBody = JSON.stringify(this.events);
       this.status.generatedAt = dataset.generatedAt;
@@ -298,6 +302,16 @@ class DataService {
   }
 
   /** Dataset with manager overrides merged, cached until the next change. */
+  private tools: { etag: string; body: string } | null = null;
+  /** The Tools tab's data (raid moves, evolution costs, buddy distances), kept on disk between restarts. */
+  async getTools(): Promise<{ etag: string; body: string } | null> {
+    if (this.tools) return this.tools;
+    const body = await readFile(path.join(env.dataDir, FILES.tools), 'utf8').catch(() => null);
+    if (!body) return null;
+    this.tools = { etag: `"${(JSON.parse(body) as { version: string }).version}"`, body };
+    return this.tools;
+  }
+
   async getServed(): Promise<{ etag: string; body: string } | null> {
     if (!this.raw) return null;
     if (this.served) return this.served;

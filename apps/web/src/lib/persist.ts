@@ -15,7 +15,7 @@ export const persister = createAsyncStoragePersister({
 });
 
 /** Kept: the player's own things (account, collections, friends, notifications, game tab). Not kept: admin data, and the Pokédex (stored apart). */
-const NOT_KEPT = new Set(['dataset', 'admin', 'users', 'audit', 'overrides', 'data-status', 'reports', 'client-errors']);
+const NOT_KEPT = new Set(['tools', 'dataset', 'admin', 'users', 'audit', 'overrides', 'data-status', 'reports', 'client-errors']);
 
 export const persistOptions: Omit<PersistQueryClientOptions, 'queryClient'> = {
   persister,
