@@ -519,6 +519,10 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   await expect(page.getByText('Prochaines pleines lunes (heure de ton téléphone)')).toBeVisible();
   await page.getByRole('button', { name: /Avec un objectif à remplir/ }).click();
   await expect(page.getByText(/Fais 10\s+Excellents lancers/)).toBeVisible();
+  // Searching opens the groups with a match.
+  await page.getByRole('searchbox', { name: 'Chercher un Pokémon dans les évolutions' }).fill('sepiatop');
+  await expect(page.getByText(/téléphone tenu à l’envers/)).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Chercher un Pokémon dans les évolutions' }).fill('');
   // Power-up and trade costs.
   await page.getByRole('button', { name: 'Coûts', exact: true }).click();
   await expect(page.getByText('Poussière pour un échange')).toBeVisible();
@@ -528,4 +532,13 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   await page.getByRole('searchbox', { name: 'Choisir un Pokémon' }).fill('pikachu');
   await page.getByRole('button', { name: /^#25 Pikachu/ }).first().click();
   await expect(page.getByText('1 km', { exact: true }).first()).toBeVisible();
+});
+
+test("a Pokémon's page tells how it evolves and how it is evolved into", async ({ page }) => {
+  await page.goto('/dex/217');
+  const card = page.getByRole('region', { name: 'Évolution' });
+  await expect(card.getByText(/pendant la pleine lune/)).toBeVisible();
+  await expect(card.getByText(/Prochaine pleine lune :/)).toBeVisible();
+  await page.goto('/dex/216');
+  await expect(page.getByRole('region', { name: 'Évolution' }).getByText(/Teddiursa → Ursaring/)).toBeVisible();
 });

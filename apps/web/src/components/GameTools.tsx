@@ -411,87 +411,143 @@ export function LeagueTool() {
 
 /* ---------- Special evolutions ---------- */
 
+type Evo = NonNullable<ToolPokemon['evolutions']>[number];
 type EvoGroup = 'moon' | 'time' | 'upside' | 'quest' | 'buddy' | 'item' | 'lure' | 'trade' | 'gender' | 'random';
 const EVO_ORDER: EvoGroup[] = ['moon', 'time', 'upside', 'quest', 'buddy', 'item', 'lure', 'trade', 'gender', 'random'];
 const EVO_ICON: Record<EvoGroup, string> = { moon: '🌕', time: '🌗', upside: '🙃', quest: '🎯', buddy: '🚶', item: '💎', lure: '🧲', trade: '🔁', gender: '⚥', random: '🎲' };
+
+/** The group an evolution goes in, by its most particular condition; null for candy alone. */
+const evoGroup = (e: Evo): EvoGroup | null =>
+  e.fullMoon ? 'moon' : e.daytime || e.nighttime || e.dusk ? 'time' : e.upsideDown ? 'upside' : e.quest && e.questText && !e.buddyKm ? 'quest' : e.buddyKm ? 'buddy' : e.item ? 'item' : e.lure ? 'lure' : e.tradeFree ? 'trade' : e.gender ? 'gender' : e.random ? 'random' : null;
+
+/** What it takes, in words: "pendant la pleine lune · 100 bonbons". */
+function useEvoNotes() {
+  const t = useT();
+  const { lang } = useLang();
+  return (tools: ToolsData, e: Evo) =>
+    [
+      e.fullMoon && t.evo_full_moon,
+      e.daytime && t.costs_day,
+      e.nighttime && t.costs_night,
+      e.dusk && t.evo_dusk,
+      e.upsideDown && t.evo_upside,
+      e.questText && local(e.questText, lang),
+      e.buddyKm && !e.questText && t.costs_buddy_km(e.buddyKm),
+      e.item && `${e.itemCount ? `${e.itemCount} × ` : ''}${local(tools.items[e.item], lang, e.item)}`,
+      e.lure && local(tools.items[e.lure], lang, e.lure),
+      e.tradeFree && t.costs_trade_free,
+      e.gender && (e.gender === 'm' ? t.evo_male : t.evo_female),
+      e.random && t.evo_random,
+      e.candy && t.costs_candies(e.candy),
+    ].filter(Boolean).join(' · ');
+}
+
+function EvoRow({ idx, from, to, notes }: { idx: DatasetIndex; from: ToolPokemon; to: ToolPokemon; notes: string }) {
+  const { lang } = useLang();
+  return (
+    <li className="flex items-center gap-2">
+      <Link to={`/dex/${from.dex}`} className="shrink-0"><FormSprite idx={idx} p={from} size={40} /></Link>
+      <span className="text-ink-3" aria-hidden="true">→</span>
+      <Link to={`/dex/${to.dex}`} className="shrink-0"><FormSprite idx={idx} p={to} size={40} /></Link>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold">{local(from.name, lang)} → {local(to.name, lang)}</p>
+        <p className="text-xs text-ink-2">{notes}</p>
+      </div>
+    </li>
+  );
+}
+
+/** Every evolution of released Pokémon, one per (species, form it becomes): Burmy's cloaks all evolve the same way. */
+function evolutionLinks(tools: ToolsData) {
+  const byKey = new Map(tools.pokemon.map((p) => [p.key, p]));
+  const out: { from: ToolPokemon; to: ToolPokemon; e: Evo }[] = [];
+  const seen = new Set<string>();
+  for (const p of tools.pokemon) {
+    if (!p.released || p.mega) continue;
+    for (const e of p.evolutions ?? []) {
+      const to = byKey.get(e.to);
+      if (!to || seen.has(`${p.dex}>${e.to}`)) continue;
+      seen.add(`${p.dex}>${e.to}`);
+      out.push({ from: p, to, e });
+    }
+  }
+  return out;
+}
 
 /** Pokémon that evolve in a particular way: full moon, day or night, a task, an item, a trade, a gender… */
 export function EvolutionsTool() {
   const t = useT();
   const { lang } = useLang();
   const data = useToolData();
+  const notesOf = useEvoNotes();
   const [open, setOpen] = useState<EvoGroup | null>('moon');
+  const [q, setQ] = useState('');
   const moons = useMemo(() => nextFullMoons(new Date(), 4), []);
   if (typeof data === 'string') return <Loading state={data} />;
   const { idx, tools } = data;
-  const byKey = new Map(tools.pokemon.map((p) => [p.key, p]));
-  // One row per (from species, to form): the forms of Burmy all evolve the same way.
-  const groups = new Map<EvoGroup, { from: ToolPokemon; to: ToolPokemon; e: NonNullable<ToolPokemon['evolutions']>[number] }[]>();
-  const seen = new Set<string>();
-  for (const p of tools.pokemon) {
-    if (!p.released) continue;
-    for (const e of p.evolutions ?? []) {
-      const to = byKey.get(e.to);
-      if (!to || seen.has(`${p.dex}>${e.to}`)) continue;
-      const g: EvoGroup | null = e.fullMoon ? 'moon' : e.daytime || e.nighttime || e.dusk ? 'time' : e.upsideDown ? 'upside' : e.quest && e.questText && !e.buddyKm ? 'quest' : e.buddyKm ? 'buddy' : e.item ? 'item' : e.lure ? 'lure' : e.tradeFree ? 'trade' : e.gender ? 'gender' : e.random ? 'random' : null;
-      if (!g) continue;
-      seen.add(`${p.dex}>${e.to}`);
-      (groups.get(g) ?? groups.set(g, []).get(g)!).push({ from: p, to, e });
-    }
+  // A search keeps the evolutions where either side matches, and opens every group that has some.
+  const words = normalize(q).split(/\s+/).filter(Boolean);
+  const matches = (p: ToolPokemon) => words.every((w) => (/^\d+$/.test(w) ? String(p.dex) === w : normalize(`${p.name.en} ${p.name.fr ?? ''}`).includes(w)));
+  const groups = new Map<EvoGroup, ReturnType<typeof evolutionLinks>>();
+  for (const link of evolutionLinks(tools)) {
+    const g = evoGroup(link.e);
+    if (!g || (words.length && !matches(link.from) && !matches(link.to))) continue;
+    (groups.get(g) ?? groups.set(g, []).get(g)!).push(link);
   }
   const when = (d: Date) => d.toLocaleString(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="space-y-3">
       <p className="text-sm text-ink-2">{t.evo_help}</p>
-      {EVO_ORDER.filter((g) => groups.has(g)).map((g) => (
-        <section key={g} className="card overflow-hidden">
-          <button type="button" aria-expanded={open === g} onClick={() => setOpen(open === g ? null : g)} className="flex w-full items-center gap-2 p-3 text-left">
-            <span className="text-xl" aria-hidden="true">{EVO_ICON[g]}</span>
-            <span className="flex-1 font-bold">{t.evo_group[g]}</span>
-            <span className="tnum text-sm text-ink-3">{groups.get(g)!.length}</span>
-          </button>
-          {open === g && (
-            <div className="border-t border-line p-3">
-              {g === 'moon' && (
-                <div className="mb-3 rounded-lg bg-paper-2 p-2 text-sm">
-                  <p className="font-semibold">{t.evo_next_moons}</p>
-                  <ul className="mt-1 space-y-0.5">{moons.map((d) => <li key={d.toISOString()} className="tnum">🌕 {when(d)}</li>)}</ul>
-                </div>
-              )}
-              <ul className="space-y-2">
-                {groups.get(g)!.map(({ from, to, e }) => {
-                  const notes = [
-                    e.fullMoon && t.evo_full_moon,
-                    e.daytime && t.costs_day,
-                    e.nighttime && t.costs_night,
-                    e.dusk && t.evo_dusk,
-                    e.upsideDown && t.evo_upside,
-                    e.questText && local(e.questText, lang),
-                    e.buddyKm && !e.questText && t.costs_buddy_km(e.buddyKm),
-                    e.item && `${e.itemCount ? `${e.itemCount} × ` : ''}${local(tools.items[e.item], lang, e.item)}`,
-                    e.lure && local(tools.items[e.lure], lang, e.lure),
-                    e.tradeFree && t.costs_trade_free,
-                    e.gender && (e.gender === 'm' ? t.evo_male : t.evo_female),
-                    e.random && t.evo_random,
-                    e.candy && t.costs_candies(e.candy),
-                  ].filter(Boolean);
-                  return (
-                    <li key={`${from.key}>${to.key}`} className="flex items-center gap-2">
-                      <Link to={`/dex/${from.dex}`} className="shrink-0"><FormSprite idx={idx} p={from} size={40} /></Link>
-                      <span className="text-ink-3" aria-hidden="true">→</span>
-                      <Link to={`/dex/${to.dex}`} className="shrink-0"><FormSprite idx={idx} p={to} size={40} /></Link>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{local(from.name, lang)} → {local(to.name, lang)}</p>
-                        <p className="text-xs text-ink-2">{notes.join(' · ')}</p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-        </section>
-      ))}
+      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search_placeholder} aria-label={t.evo_search} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3" />
+      {words.length > 0 && groups.size === 0 && <Empty>{t.evo_none(q.trim())}</Empty>}
+      {EVO_ORDER.filter((g) => groups.has(g)).map((g) => {
+        const isOpen = words.length > 0 || open === g;
+        return (
+          <section key={g} className="card overflow-hidden">
+            <button type="button" aria-expanded={isOpen} onClick={() => setOpen(open === g ? null : g)} className="flex w-full items-center gap-2 p-3 text-left">
+              <span className="text-xl" aria-hidden="true">{EVO_ICON[g]}</span>
+              <span className="flex-1 font-bold">{t.evo_group[g]}</span>
+              <span className="tnum text-sm text-ink-3">{groups.get(g)!.length}</span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-line p-3">
+                {g === 'moon' && (
+                  <div className="mb-3 rounded-lg bg-paper-2 p-2 text-sm">
+                    <p className="font-semibold">{t.evo_next_moons}</p>
+                    <ul className="mt-1 space-y-0.5">{moons.map((d) => <li key={d.toISOString()} className="tnum">🌕 {when(d)}</li>)}</ul>
+                  </div>
+                )}
+                <ul className="space-y-2">
+                  {groups.get(g)!.map(({ from, to, e }) => <EvoRow key={`${from.key}>${to.key}`} idx={idx} from={from} to={to} notes={notesOf(tools, e)} />)}
+                </ul>
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+/**
+ * On a Pokémon's page: how it evolves and how it is evolved into, with what it takes (candy, and any particular
+ * condition). Nothing for a Pokémon outside any evolution.
+ */
+export function EvolutionCard({ dex }: { dex: number }) {
+  const t = useT();
+  const tools = useTools();
+  const dataset = useDataset();
+  const notesOf = useEvoNotes();
+  const links = useMemo(() => (tools.data ? evolutionLinks(tools.data).filter((l) => l.from.dex === dex || l.to.dex === dex) : []), [tools.data, dex]);
+  if (!tools.data || !dataset.data || !links.length) return null;
+  const moon = links.some((l) => l.e.fullMoon) ? nextFullMoons(new Date(), 1)[0] : null;
+  return (
+    <section aria-label={t.evo_card} className="card mb-4 p-3">
+      <h2 className="mb-2 text-sm font-bold">{t.evo_card}</h2>
+      <ul className="space-y-2">
+        {links.map(({ from, to, e }) => <EvoRow key={`${from.key}>${to.key}`} idx={dataset.data!} from={from} to={to} notes={notesOf(tools.data!, e)} />)}
+      </ul>
+      {moon && <p className="mt-2 text-xs text-ink-2">🌕 {t.evo_next_moon(moon.toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>}
+    </section>
   );
 }

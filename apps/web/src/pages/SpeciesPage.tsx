@@ -13,6 +13,7 @@ import { normalize, useDataset } from '../lib/dataset.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { TypeBadge } from '../components/TypeBadge.js';
+import { EvolutionCard } from '../components/GameTools.js';
 import { useFeedbackPref } from '../lib/feedback.js';
 
 
@@ -102,6 +103,7 @@ export function SpeciesPage() {
           </span>
         </div>
 
+        <EvolutionCard dex={dex} />
         {long && (
           <div className="mb-3 space-y-2">
             <input
