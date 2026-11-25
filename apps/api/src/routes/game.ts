@@ -6,6 +6,7 @@ import { requireRole, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
+import { getEventSpawns } from '../game/eventSpawns.js';
 import { getResearch } from '../game/research.js';
 import { LEAGUES, getBattleData, getPopularTeams, getPvpDetails, getPvpRankings, type League } from '../game/pvpRankings.js';
 
@@ -23,6 +24,14 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ codes: await getPromoCodes() });
     } catch (e) {
       return c.json({ codes: [], error: (e as Error).message });
+    }
+  })
+  /** What appears in the wild during current and upcoming events. */
+  .get('/event-spawns', async (c) => {
+    try {
+      return c.json({ events: await getEventSpawns() });
+    } catch (e) {
+      return c.json({ events: [], error: (e as Error).message }, 502);
     }
   })
   .get('/research', async (c) => {

@@ -44,7 +44,7 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
   const token = getCookie(c, SESSION_COOKIE);
   if (!token) return null;
   const rows = await db
-    .select({ user: schema.users, expiresAt: schema.sessions.expiresAt, sid: schema.sessions.id, lastUsedAt: schema.sessions.lastUsedAt })
+    .select({ user: schema.users, expiresAt: schema.sessions.expiresAt, sid: schema.sessions.id, lastUsedAt: schema.sessions.lastUsedAt, userAgent: schema.sessions.userAgent })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
     .where(eq(schema.sessions.id, hashToken(token)))
@@ -57,8 +57,10 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
   }
   // A suspended account's sessions stop working at once (a suspension for a set time ends on its own).
   if (row.user.suspendedAt && !(await liftEndedSuspension(row.user))) return null;
-  if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 3600_000) {
-    void db.update(schema.sessions).set({ lastUsedAt: new Date() }).where(eq(schema.sessions.id, row.sid)).catch(() => {});
+  // Sessions opened before devices were recorded learn theirs on their next request.
+  const ua = !row.userAgent ? c.req.header('user-agent')?.slice(0, 300) : undefined;
+  if (ua || !row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 3600_000) {
+    void db.update(schema.sessions).set({ lastUsedAt: new Date(), ...(ua ? { userAgent: ua } : {}) }).where(eq(schema.sessions.id, row.sid)).catch(() => {});
   }
   const { id, username, friendCode, role, createdAt, lastSeenAt, onboardedAt } = row.user;
   if (!lastSeenAt || Date.now() - lastSeenAt.getTime() > 3600_000) {

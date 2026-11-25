@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { XEmbed } from '../components/XEmbed.js';
 import { BottleCaps } from '../components/BottleCaps.js';
 import { useToast } from '../components/toast.js';
@@ -19,9 +19,9 @@ import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEve
 
 const X_HANDLE = 'g47ix';
 
-type Tab = 'raids' | 'max' | 'rocket' | 'events' | 'research' | 'eggs' | 'tools';
+type Tab = 'raids' | 'spawns' | 'max' | 'rocket' | 'events' | 'research' | 'eggs' | 'tools';
 
-const TABS: Tab[] = ['raids', 'max', 'rocket', 'events', 'research', 'eggs', 'tools'];
+const TABS: Tab[] = ['raids', 'spawns', 'max', 'rocket', 'events', 'research', 'eggs', 'tools'];
 
 export function GamePage() {
   const t = useT();
@@ -29,11 +29,11 @@ export function GamePage() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((x) => x === params.get('tab')) ?? 'raids';
   const setTab = (id: Tab) => setParams(id === 'raids' ? {} : { tab: id }, { replace: true });
-  const labels: Record<Tab, string> = { raids: t.tab_raids, max: t.tab_max, rocket: t.tab_rocket, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
+  const labels: Record<Tab, string> = { raids: t.tab_raids, spawns: t.tab_spawns, max: t.tab_max, rocket: t.tab_rocket, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
   return (
     <>
       <TopBar title={t.nav_game}>
-        {/* Seven tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
+        {/* Eight tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
         <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none]" role="tablist">
           {TABS.map((id) => (
             <Chip
@@ -51,6 +51,7 @@ export function GamePage() {
       </TopBar>
       <main className="mx-auto max-w-3xl px-3 pb-24">
         {tab === 'raids' && <Raids />}
+        {tab === 'spawns' && <EventSpawnsTab />}
         {tab === 'max' && <MaxBattles />}
         {tab === 'rocket' && <RocketTab />}
         {tab === 'events' && <Events />}
@@ -451,5 +452,56 @@ function LiveError({ retry }: { retry: () => void }) {
       <br />
       <Button tone="ghost" className="mt-3" onClick={retry}>{t.retry}</Button>
     </Empty>
+  );
+}
+
+interface EventSpawns { eventID: string; name: string; link: string; image: string; start: string | null; end: string | null; featured: LivePokemon[]; spawns: LivePokemon[] }
+
+/** What pops in the wild during the current events, and the ones starting soon (Leek Duck's event pages). */
+function EventSpawnsTab() {
+  const t = useT();
+  const { lang } = useLang();
+  const q = useQuery({ queryKey: ['live', 'event-spawns'], queryFn: () => api<{ events: EventSpawns[] }>('/game/event-spawns').then((r) => r.events), staleTime: 10 * 60_000 });
+  if (q.isPending) return <Spinner />;
+  if (q.isError) return <LiveError retry={() => void q.refetch()} />;
+  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleString(lang, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+  const now = q.data.filter((e) => eventStatus(e) === 'current');
+  const soon = q.data.filter((e) => eventStatus(e) === 'upcoming');
+  const card = (e: EventSpawns) => (
+    <li key={e.eventID} className="card overflow-hidden">
+      <a href={e.link} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3">
+        {e.image && <img src={e.image} alt="" width={64} height={36} loading="lazy" className="h-9 w-16 shrink-0 rounded-md object-cover" />}
+        <span className="min-w-0 flex-1">
+          <span className="block font-bold leading-tight">{e.name}</span>
+          <span className="block text-xs text-ink-3">{e.start && `${date(e.start)} → `}{date(e.end)}</span>
+        </span>
+      </a>
+      {e.featured.length > 0 && (
+        <div className="border-t border-line px-3 py-2">
+          <p className="mb-1 text-xs font-semibold text-ink-3">{t.spawns_featured}</p>
+          <div className="flex flex-wrap gap-2">{e.featured.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} />)}</div>
+        </div>
+      )}
+      {e.spawns.length > 0 && (
+        <div className="border-t border-line px-3 py-2">
+          <p className="mb-1 text-xs font-semibold text-ink-3">{t.spawns_wild}</p>
+          <div className="flex flex-wrap gap-2">{e.spawns.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} />)}</div>
+        </div>
+      )}
+    </li>
+  );
+  return (
+    <>
+      <p className="mb-3 text-sm text-ink-2">{t.spawns_help}</p>
+      <Section title={t.spawns_now} count={now.length}>
+        {now.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
+        <ul className="space-y-3">{now.map(card)}</ul>
+      </Section>
+      {soon.length > 0 && (
+        <Section title={t.spawns_soon} count={soon.length}>
+          <ul className="space-y-3">{soon.map(card)}</ul>
+        </Section>
+      )}
+    </>
   );
 }
