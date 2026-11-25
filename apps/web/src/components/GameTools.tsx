@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { powerUpCost, rankCounters, weaknesses, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
 import { TypeBadge } from './TypeBadge.js';
-import { Badge, Chip, Empty, Spinner } from './ui.js';
+import { Badge, Chip, Empty, Sheet, Spinner } from './ui.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { typeName, useLang, useT } from '../lib/i18n.js';
 import { eventStatus, useEvents, useRaids } from '../lib/live.js';
@@ -66,30 +66,46 @@ function PokemonPicker({ tools, onPick, releasedOnly = false }: { tools: ToolsDa
 
 type Target = { pokemon: ToolPokemon; label: string };
 
+/** The Pokémon a Leek Duck picture shows, in the tools data ("…/pm354.fMEGA.icon.png" -> Mega Banette). */
+function useFromImage(tools: ToolsData | undefined) {
+  const byKey = useMemo(() => new Map((tools?.pokemon ?? []).map((p) => [p.key, p])), [tools]);
+  return (image: string) => {
+    const key = keyFromImage(image);
+    return key ? byKey.get(key) ?? byKey.get(key.split('.')[0]!) : undefined;
+  };
+}
+
+/** Counters in a sheet over the page: seen at once, wherever the Pokémon was picked. */
+export function CountersSheet({ target, onClose }: { target: ToolPokemon | null; onClose: () => void }) {
+  const t = useT();
+  const { lang } = useLang();
+  const data = useToolData();
+  const [megas, setMegas] = useState(false);
+  const [shadows, setShadows] = useState(true);
+  return (
+    <Sheet open={!!target} onClose={onClose} title={target ? t.counters_title(local(target.name, lang)) : ''}>
+      {target && (typeof data === 'string' ? <Loading state={data} /> : <CounterList idx={data.idx} tools={data.tools} target={target} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} />)}
+    </Sheet>
+  );
+}
+
 export function CountersTool() {
   const t = useT();
   const { lang } = useLang();
   const data = useToolData();
   const raids = useRaids();
-  const rockets = useRockets();
-  const [source, setSource] = useState<'raids' | 'rocket' | 'any'>('raids');
+  const fromImage = useFromImage(typeof data === 'string' ? undefined : data.tools);
+  const [source, setSource] = useState<'raids' | 'any'>('raids');
   const [target, setTarget] = useState<Target | null>(null);
-  const [megas, setMegas] = useState(false);
-  const [shadows, setShadows] = useState(true);
   if (typeof data === 'string') return <Loading state={data} />;
-  const { idx, tools } = data;
-  const byKey = new Map(tools.pokemon.map((p) => [p.key, p]));
-  const fromImage = (image: string, dexFallback?: number) => {
-    const key = keyFromImage(image);
-    return (key ? byKey.get(key) ?? byKey.get(key.split('.')[0]!) : undefined) ?? (dexFallback ? byKey.get(String(dexFallback)) : undefined);
-  };
+  const { tools } = data;
   const pick = (p: ToolPokemon | undefined, label: string) => p && setTarget({ pokemon: p, label });
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-2">{t.counters_help}</p>
       <div className="flex flex-wrap gap-2">
-        {(['raids', 'rocket', 'any'] as const).map((s) => <Chip key={s} active={source === s} onClick={() => setSource(s)}>{t.counters_source[s]}</Chip>)}
+        {(['raids', 'any'] as const).map((s) => <Chip key={s} active={source === s} onClick={() => setSource(s)}>{t.counters_source[s]}</Chip>)}
       </div>
 
       {source === 'raids' && (
@@ -99,7 +115,7 @@ export function CountersTool() {
               const p = fromImage(b.image);
               return (
                 <li key={b.name + b.tier}>
-                  <button type="button" disabled={!p} onClick={() => pick(p, b.name)} className={`card flex w-20 flex-col items-center p-1.5 text-center disabled:opacity-40 ${target?.label === b.name ? 'ring-2 ring-sky' : ''}`}>
+                  <button type="button" disabled={!p} onClick={() => pick(p, b.name)} className="card flex w-20 flex-col items-center p-1.5 text-center disabled:opacity-40">
                     <img src={b.image} alt="" width={44} height={44} className="object-contain" />
                     <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{p ? local(p.name, lang) : b.name}</span>
                   </button>
@@ -110,35 +126,56 @@ export function CountersTool() {
         )
       )}
 
-      {source === 'rocket' && (
-        rockets.isPending ? <Spinner /> : rockets.isError ? <Empty>{t.live_error}</Empty> : (
-          <ul className="space-y-2">
-            {rockets.data.map((r) => (
-              <li key={r.name} className="card p-2">
-                <p className="mb-1 text-sm font-semibold">{rocketName(r.name, lang, (ty) => typeName(ty, lang))}</p>
-                <div className="flex gap-3">
-                  {[r.firstPokemon, r.secondPokemon, r.thirdPokemon].map((slot, i) => (
-                    <div key={i} className="flex flex-wrap gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
-                      {slot.map((m) => {
-                        const p = fromImage(m.image);
-                        return (
-                          <button key={m.image} type="button" disabled={!p} onClick={() => pick(p, `${rocketName(r.name, lang, (ty) => typeName(ty, lang))} · ${m.name}`)} title={m.name} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-1 ring-shiny' : ''}`}>
-                            <img src={m.image} alt={m.name} width={36} height={36} className="object-contain" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )
-      )}
-
       {source === 'any' && <PokemonPicker tools={tools} onPick={(p) => pick(p, local(p.name, lang))} />}
+      <CountersSheet target={target?.pokemon ?? null} onClose={() => setTarget(null)} />
+    </div>
+  );
+}
 
-      {target && <CounterList idx={idx} tools={tools} target={target.pokemon} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} />}
+/** Team GO Rocket's current line-ups: three slots per trainer, the one to catch afterwards ringed in gold. */
+export function RocketTab() {
+  const t = useT();
+  const { lang } = useLang();
+  const rockets = useRockets();
+  const tools = useTools();
+  const fromImage = useFromImage(tools.data);
+  const [target, setTarget] = useState<ToolPokemon | null>(null);
+  if (rockets.isPending) return <Spinner />;
+  if (rockets.isError) return <Empty>{t.live_error}</Empty>;
+  const leaders = rockets.data.filter((r) => !/Grunt/.test(r.name));
+  const grunts = rockets.data.filter((r) => /Grunt/.test(r.name));
+  const card = (r: (typeof rockets.data)[number]) => (
+    <li key={r.name} className="card p-2.5">
+      <p className="mb-1.5 text-sm font-bold">{rocketName(r.name, lang, (ty) => typeName(ty, lang))}</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {[r.firstPokemon, r.secondPokemon, r.thirdPokemon].map((slot, i) => (
+          <div key={i} className="flex items-center gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
+            <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
+            {slot.map((m) => {
+              const p = fromImage(m.image);
+              return (
+                <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''}`}>
+                  <img src={m.image} alt="" width={38} height={38} className="object-contain" />
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </li>
+  );
+  return (
+    <div className="space-y-4">
+      <p className="flex items-center gap-2 text-sm text-ink-2"><span className="inline-block h-4 w-4 shrink-0 rounded ring-2 ring-shiny" aria-hidden="true" />{t.rocket_legend}</p>
+      <section>
+        <h2 className="mb-2 text-base font-bold">{t.rocket_leaders}</h2>
+        <ul className="space-y-2">{leaders.map(card)}</ul>
+      </section>
+      <section>
+        <h2 className="mb-2 text-base font-bold">{t.rocket_grunts}</h2>
+        <ul className="space-y-2">{grunts.map(card)}</ul>
+      </section>
+      <CountersSheet target={target} onClose={() => setTarget(null)} />
     </div>
   );
 }
@@ -152,7 +189,7 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
   const weak = weaknesses(target.types);
   const top = counters[0]?.dps ?? 1;
   return (
-    <section aria-label={t.counters_title(local(target.name, lang))} className="space-y-3">
+    <section aria-label={t.counters_title(local(target.name, lang))} className="space-y-3 pb-2">
       <div className="card flex items-center gap-3 p-3">
         <FormSprite idx={idx} p={target} size={56} />
         <div className="min-w-0 flex-1">

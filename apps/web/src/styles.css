@@ -169,3 +169,29 @@ h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.0
 
 /* Every page breathes under its header, whatever its own top spacing (outside the layers, so it wins). */
 header.topbar ~ main { padding-top: 1rem; }
+
+/* Rubber tab pill (bottom bar): the track glides, the pill stretches on the way and squashes on arrival. */
+.rubber-track { transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1); }
+.rubber-pill { animation: rubber 0.48s cubic-bezier(0.3, 1.3, 0.5, 1); }
+@keyframes rubber { 0% { transform: scaleX(1.55) scaleY(0.8); } 45% { transform: scaleX(0.88) scaleY(1.08); } 70% { transform: scaleX(1.04) scaleY(0.98); } 100% { transform: none; } }
+
+/* Hold-to-confirm: the fill rises over --hold-ms while held, a wave on its top; it drains back fast if let go. */
+.hold-fill { position: absolute; inset: auto -20% 0 -20%; height: 0; background: var(--berry, #d64545); transition: height 0.25s ease-out; z-index: 0; }
+.hold-fill::before { content: ''; position: absolute; left: 0; right: 0; top: -9px; height: 18px; border-radius: 45%; background: inherit; animation: hold-wave 0.9s linear infinite; }
+.hold-fill-on { height: 112%; transition: height var(--hold-ms, 1.2s) linear; }
+@keyframes hold-wave { from { transform: translateX(-6%) rotate(0deg); } 50% { transform: translateX(6%) rotate(2deg); } to { transform: translateX(-6%) rotate(0deg); } }
+
+/* Squish switch: the thumb stretches while the finger is on it, and squashes where it lands. */
+.switch-thumb { width: 1.25rem; transition: left 0.28s cubic-bezier(0.34, 1.5, 0.64, 1), width 0.15s; }
+.switch-off { left: 0.125rem; }
+.switch-on { left: 1.125rem; animation: squish-on 0.35s ease-out; }
+.switch-off { animation: squish-off 0.35s ease-out; }
+button:active > .switch .switch-thumb { width: 1.6rem; }
+button:active > .switch .switch-on { left: 0.75rem; }
+/* Two names for one squash, so it replays each time the switch flips. */
+@keyframes squish-on { 0% { transform: scaleX(1.3) scaleY(0.8); } 60% { transform: scaleX(0.92) scaleY(1.06); } 100% { transform: none; } }
+@keyframes squish-off { 0% { transform: scaleX(1.3) scaleY(0.8); } 60% { transform: scaleX(0.92) scaleY(1.06); } 100% { transform: none; } }
+
+/* Toasts: a fuse burns down for the time left. */
+.toast-fuse { animation: fuse var(--toast-ms, 2.2s) linear forwards; transform-origin: left; }
+@keyframes fuse { from { transform: scaleX(1); } to { transform: scaleX(0); } }

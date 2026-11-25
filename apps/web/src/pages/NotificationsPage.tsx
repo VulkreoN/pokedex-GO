@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router';
 import type { AppNotification } from '@mydexpogo/shared';
-import { Button, Empty, IconButton, Spinner, TopBar } from '../components/ui.js';
+import { Button, Empty, HoldButton, IconButton, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useDataset } from '../lib/dataset.js';
 import { useDeleteNotification, useMarkRead, useNotifications } from '../lib/social.js';
@@ -71,7 +71,7 @@ export function NotificationsPage() {
           <div className="mb-2 flex justify-end gap-2">
             {unread > 0 && <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
             {q.data.items.some((n) => n.type !== 'account') && (
-              <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => { if (confirm(t.notifications_clear_confirm)) clear.mutate(undefined); }}>{t.notifications_clear}</Button>
+              <HoldButton small ms={800} className="whitespace-nowrap" onConfirm={() => clear.mutate(undefined)}>{t.notifications_clear}</HoldButton>
             )}
           </div>
         )}

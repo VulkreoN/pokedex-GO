@@ -6,7 +6,7 @@ import { ListHistory } from '../components/ListHistory.js';
 import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, CardsSkeleton, Chip, Empty, IconButton, Progress, Sheet, TextField, TopBar } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, TextField, TopBar, useRolling } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -145,6 +145,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
     [allCards, view, words, sort, rank, idx, lang],
   );
   const done = list.entries.filter((e) => e.done).length;
+  // The count rolls up as cards are ticked.
+  const rolledDone = useRolling(done);
   // A big collection builds its first cards at once, the next ones as they come near the screen.
   const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}|${query}`);
 
@@ -317,7 +319,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
           {list.description && <p className="muted text-sm">{list.description}</p>}
           <div className="mt-2 flex items-center gap-3">
             <Progress done={done} total={list.entries.length} />
-            <span className="muted tnum shrink-0 text-xs font-semibold">{t.progress(done, list.entries.length)}</span>
+            <span className="muted tnum shrink-0 text-xs font-semibold">{t.progress(rolledDone, list.entries.length)}</span>
           </div>
           <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
@@ -644,7 +646,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
           shareUrl={shareUrl}
           onSave={async (body) => { await update.mutateAsync(body); setEditing(false); }}
           onShare={async (on) => { await share.mutateAsync({ id: list.id, on }); }}
-          onDelete={async () => { if (confirm(t.confirm_delete_list)) { await del.mutateAsync(list.id); navigate('/lists'); } }}
+          onDelete={async () => { await del.mutateAsync(list.id); navigate('/lists'); }}
         />
       )}
     </>
@@ -686,7 +688,7 @@ function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }:
             <Button className="w-full" onClick={() => onShare(true)}>{t.copy_link}</Button>
           )}
         </div>
-        <Button tone="danger" className="w-full" onClick={onDelete}>{t.delete}</Button>
+        <HoldButton className="w-full" onConfirm={onDelete}>{t.delete_list}</HoldButton>
       </div>
     </Sheet>
   );

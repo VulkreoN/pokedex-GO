@@ -3,7 +3,7 @@ import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions } from '../lib/searchString.js';
-import { Chip, CopyButton } from './ui.js';
+import { Chip, CopyButton, SwitchThumb } from './ui.js';
 
 export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
   const t = useT();
@@ -63,9 +63,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
         <span className="block text-sm font-semibold">{label}</span>
         {hint && <span className="block text-xs text-ink-3">{hint}</span>}
       </span>
-      <span className={`relative h-6 w-10 shrink-0 rounded-full transition ${on ? 'bg-go' : 'bg-line'}`} aria-hidden="true">
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
-      </span>
+      <SwitchThumb on={on} />
     </button>
   );
 

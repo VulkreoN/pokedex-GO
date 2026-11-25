@@ -12,14 +12,14 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersTool, LeagueTool } from '../components/GameTools.js';
+import { BuddyTool, CostsTool, CountersTool, LeagueTool, RocketTab } from '../components/GameTools.js';
 import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
-type Tab = 'raids' | 'max' | 'events' | 'research' | 'eggs' | 'tools';
+type Tab = 'raids' | 'max' | 'rocket' | 'events' | 'research' | 'eggs' | 'tools';
 
-const TABS: Tab[] = ['raids', 'max', 'events', 'research', 'eggs', 'tools'];
+const TABS: Tab[] = ['raids', 'max', 'rocket', 'events', 'research', 'eggs', 'tools'];
 
 export function GamePage() {
   const t = useT();
@@ -27,11 +27,11 @@ export function GamePage() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((x) => x === params.get('tab')) ?? 'raids';
   const setTab = (id: Tab) => setParams(id === 'raids' ? {} : { tab: id }, { replace: true });
-  const labels: Record<Tab, string> = { raids: t.tab_raids, max: t.tab_max, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
+  const labels: Record<Tab, string> = { raids: t.tab_raids, max: t.tab_max, rocket: t.tab_rocket, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
   return (
     <>
       <TopBar title={t.nav_game}>
-        {/* Six tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
+        {/* Seven tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
         <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none]" role="tablist">
           {TABS.map((id) => (
             <Chip
@@ -50,6 +50,7 @@ export function GamePage() {
       <main className="mx-auto max-w-3xl px-3 pb-24">
         {tab === 'raids' && <Raids />}
         {tab === 'max' && <MaxBattles />}
+        {tab === 'rocket' && <RocketTab />}
         {tab === 'events' && <Events />}
         {tab === 'research' && <Research />}
         {tab === 'eggs' && <Eggs />}

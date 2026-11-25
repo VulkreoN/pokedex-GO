@@ -157,15 +157,22 @@ export function BottomNav() {
     { to: '/friends', label: t.nav_friends, icon: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /> },
     { to: '/me', label: t.nav_me, icon: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /> },
   ];
+  // A rubber pill slides under the active tab: it stretches toward the new one, then squashes into place.
+  const active = items.findIndex((it) => pathname.startsWith(it.to));
   return (
     <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-card/95 shadow-[0_-6px_18px_-12px_rgb(35_56_66/0.35)] backdrop-blur">
-      <div className="mx-auto flex max-w-3xl">
+      <div className="relative mx-auto flex max-w-3xl">
+        {active >= 0 && (
+          <span aria-hidden="true" className="rubber-track pointer-events-none absolute inset-y-1 left-0" style={{ width: `${100 / items.length}%`, transform: `translateX(${active * 100}%)` }}>
+            <span key={active} className="rubber-pill absolute inset-x-1.5 inset-y-0 rounded-2xl bg-go-soft dark:bg-go/15" />
+          </span>
+        )}
         {items.map((it) => (
           <NavLink
             key={it.to}
             to={it.to}
             end={false}
-            className={({ isActive }) => `flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold ${isActive ? 'text-go-ink dark:text-go' : 'text-ink-3'}`}
+            className={({ isActive }) => `relative z-10 flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-semibold transition-colors ${isActive ? 'text-go-ink dark:text-go' : 'text-ink-3'}`}
           >
             {({ isActive }) => (
               <>
@@ -275,4 +282,95 @@ export function CardsSkeleton({ count = 9, className = 'grid-cols-3 sm:grid-cols
       ))}
     </ul>
   );
+}
+
+/**
+ * A destructive action confirmed by holding: a liquid fill rises while pressed and drains back if let go early.
+ * Keyboard: hold Space or Enter. One tap does nothing but show the hint, so a stray touch never deletes.
+ */
+export function HoldButton({ children, onConfirm, ms = 1200, disabled = false, className = '', small = false }: { children: ReactNode; onConfirm: () => void | Promise<void>; ms?: number; disabled?: boolean; className?: string; small?: boolean }) {
+  const t = useT();
+  const [holding, setHolding] = useState(false);
+  const [done, setDone] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const start = () => {
+    if (disabled || done || timer.current) return;
+    setHolding(true);
+    feedback('tick');
+    timer.current = window.setTimeout(async () => {
+      timer.current = undefined;
+      setHolding(false);
+      setDone(true);
+      feedback('drop');
+      try {
+        await onConfirm();
+      } finally {
+        setDone(false);
+      }
+    }, ms);
+  };
+  const stop = () => {
+    if (!timer.current) return;
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    setHolding(false);
+  };
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={typeof children === 'string' ? t.hold_to(children) : undefined}
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture?.(e.pointerId); start(); }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onPointerLeave={stop}
+      onKeyDown={(e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); start(); } }}
+      onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') stop(); }}
+      onContextMenu={(e) => e.preventDefault()}
+      className={`hold-btn relative select-none overflow-hidden rounded-xl border-2 border-berry font-semibold text-berry transition active:scale-[0.98] disabled:opacity-50 ${small ? 'px-3 py-1 text-sm' : 'px-4 py-2'} ${className}`}
+      style={{ ['--hold-ms' as string]: `${ms}ms`, touchAction: 'none' }}
+    >
+      <span aria-hidden="true" className={`hold-fill ${holding || done ? 'hold-fill-on' : ''}`} />
+      <span className={`relative z-10 transition-colors ${holding || done ? 'text-white' : ''}`}>{done ? '…' : children}</span>
+      <span className="relative z-10 block text-[10px] font-medium opacity-70">{holding ? t.hold_keep : t.hold_hint}</span>
+    </button>
+  );
+}
+
+/** An on / off switch whose thumb stretches while pressed and squashes as it lands. */
+export function SwitchThumb({ on }: { on: boolean }) {
+  return (
+    <span className={`switch relative h-6 w-10 shrink-0 rounded-full transition-colors ${on ? 'bg-go' : 'bg-line'}`} aria-hidden="true">
+      <span className={`switch-thumb absolute top-0.5 h-5 rounded-full bg-white shadow ${on ? 'switch-on' : 'switch-off'}`} />
+    </span>
+  );
+}
+
+/** A number that rolls to its new value instead of jumping (no roll when motion is reduced). */
+export function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
+  return <span className={`tnum ${className}`}>{useRolling(value)}</span>;
+}
+
+/** The value, rolled toward each new one over half a second. */
+export function useRolling(value: number): number {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    if (from.current === value) return;
+    const start = from.current;
+    from.current = value;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return setShown(value);
+    const t0 = performance.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / 450);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(Math.round(start + (value - start) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return shown;
 }

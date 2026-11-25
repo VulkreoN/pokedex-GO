@@ -93,7 +93,8 @@ test('a player changes their password, logs back in, then deletes the account', 
   await page.goto('/me');
   await page.getByRole('button', { name: 'Supprimer mon compte' }).click();
   await page.locator('dialog[open]').getByLabel('Mot de passe', { exact: true }).fill('a-brand-new-one');
-  await page.locator('dialog[open]').getByRole('button', { name: /Supprimer/ }).last().click();
+  // Held, not tapped.
+  await page.locator('dialog[open]').getByRole('button', { name: /Supprimer mon compte \(maintenir appuyé\)/ }).click({ delay: 1500 });
   await expect(page).toHaveURL(/\/(login|dex)$/);
   const again = await page.request.post('/api/auth/login', { data: { username: user.username, password: 'a-brand-new-one' } });
   expect(again.status()).toBe(401);
@@ -126,10 +127,12 @@ test('friends add each other by code and see each other’s lists', async ({ bro
 
   await pb.goto('/friends');
   await expect(pb.getByText(/^1 collection · ami depuis /)).toBeVisible();
-  // Removing a friend: from the friend's menu, asked twice.
+  // Removing a friend: from the friend's menu, by holding the button (a tap does nothing).
   await pb.getByRole('button', { name: `Options pour ${ua.username}` }).click();
-  await pb.locator('dialog[open]').getByRole('button', { name: 'Retirer' }).click();
-  await pb.locator('dialog[open]').getByRole('button', { name: `Confirmer : retirer ${ua.username}` }).click();
+  const remove = pb.locator('dialog[open]').getByRole('button', { name: `Retirer ${ua.username} (maintenir appuyé)` });
+  await remove.click();
+  await expect(pb.getByText(ua.username).first()).toBeVisible();
+  await remove.click({ delay: 1500 });
   await expect(pb.getByText("Pas encore d'amis. Échange ton code pour voir leurs collections.")).toBeVisible();
   await a.close();
   await b.close();

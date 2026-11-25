@@ -3,7 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router';
 import type { Role } from '@mydexpogo/shared';
 import { ClientErrors } from '../components/ClientErrors.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, Chip, CopyButton, Empty, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, CopyButton, Empty, HoldButton, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import {
@@ -266,11 +266,7 @@ function UserSheet({ id, onClose, onOpen }: { id: string | null; onClose: () => 
               </Button>
             )}
             {!self && u!.role !== 'admin' && (
-              confirmDelete ? (
-                <Button tone="danger" className="text-sm" onClick={async () => { await act.mutateAsync({ path: `/admin/users/${u!.id}`, method: 'DELETE' }); toast(t.admin_deleted); close(); }}>{t.admin_delete_confirm}</Button>
-              ) : (
-                <Button tone="danger" className="text-sm" onClick={() => setConfirmDelete(true)}>{t.delete}</Button>
-              )
+              <HoldButton small onConfirm={async () => { await act.mutateAsync({ path: `/admin/users/${u!.id}`, method: 'DELETE' }); toast(t.admin_deleted); close(); }}>{t.delete}</HoldButton>
             )}
           </div>
           {suspending && !u!.suspendedAt && (
@@ -446,11 +442,7 @@ function UserLists({ id }: { id: string }) {
                   <span className="tnum block text-xs text-ink-3">{l.entries} {t.admin_entries}</span>
                 </span>
                 <Button tone="ghost" className="min-h-8 px-2 text-xs" onClick={() => { setEditing(l.id); setName(l.name); setDeleting(null); }}>{t.admin_rename}</Button>
-                {deleting === l.id ? (
-                  <Button tone="danger" className="min-h-8 px-2 text-xs" disabled={remove.isPending} onClick={async () => { await remove.mutateAsync(l.id); setDeleting(null); toast(t.admin_list_deleted); }}>{t.admin_list_delete_confirm}</Button>
-                ) : (
-                  <Button tone="ghost" className="min-h-8 px-2 text-xs text-berry" onClick={() => setDeleting(l.id)}>{t.delete}</Button>
-                )}
+                <HoldButton small ms={900} disabled={remove.isPending} onConfirm={async () => { await remove.mutateAsync(l.id); toast(t.admin_list_deleted); }}>{t.delete}</HoldButton>
               </div>
             )}
           </li>

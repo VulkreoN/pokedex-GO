@@ -2,7 +2,7 @@ import { useFollowList } from '../lib/social.js';
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../components/toast.js';
-import { Button, CopyButton, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Button, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { ApiError } from '../lib/api.js';
 import { useMe, useSetFriendCode } from '../lib/auth.js';
 import { useLang, useT, type T } from '../lib/i18n.js';
@@ -114,7 +114,6 @@ export function FriendsPage() {
   const [scanning, setScanning] = useState(false);
   const [editingCode, setEditingCode] = useState(false);
   const [menuFor, setMenuFor] = useState<Friend | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const { lang } = useLang();
 
   const submit = async (e: FormEvent) => {
@@ -224,16 +223,12 @@ export function FriendsPage() {
           </ul>
         </section>
         {/* What is done to a friend, out of the way of a stray tap: see, pin, remove (asked twice). */}
-        <Sheet open={!!menuFor} onClose={() => { setMenuFor(null); setConfirmRemove(false); }} title={menuFor?.username ?? ''}>
+        <Sheet open={!!menuFor} onClose={() => setMenuFor(null)} title={menuFor?.username ?? ''}>
           {menuFor && (
             <div className="space-y-2">
               <Link to={`/friends/${menuFor.id}`} className="block"><Button className="w-full">{t.friend_see_lists}</Button></Link>
               <Button className="w-full" onClick={() => { pinFriend.mutate({ id: menuFor.id, on: !menuFor.favorite }); setMenuFor(null); }}>{menuFor.favorite ? t.unpin : t.pin}</Button>
-              {confirmRemove ? (
-                <Button tone="danger" className="w-full" disabled={removeFriend.isPending} onClick={async () => { await removeFriend.mutateAsync(menuFor.id); toast(t.friend_removed(menuFor.username)); setMenuFor(null); setConfirmRemove(false); }}>{t.friend_remove_confirm(menuFor.username)}</Button>
-              ) : (
-                <Button tone="ghost" className="w-full text-berry" onClick={() => setConfirmRemove(true)}>{t.remove_friend}</Button>
-              )}
+              <HoldButton className="w-full" disabled={removeFriend.isPending} onConfirm={async () => { await removeFriend.mutateAsync(menuFor.id); toast(t.friend_removed(menuFor.username)); setMenuFor(null); }}>{t.friend_remove_confirm(menuFor.username)}</HoldButton>
             </div>
           )}
         </Sheet>

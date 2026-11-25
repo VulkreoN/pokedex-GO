@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Chip, PasswordField, Sheet, TopBar } from '../components/ui.js';
+import { Button, Chip, HoldButton, PasswordField, Sheet, SwitchThumb, TopBar } from '../components/ui.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { InstallBanner } from '../components/InstallBanner.js';
 import { Badge } from '../components/ui.js';
@@ -148,11 +148,10 @@ export function MePage() {
       <Sheet open={deleting} onClose={() => setDeleting(false)} title={t.delete_account}>
         <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
         <PasswordField label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-        <Button
-          tone="danger"
+        <HoldButton
           className="mt-3 w-full"
           disabled={!password}
-          onClick={async () => {
+          onConfirm={async () => {
             try {
               await api('/auth/me', { method: 'DELETE', body: { password } });
               qc.clear();
@@ -163,8 +162,8 @@ export function MePage() {
             }
           }}
         >
-          {t.delete}
-        </Button>
+          {t.delete_account}
+        </HoldButton>
       </Sheet>
     </>
   );
@@ -200,9 +199,7 @@ function FeedbackSettings() {
         <span className="block text-sm font-semibold">{label}</span>
         <span className="block text-xs text-ink-3">{hint}</span>
       </span>
-      <span className={`relative h-6 w-10 shrink-0 rounded-full transition ${on ? 'bg-go' : 'bg-line'}`} aria-hidden="true">
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
-      </span>
+      <SwitchThumb on={on} />
     </button>
   );
   return (

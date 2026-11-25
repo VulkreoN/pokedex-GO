@@ -511,6 +511,9 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   const counters = page.getByRole('region', { name: 'Contres de Mewtwo' });
   await expect(counters.getByRole('listitem')).toHaveCount(12);
   await expect(counters.getByText('Faible contre')).toBeVisible();
+  // They open over the page; closed to go on.
+  await page.keyboard.press('Escape');
+  await expect(counters).toHaveCount(0);
   // Power-up and trade costs.
   await page.getByRole('button', { name: 'Coûts', exact: true }).click();
   await expect(page.getByText('Poussière pour un échange')).toBeVisible();
