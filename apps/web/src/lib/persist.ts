@@ -22,7 +22,8 @@ export const persistOptions: Omit<PersistQueryClientOptions, 'queryClient'> = {
   maxAge: 7 * 86400_000,
   // A new version of the app starts from fresh data.
   buster: import.meta.env.VITE_APP_VERSION || 'dev',
-  dehydrateOptions: { shouldDehydrateQuery: (q) => q.state.status === 'success' && !NOT_KEPT.has(String(q.queryKey[0])) },
+  // "Nobody logged in" is never kept: read back after signing in, it would send the player to the login page.
+  dehydrateOptions: { shouldDehydrateQuery: (q) => q.state.status === 'success' && !NOT_KEPT.has(String(q.queryKey[0])) && !(q.queryKey[0] === 'me' && q.state.data == null) },
 };
 
 /** On logout: nothing of the account stays on the device. */

@@ -236,7 +236,10 @@ test('a manager marks a datamined variant released from its card, for everyone',
   // Back to automatic.
   await cardOf(mgr).getByRole('button', { name: 'Gérer cette variante' }).click();
   await sheet.getByRole('button', { name: 'Automatique', exact: true }).first().click(); // release status (the second one is genders)
+  // Saved before the visitor looks again (a busy machine could reload first and see the old state).
+  const saved = mgr.waitForResponse((r) => /\/api\/overrides\//.test(r.url()) && ['PUT', 'DELETE'].includes(r.request().method()));
   await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  expect((await saved).ok()).toBe(true);
   await visitor.reload();
   await expect(cardOf(visitor).getByText('Pas encore sorti', { exact: true })).toBeVisible();
   await visitorCtx.close();

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { Button, PasswordField, TextField } from '../components/ui.js';
-import { useAuthMutation } from '../lib/auth.js';
+import { useAuthMutation, useMe } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useT } from '../lib/i18n.js';
@@ -25,10 +25,13 @@ export function LoginPage() {
   // How sign-ups work now: open, by invitation, or closed.
   const signup = useQuery({ queryKey: ['signup-mode'], queryFn: () => api<{ mode: 'open' | 'invite' | 'closed' }>('/auth/signup-mode'), enabled: mode === 'register' });
   const auth = useAuthMutation(mode === 'reset' ? 'login' : mode);
+  const me = useMe();
+  const [submitted, setSubmitted] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
     if (newPassword && confirm !== password) {
       setError(t.password_mismatch);
       return;
@@ -45,6 +48,10 @@ export function LoginPage() {
       setError(mode === 'reset' ? t.err_invalid_code_reset : errorMessage(t, err));
     }
   };
+
+  // Already logged in (another tab, or an old page): no form to fill, straight on. Not while this form signs in,
+  // which goes where it should itself (the welcome tour after signing up).
+  if (me.data && !submitted) return <Navigate to={(location.state as { from?: string } | null)?.from ?? '/dex'} replace />;
 
   return (
     <>
