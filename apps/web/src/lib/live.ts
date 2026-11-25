@@ -58,6 +58,8 @@ export const useRaids = () => useQuery({ queryKey: ['live', 'raids'], queryFn: (
 export interface ResearchReward {
   kind: 'encounter' | 'item' | 'resource';
   name: string;
+  /** The game's French name of an item reward. */
+  nameFr?: string;
   image: string;
   quantity?: number;
   /** Candy and Mega Energy: whose. */
@@ -70,7 +72,8 @@ export interface ResearchCategory {
   /** Tasks only given during an event, until `end`. */
   event: boolean;
   end: string | null;
-  tasks: { text: string; rewards: ResearchReward[] }[];
+  /** textFr: the game's own French for the task, when it has the same one. */
+  tasks: { text: string; textFr?: string; rewards: ResearchReward[] }[];
 }
 
 /**
@@ -137,7 +140,7 @@ export function dexFromImage(url: string): number | null {
 const REGION_FR: Record<string, string> = { Alolan: "d'Alola", Galarian: 'de Galar', Hisuian: 'de Hisui', Paldean: 'de Paldea' };
 const FORM_FR: Record<string, string> = {
   Normal: 'Normale', Attack: 'Attaque', Defense: 'Défense', Speed: 'Vitesse', Incarnate: 'Avatar', Therian: 'Totémique', Origin: 'Originelle',
-  Altered: 'Alternative', Forme: '', Form: '', Male: 'Mâle', Female: 'Femelle',
+  Altered: 'Alternative', Forme: '', Form: '', Formes: '', Forms: '', Male: 'Mâle', Female: 'Femelle',
 };
 
 /**
@@ -234,3 +237,5 @@ export function linkify(text: string): { text: string; url?: string }[] {
   if (last < text.length) out.push({ text: text.slice(last) });
   return out;
 }
+
+export { eventTitle, monsFr } from '@mydexpogo/shared';

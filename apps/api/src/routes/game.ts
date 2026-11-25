@@ -8,6 +8,7 @@ import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getEventSpawns } from '../game/eventSpawns.js';
 import { getResearch } from '../game/research.js';
+import { itemFr, questFr } from '../lib/gameTexts.js';
 import { LEAGUES, getBattleData, getPopularTeams, getPvpDetails, getPvpRankings, type League } from '../game/pvpRankings.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
@@ -36,7 +37,20 @@ export const gameRoutes = new Hono<AuthEnv>()
   })
   .get('/research', async (c) => {
     try {
-      return c.json({ categories: await getResearch() });
+      // The game's own French for the tasks and the item rewards, next to Leek Duck's English.
+      const categories = await Promise.all(
+        (await getResearch()).map(async (cat) => ({
+          ...cat,
+          tasks: await Promise.all(
+            cat.tasks.map(async (task) => ({
+              ...task,
+              textFr: (await questFr(task.text)) ?? undefined,
+              rewards: await Promise.all(task.rewards.map(async (r) => (r.kind === 'item' ? { ...r, nameFr: (await itemFr(r.name)) ?? undefined } : r))),
+            })),
+          ),
+        })),
+      );
+      return c.json({ categories });
     } catch (e) {
       return c.json({ categories: [], error: (e as Error).message }, 502);
     }

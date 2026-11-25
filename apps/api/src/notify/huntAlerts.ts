@@ -4,7 +4,8 @@
  * alerts: each Pokémon once per two weeks and per kind, at most one alert a day per kind, listing everything found.
  */
 import { and, eq, gt, inArray, like } from 'drizzle-orm';
-import type { LocalizedText, Variant } from '@mydexpogo/shared';
+import { eventTitle, type LocalizedText, type Variant } from '@mydexpogo/shared';
+import { questFr } from '../lib/gameTexts.js';
 import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
 import { getEventSpawns } from '../game/eventSpawns.js';
@@ -19,8 +20,9 @@ export interface Found {
   /** Variant key of what is caught ("546.cSPRING_2024", "74.fALOLA"). */
   key: string;
   canBeShiny: boolean;
-  /** Where: the event's name, or the research task. */
+  /** Where: the event's name, or the research task (as Leek Duck writes it), and in French. */
   where: string;
+  whereFr?: string;
   /** For an event not started yet. */
   from?: string | null;
 }
@@ -108,13 +110,13 @@ async function alert(kind: 'spawn' | 'quest', found: Found[]): Promise<number> {
       type: kind,
       actorId: null,
       listId: listIds.length === 1 ? listIds[0]! : null,
-      data: { mons: hits.map((h) => ({ key: h.mon.key, where: h.mon.where, from: h.mon.from ?? null })), names: monNames },
+      data: { mons: hits.map((h) => ({ key: h.mon.key, where: h.mon.where, whereFr: h.mon.whereFr ?? null, from: h.mon.from ?? null })), names: monNames },
       push: () => ({
         title:
           kind === 'spawn'
             ? monNames.length > 1 ? `${monNames.length} Pokémon de tes collections dans un événement` : `${monNames[0]} dans un événement`
             : monNames.length > 1 ? `${monNames.length} Pokémon de tes collections en récompense de quête` : `${monNames[0]} en récompense de quête`,
-        body: monNames.length > 1 ? monNames.join(', ') : kind === 'spawn' ? `${first.where}${when}. Il manque dans une de tes collections.` : `${first.where}. Il manque dans une de tes collections.`,
+        body: monNames.length > 1 ? monNames.join(', ') : `${first.whereFr ?? first.where}${kind === 'spawn' ? when : ''}. Il manque dans une de tes collections.`,
         url: kind === 'spawn' ? '/game?tab=spawns' : '/game?tab=research',
         tag: kind,
       }),
@@ -132,25 +134,28 @@ async function alert(kind: 'spawn' | 'quest', found: Found[]): Promise<number> {
 export async function runHuntAlerts(): Promise<number> {
   const variants = await dataService.variants();
   const known = (k: string) => variants?.has(k) ?? false;
+  const species = new Map([...(dataService.speciesNames() ?? new Map<number, LocalizedText>())].map(([dex, name]) => [dex, { name }]));
   let sent = 0;
   const events = await getEventSpawns().catch(() => []);
   const spawns: Found[] = events.flatMap((e) =>
     [...e.featured, ...e.spawns].flatMap((m) => {
       const key = keyOfPicture(m.image, m.name, known);
       const started = !e.start || new Date(e.start).getTime() <= Date.now();
-      return key ? [{ key, canBeShiny: m.canBeShiny, where: e.name, from: started ? null : e.start }] : [];
+      return key ? [{ key, canBeShiny: m.canBeShiny, where: e.name, whereFr: eventTitle(e.name, species, 'fr'), from: started ? null : e.start }] : [];
     }),
   );
   sent += await alert('spawn', spawns);
   const research = await getResearch().catch(() => []);
-  const quests: Found[] = research.flatMap((c) =>
-    c.tasks.flatMap((task) =>
-      task.rewards.flatMap((r) => {
+  const quests: Found[] = [];
+  for (const c of research) {
+    for (const task of c.tasks) {
+      const whereFr = (await questFr(task.text)) ?? undefined;
+      for (const r of task.rewards) {
         const key = r.kind === 'encounter' ? keyOfPicture(r.image, r.name, known) : null;
-        return key ? [{ key, canBeShiny: !!r.canBeShiny, where: task.text }] : [];
-      }),
-    ),
-  );
+        if (key) quests.push({ key, canBeShiny: !!r.canBeShiny, where: task.text, whereFr });
+      }
+    }
+  }
   sent += await alert('quest', quests);
   return sent;
 }

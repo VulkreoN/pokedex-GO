@@ -15,7 +15,7 @@ import { localized, useLang, useT } from '../lib/i18n.js';
 import { BuddyTool, CostsTool, CountersSheet, CountersTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
 import { useTools } from '../lib/tools.js';
 import type { ToolPokemon } from '@mydexpogo/shared';
-import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
+import { dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
@@ -165,7 +165,7 @@ function Raids() {
   const eventCard = (e: GameEvent) => (
     <li key={e.eventID} className="card p-3">
       <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
-      <div className="mt-1 font-semibold">{e.name}</div>
+      <div className="mt-1 font-semibold">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</div>
       {e.extraData?.raidbattles?.bosses && (
         <div className="mt-2 flex flex-wrap gap-2">
           {e.extraData.raidbattles.bosses.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}
@@ -330,7 +330,7 @@ function MaxBattles() {
                 <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? 'Gigantamax' : 'Dynamax'}</Badge>
                 <span>{formatRange(e.start, e.end, lang)}</span>
               </div>
-              <div className="mt-1 font-semibold">{e.name}</div>
+              <div className="mt-1 font-semibold">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</div>
               {species.length > 0 && idx && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {species.map((sp) => {
@@ -371,15 +371,15 @@ function Research() {
     if (r.kind === 'resource' && candy) return t.candy_of(speciesName(r.dex, candy[1]!), !!candy[2]);
     const energy = /^(.*) Mega Energy$/.exec(r.name);
     if (r.kind === 'resource' && energy) return t.mega_energy_of(speciesName(r.dex, energy[1]!));
-    return t.items[r.name] ?? r.name;
+    return t.items[r.name] ?? (lang === 'fr' ? r.nameFr : undefined) ?? r.name;
   };
   const block = (c: ResearchCategory) => (
-    <Section key={c.title} title={c.event ? c.title.replace(/ Tasks$/, '') : (t.research_types[c.title] ?? c.title.replace(/ Tasks$/, ''))} count={c.tasks.length}>
+    <Section key={c.title} title={c.event ? eventTitle(c.title.replace(/ Tasks$/, ''), idx?.speciesByDex, lang) : (t.research_types[c.title] ?? c.title.replace(/ Tasks$/, ''))} count={c.tasks.length}>
       {c.end && <p className="-mt-1 mb-2 text-xs text-ink-3">{formatUntil(c.end, lang)}</p>}
       <ul className="space-y-2">
         {c.tasks.map((task) => (
           <li key={task.text} className="card p-3">
-            <div className="text-sm font-semibold">{task.text}</div>
+            <div className="text-sm font-semibold">{lang === 'fr' ? (task.textFr ?? task.text) : task.text}</div>
             <div className="mt-2 flex flex-wrap items-start gap-2">
               {task.rewards.map((r, i) =>
                 r.kind === 'encounter' ? (
@@ -461,6 +461,7 @@ interface EventSpawns { eventID: string; name: string; link: string; image: stri
 function EventSpawnsTab() {
   const t = useT();
   const { lang } = useLang();
+  const dataset = useDataset();
   const q = useQuery({ queryKey: ['live', 'event-spawns'], queryFn: () => api<{ events: EventSpawns[] }>('/game/event-spawns').then((r) => r.events), staleTime: 10 * 60_000 });
   if (q.isPending) return <Spinner />;
   if (q.isError) return <LiveError retry={() => void q.refetch()} />;
@@ -472,7 +473,7 @@ function EventSpawnsTab() {
       <a href={e.link} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3">
         {e.image && <img src={e.image} alt="" width={64} height={36} loading="lazy" className="h-9 w-16 shrink-0 rounded-md object-cover" />}
         <span className="min-w-0 flex-1">
-          <span className="block font-bold leading-tight">{e.name}</span>
+          <span className="block font-bold leading-tight">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</span>
           <span className="block text-xs text-ink-3">{e.start && `${date(e.start)} → `}{date(e.end)}</span>
         </span>
       </a>

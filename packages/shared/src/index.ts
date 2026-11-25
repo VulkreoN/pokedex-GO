@@ -9,3 +9,4 @@ export * from './counters.js';
 export * from './battle.js';
 export * from './battleData.js';
 export * from './searchImport.js';
+export * from './eventNames.js';

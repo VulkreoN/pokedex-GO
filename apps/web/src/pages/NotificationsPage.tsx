@@ -47,8 +47,9 @@ export function NotificationsPage() {
     if (n.type === 'raid') return t.notif_raid(raidNames(n));
     if (n.type === 'spawn' || n.type === 'quest') {
       const names = (n.data.names as string[] | undefined) ?? [];
-      const first = (n.data.mons as { where: string; from: string | null }[] | undefined)?.[0];
-      return n.type === 'spawn' ? t.notif_spawn(names, first?.where ?? '', first?.from ?? null) : t.notif_quest(names, first?.where ?? '');
+      const first = (n.data.mons as { where: string; whereFr?: string | null; from: string | null }[] | undefined)?.[0];
+      const where = (lang === 'fr' && first?.whereFr) || first?.where || '';
+      return n.type === 'spawn' ? t.notif_spawn(names, where, first?.from ?? null) : t.notif_quest(names, where);
     }
     if (n.type === 'admin') return n.data.kind === 'report' ? t.notif_admin_report(String(n.data.by ?? '?'), String(n.data.variant ?? '')) : t.notif_admin_data(String(n.data.error ?? ''));
     if (n.type === 'account') return t.notif_account(String(n.data.change), String(n.data.role ?? n.data.value ?? ''));

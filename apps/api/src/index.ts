@@ -18,6 +18,7 @@ import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js
 import { notifyStaff, pruneNotifications } from './notify/service.js';
 import { purgeAccountTrash } from './lib/accountTrash.js';
 import { purgeTrash } from './lib/trash.js';
+import { resetGameTexts } from './lib/gameTexts.js';
 import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
 import { migrateAliases } from './lists/aliases.js';
@@ -101,5 +102,7 @@ purge();
 setInterval(purge, 24 * 3600_000).unref();
 // Admins hear about a data update that fails.
 dataService.onFailure((error) => notifyStaff({ kind: 'data_error', error }));
+// New game texts come with each data update.
+dataService.onDataset(() => resetGameTexts());
 // Push keys exist from the first start, so the nightly backup always has them.
 void vapidKeys().catch((e) => console.error('push keys', e));
