@@ -2,13 +2,14 @@ import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createSession, destroySession, hashPassword, publicUser, requireAuth, userFromRequest, verifyPassword, type AuthEnv } from '../auth.js';
+import { createSession, destroySession, hashPassword, liftEndedSuspension, publicUser, requireAuth, userFromRequest, verifyPassword, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { hashToken, newFriendCode, newId, normalizeFriendCode } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
 import { env } from '../env.js';
 import { getSetting } from '../lib/settings.js';
 import { audit } from '../lib/audit.js';
+import { trashAccount } from '../lib/accountTrash.js';
 
 const credentials = z.object({
   username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, 'letters, digits and _ only'),
@@ -86,11 +87,11 @@ export const authRoutes = new Hono<AuthEnv>()
     const { username, password } = c.req.valid('json');
     const [user] = await db.select().from(schema.users).where(sql`lower(${schema.users.username}) = lower(${username})`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, password))) return c.json({ error: 'invalid_credentials' }, 401);
-    if (user.suspendedAt) {
+    if (user.suspendedAt && !(await liftEndedSuspension(user))) {
       // Once an hour at most, so a player retrying does not flood the journal.
       const [recent] = await db.select({ id: schema.auditLog.id }).from(schema.auditLog).where(and(eq(schema.auditLog.action, 'account.login_suspended'), eq(schema.auditLog.targetId, user.id), gt(schema.auditLog.createdAt, new Date(Date.now() - 3600_000)))).limit(1);
       if (!recent) await audit(user.id, 'account.login_suspended', 'user', user.id, { username: user.username });
-      return c.json({ error: 'suspended' }, 403);
+      return c.json({ error: 'suspended', until: user.suspendedUntil?.toISOString() ?? null }, 403);
     }
     if (user.role !== 'admin' && env.adminUsernames.includes(user.username.toLowerCase())) {
       await db.update(schema.users).set({ role: 'admin' }).where(sql`${schema.users.id} = ${user.id}`);
@@ -168,7 +169,8 @@ export const authRoutes = new Hono<AuthEnv>()
     const me = c.get('user');
     const [user] = await db.select().from(schema.users).where(sql`${schema.users.id} = ${me.id}`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, c.req.valid('json').password))) return c.json({ error: 'invalid_credentials' }, 401);
-    await db.delete(schema.users).where(sql`${schema.users.id} = ${me.id}`);
+    // Kept 30 days in the trash (an admin can bring it back), then gone for good.
+    await trashAccount(me.id, null);
     // The account is gone, so the entry has no author: the name is kept in it.
     await audit(null, 'account.delete', 'user', me.id, { username: me.username });
     await destroySession(c);

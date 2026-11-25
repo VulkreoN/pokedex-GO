@@ -15,6 +15,7 @@ import {
   useAdminUser,
   useAdminUserLists,
   useAdminUserTrash,
+  useAccountTrash,
   useAudit,
   useReports,
   useSignups,
@@ -183,13 +184,14 @@ function Users() {
           <Button tone="ghost" className="min-h-9" disabled={offset + 50 >= users.data.total} onClick={() => setOffset(offset + 50)}>›</Button>
         </div>
       )}
-      <UserSheet id={open} onClose={() => setOpen(null)} />
+      <UserSheet id={open} onClose={() => setOpen(null)} onOpen={setOpen} />
+      <AccountTrash />
     </section>
   );
 }
 
 /** One account: what it has, when it was last seen, and what an admin can do to it. */
-function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
+function UserSheet({ id, onClose, onOpen }: { id: string | null; onClose: () => void; onOpen: (id: string) => void }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -199,12 +201,14 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [suspending, setSuspending] = useState(false);
   const [reason, setReason] = useState('');
+  const [days, setDays] = useState<number | null>(7);
+  const [message, setMessage] = useState('');
   const act = useAdminAction(async (v: { path: string; method?: string; body?: unknown }) => api(v.path, { method: v.method ?? 'POST', body: v.body }));
   const u = q.data?.user;
   const self = u?.id === me.data?.id;
-  const close = () => { setIssued(null); setConfirmDelete(false); setSuspending(false); setReason(''); onClose(); };
+  const close = () => { setIssued(null); setConfirmDelete(false); setSuspending(false); setReason(''); setMessage(''); onClose(); };
   const suspend = async (on: boolean) => {
-    await act.mutateAsync({ path: `/admin/users/${u!.id}/suspend`, body: { suspended: on, reason: on ? reason.trim() || undefined : undefined } });
+    await act.mutateAsync({ path: `/admin/users/${u!.id}/suspend`, body: { suspended: on, reason: on ? reason.trim() || undefined : undefined, days: on && days ? days : undefined } });
     setSuspending(false);
     setReason('');
     toast(on ? t.admin_suspended_done : t.admin_unsuspended_done);
@@ -219,6 +223,7 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
             <div className="rounded-lg bg-paper-2 p-2">
               <Badge tone="muted">{t.admin_suspended}</Badge>
               <p className="mt-1 text-xs text-ink-2">{t.admin_suspended_by(u!.suspendedBy ?? '?', relativeTime(u!.suspendedAt, lang))}</p>
+              <p className="text-xs text-ink-2">{u!.suspendedUntil ? t.admin_suspended_until(new Date(u!.suspendedUntil).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' })) : t.admin_suspended_forever}</p>
               {u!.suspendReason && <p className="mt-0.5 text-sm">« {u!.suspendReason} »</p>}
             </div>
           )}
@@ -270,9 +275,41 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
           </div>
           {suspending && !u!.suspendedAt && (
             <div className="space-y-2 rounded-lg border border-line p-2">
+              <p className="text-xs font-medium text-ink-3">{t.admin_suspend_for}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {([1, 7, 30, null] as const).map((d) => (
+                  <Chip key={String(d)} active={days === d} className="min-h-8 px-2.5 text-xs" onClick={() => setDays(d)}>{d ? t.admin_days(d) : t.admin_suspend_forever}</Chip>
+                ))}
+              </div>
               <TextField label={t.admin_suspend_reason} placeholder={t.admin_suspend_reason_hint} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />
               <Button tone="danger" className="w-full text-sm" disabled={act.isPending} onClick={() => void suspend(true)}>{t.admin_suspend_confirm}</Button>
             </div>
+          )}
+          <section>
+            <p className="mb-1 text-xs font-medium text-ink-3">{t.admin_message_title}</p>
+            <textarea aria-label={t.admin_message_title} value={message} maxLength={500} rows={2} placeholder={t.admin_message_hint} onChange={(e) => setMessage(e.target.value)} className="w-full rounded-xl border border-line bg-card px-3 py-2 text-[16px] placeholder:text-ink-3" />
+            <Button className="mt-1 w-full text-sm" disabled={act.isPending || message.trim().length < 2} onClick={async () => { await act.mutateAsync({ path: `/admin/users/${u!.id}/message`, body: { message: message.trim() } }); setMessage(''); toast(t.admin_message_sent); }}>{t.admin_message_send}</Button>
+          </section>
+          {q.data.sessions.length > 0 && (
+            <section>
+              <p className="mb-1 text-xs font-medium text-ink-3">{t.admin_sessions_title}</p>
+              <ul className="divide-y divide-line rounded-lg border border-line">
+                {q.data.sessions.map((s) => (
+                  <li key={s.createdAt} className="flex items-baseline gap-2 p-2">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{deviceName(s.userAgent) || t.admin_device_unknown}</span>
+                    <span className="tnum shrink-0 text-xs text-ink-3">{t.admin_session_seen(relativeTime(s.lastUsedAt ?? s.createdAt, lang))}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {q.data.friends.length > 0 && (
+            <section>
+              <p className="mb-1 text-xs font-medium text-ink-3">{t.friends} ({q.data.friends.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {q.data.friends.map((f) => <Chip key={f.id} className="min-h-8 px-2.5 text-xs" onClick={() => onOpen(f.id)}>{f.username}</Chip>)}
+              </div>
+            </section>
           )}
           <UserLists id={u!.id} />
           <UserTrash id={u!.id} />
@@ -314,6 +351,42 @@ function AccountEdit({ id, username, friendCode }: { id: string; username: strin
       {error && <p className="text-sm text-berry">{error}</p>}
       <p className="text-xs text-ink-3">{t.admin_notified}</p>
     </div>
+  );
+}
+
+/** "Safari · iPhone" from a browser's user agent, enough to tell two devices apart. */
+function deviceName(ua: string | null): string {
+  if (!ua) return '';
+  const device = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\/|FxiOS/.test(ua) ? 'Firefox' : /Chrome\/|CriOS/.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
+  return [browser, device].filter(Boolean).join(' · ');
+}
+
+/** Accounts deleted less than 30 days ago: an admin brings one back whole. */
+function AccountTrash() {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const q = useAccountTrash();
+  const [error, setError] = useState<string | null>(null);
+  const restore = useAdminAction((id: string) => api(`/admin/trash/accounts/${id}/restore`, { method: 'POST' }));
+  if (!q.data?.length) return null;
+  return (
+    <section className="mt-5">
+      <h3 className="mb-1 text-sm font-bold">{t.admin_account_trash}</h3>
+      <ul className="divide-y divide-line rounded-lg border border-dashed border-line">
+        {q.data.map((a) => (
+          <li key={a.id} className="flex items-center gap-2 p-2 text-sm">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold">{a.username}</span>
+              <span className="block text-xs text-ink-3">{t.admin_account_trash_line(a.by, relativeTime(a.deletedAt, lang), Math.max(0, Math.ceil((new Date(a.purgeAt).getTime() - Date.now()) / 86400_000)))}</span>
+            </span>
+            <Button className="min-h-8 px-2 text-xs" disabled={restore.isPending} onClick={async () => { setError(null); try { await restore.mutateAsync(a.id); toast(t.admin_account_restored); } catch (e) { setError(errorMessage(t, e)); } }}>{t.admin_restore}</Button>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="mt-1 text-sm text-berry">{error}</p>}
+    </section>
   );
 }
 
@@ -465,13 +538,16 @@ function describe(e: AuditEntry, t: ReturnType<typeof useT>, variant: (key: stri
     case 'user.role': return t.audit.role(who, d.username, t[`role_${d.after as Role}`] ?? d.after);
     case 'user.reset_code': return t.audit.reset(who, d.username);
     case 'user.logout_all': return t.audit.logout(who, d.username ?? e.targetId);
-    case 'user.suspend': return t.audit.suspend(who, d.username);
+    case 'user.suspend': return d.days ? t.audit.suspendFor(who, d.username, d.days) : t.audit.suspend(who, d.username);
+    case 'user.message': return t.audit.message(who, d.username);
+    case 'user.restore': return t.audit.restore(who, d.username);
+    case 'audit.export': return t.audit.export(who, d.lines);
     case 'user.rename': return t.audit.rename(who, d.before, d.after);
     case 'user.friend_code': return d.random ? t.audit.friendCodeRandom(who, d.username) : t.audit.friendCode(who, d.username);
     case 'list.rename': return t.audit.listRename(who, d.username, d.before, d.after);
     case 'list.delete': return who === d.username ? t.audit.listDeleteOwn(who, d.name) : t.audit.listDelete(who, d.username, d.name);
     case 'list.restore': return t.audit.listRestore(who, d.username ?? '?', d.name);
-    case 'user.unsuspend': return t.audit.unsuspend(who, d.username);
+    case 'user.unsuspend': return d.auto ? t.audit.unsuspendAuto(d.username) : t.audit.unsuspend(who, d.username);
     case 'user.delete': return t.audit.delete(who, d.username);
     // A player's own actions: named from the entry, the account may be gone since.
     case 'account.create': return d.invite ? t.audit.accountCreateInvite(d.username, d.invite.note ?? '') : t.audit.accountCreate(d.username);
@@ -541,10 +617,13 @@ function Journal() {
     return sp ? [localized(sp.name, lang), v?.label ? localized(v.label, lang) : ''].filter(Boolean).join(' · ') : key;
   };
   const kinds = (
-    <div className="mb-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
-      {(['all', 'accounts', 'lists', 'data', 'admin'] as AuditKind[]).map((k) => (
-        <Chip key={k} active={kind === k} onClick={() => { setKind(k); setOffset(0); }}>{t.audit_kind[k]}</Chip>
-      ))}
+    <div className="mb-2 flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none]">
+        {(['all', 'accounts', 'lists', 'data', 'admin'] as AuditKind[]).map((k) => (
+          <Chip key={k} active={kind === k} onClick={() => { setKind(k); setOffset(0); }}>{t.audit_kind[k]}</Chip>
+        ))}
+      </div>
+      <a href={`/api/admin/audit.csv${kind === 'all' ? '' : `?kind=${kind}`}`} download className="shrink-0 rounded-full bg-paper-2 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-line">{t.audit_export}</a>
     </div>
   );
   if (!q.data) return <section>{kinds}<Spinner /></section>;
@@ -557,6 +636,7 @@ function Journal() {
           <li key={e.id} className="flex items-start gap-2 py-2.5">
             <span className="min-w-0 flex-1">
               <span className={`block text-sm ${e.undoneAt ? 'text-ink-3 line-through' : ''}`}>{describe(e, t, variant)}</span>
+              {e.action === 'user.message' && <span className="block text-xs text-ink-2">« {(e.data as any).message} »</span>}
               {e.action === 'user.suspend' && (e.data as any).reason && <span className="block text-xs text-ink-2">{t.audit_reason((e.data as any).reason)}</span>}
               {e.action === 'user.friend_code' && <span className="tnum block text-xs text-ink-2">{fmtCode(String((e.data as any).before))} → {fmtCode(String((e.data as any).after))}</span>}
               {e.action === 'account.friend_code' && <span className="tnum block text-xs text-ink-2">{fmtCode(String((e.data as any).before))} → {fmtCode(String((e.data as any).after))}</span>}

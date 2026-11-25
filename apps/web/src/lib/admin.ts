@@ -81,7 +81,8 @@ export function relativeTime(iso: string | null, lang: string): string {
 export interface AdminStats { users: number; active7: number; active30: number; lists: number; entries: number; friendships: number; pushDevices: number; raidAlerts7: number; errorsToday: number; openReports: number; signupsByWeek: { week: string; n: number }[] }
 export interface SourceHealth { okAt: string | null; errorAt: string | null; error: string | null }
 export interface AdminHealth { version: string; startedAt: string; dataset: DataStatus; sources: Partial<Record<'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'feed', SourceHealth>> }
-export interface AdminUserDetail { user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null; suspendedBy: string | null; suspendReason: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
+export interface AdminSession { createdAt: string; lastUsedAt: string | null; expiresAt: string; userAgent: string | null }
+export interface AdminUserDetail { sessions: AdminSession[]; friends: { id: string; username: string }[]; user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null; suspendedUntil: string | null; suspendedBy: string | null; suspendReason: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
 export interface SignupSettings { mode: 'open' | 'invite' | 'closed'; dailyCap: number | null }
 export interface Invite { id: string; note: string | null; maxUses: number; uses: number; expiresAt: string | null; createdAt: string }
 export interface AuditEntry { id: string; actor: string | null; action: string; targetType: string; targetId: string | null; data: Record<string, unknown>; createdAt: string; undoneAt: string | null; undoable: boolean }
@@ -95,6 +96,8 @@ export interface AdminList { id: string; name: string; visibility: string; entri
 export const useAdminUserLists = (id: string | null) => useQuery({ queryKey: ['admin', 'user-lists', id], queryFn: () => api<{ lists: AdminList[] }>(`/admin/users/${id}/lists`).then((r) => r.lists), enabled: !!id });
 export interface TrashedList { id: string; name: string; entries: number; deletedAt: string; purgeAt: string; by: string | null }
 export const useAdminUserTrash = (id: string | null) => useQuery({ queryKey: ['admin', 'user-trash', id], queryFn: () => api<{ lists: TrashedList[] }>(`/admin/users/${id}/trash`).then((r) => r.lists), enabled: !!id });
+export interface TrashedAccount { id: string; username: string; deletedAt: string; purgeAt: string; by: string | null }
+export const useAccountTrash = () => useQuery({ queryKey: ['admin', 'account-trash'], queryFn: () => api<{ accounts: TrashedAccount[] }>('/admin/trash/accounts').then((r) => r.accounts) });
 export const useSignups = () => useQuery({ queryKey: ['admin', 'signups'], queryFn: () => api<{ settings: SignupSettings; invites: Invite[] }>('/admin/signups') });
 export type AuditKind = 'all' | 'accounts' | 'lists' | 'data' | 'admin';
 export const useAudit = (offset: number, kind: AuditKind = 'all') => useQuery({ queryKey: ['admin', 'audit', kind, offset], queryFn: () => api<{ entries: AuditEntry[]; offset: number }>(`/admin/audit?offset=${offset}${kind === 'all' ? '' : `&kind=${kind}`}`), placeholderData: (p) => p });

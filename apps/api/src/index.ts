@@ -15,7 +15,8 @@ import { feedRoutes } from './routes/feed.js';
 import { gameRoutes } from './routes/game.js';
 import { feedService } from './feed/service.js';
 import { notificationRoutes, pushRoutes, streamRoutes } from './routes/notify.js';
-import { pruneNotifications } from './notify/service.js';
+import { notifyStaff, pruneNotifications } from './notify/service.js';
+import { purgeAccountTrash } from './lib/accountTrash.js';
 import { purgeTrash } from './lib/trash.js';
 import { vapidKeys } from './notify/push.js';
 import { migrateStoredGenders } from './lists/genders.js';
@@ -95,7 +96,10 @@ void dataService.start().then(() => {
 });
 setInterval(() => void pruneNotifications().catch(() => {}), 24 * 3600_000).unref();
 // Deleted collections older than 30 days leave the trash.
-void purgeTrash().catch(() => {});
-setInterval(() => void purgeTrash().catch(() => {}), 24 * 3600_000).unref();
+const purge = () => void Promise.all([purgeTrash(), purgeAccountTrash()]).catch(() => {});
+purge();
+setInterval(purge, 24 * 3600_000).unref();
+// Admins hear about a data update that fails.
+dataService.onFailure((error) => notifyStaff({ kind: 'data_error', error }));
 // Push keys exist from the first start, so the nightly backup always has them.
 void vapidKeys().catch((e) => console.error('push keys', e));

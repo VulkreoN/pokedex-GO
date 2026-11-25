@@ -33,6 +33,8 @@ export function errorMessage(t: T, e: unknown): string {
       invite_required: t.err_invite_required,
       invalid_invite: t.err_invalid_invite,
     };
+    // A suspension for a set time says until when.
+    if (e.code === 'suspended' && typeof e.data.until === 'string') return t.err_suspended_until(new Date(e.data.until).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }));
     return map[e.code] ?? t.err_generic;
   }
   return t.err_generic;

@@ -75,6 +75,11 @@ class DataService {
   onDataset(fn: () => Promise<void> | void) {
     this.readyListeners.push(fn);
   }
+  private failureListeners: ((error: string) => Promise<void> | void)[] = [];
+  /** Runs when a refresh fails after one that worked (not again while it keeps failing). */
+  onFailure(fn: (error: string) => Promise<void> | void) {
+    this.failureListeners.push(fn);
+  }
   private async notifyDataset() {
     for (const fn of this.readyListeners) await Promise.resolve(fn()).catch((e) => console.error('dataset listener', e));
   }
@@ -94,6 +99,15 @@ class DataService {
   async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean } | null> {
     const v = (await this.variants())?.get(key);
     return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve, noMega: !!v.noMega } : null;
+  }
+
+  /** "Pikachu · Casquette d'Ash" for messages; the key when the dataset does not know it. */
+  variantName(key: string): string {
+    const v = this.raw?.variants.find((x) => x.key === key);
+    const sp = this.raw?.species.find((s) => s.dex === (v?.dex ?? Number(key.split('.')[0])));
+    if (!sp) return key;
+    const label = v?.label?.fr ?? v?.label?.en;
+    return [sp.name.fr ?? sp.name.en, label].filter(Boolean).join(' · ');
   }
 
   /** Variants of the current dataset by key, managers' corrections included (null until a dataset is loaded). */
@@ -207,8 +221,10 @@ class DataService {
       await this.notifyDataset();
       return true;
     } catch (e) {
+      const firstFailure = !this.status.lastError;
       this.status.lastError = (e as Error).message;
       recordSource('dataset', e);
+      if (firstFailure) for (const fn of this.failureListeners) await Promise.resolve(fn(this.status.lastError)).catch((err) => console.error('failure listener', err));
       console.error('dataset refresh failed:', e);
       return false;
     } finally {

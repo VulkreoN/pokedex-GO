@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, gt, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { isValidVariantKey } from '@mydexpogo/shared';
@@ -19,10 +19,28 @@ import { getSetting, setSetting } from '../lib/settings.js';
 import { hub } from '../notify/hub.js';
 import { pushToUser } from '../notify/push.js';
 import { runRaidAlerts } from '../notify/raidAlerts.js';
-import { notifyAccount } from '../notify/service.js';
+import { notifyAccount, notifyStaff } from '../notify/service.js';
 import { overrideState } from './data.js';
 import { alias } from 'drizzle-orm/pg-core';
 import { TRASH_DAYS, restoreList, trashList } from '../lib/trash.js';
+import { restoreAccount, trashAccount } from '../lib/accountTrash.js';
+
+/** Accounts, collections, Pokédex corrections, or the rest of the admin work. */
+function auditWhere(kind: string | undefined) {
+  const a = schema.auditLog.action;
+  return kind === 'accounts' ? sql`(${a} like 'account.%' or ${a} like 'user.%')`
+    : kind === 'lists' ? sql`${a} like 'list.%'`
+    : kind === 'data' ? sql`(${a} like 'override.%' or ${a} like 'report.%')`
+    : kind === 'admin' ? sql`not (${a} like 'account.%' or ${a} like 'user.%' or ${a} like 'list.%' or ${a} like 'override.%' or ${a} like 'report.%')`
+    : undefined;
+}
+
+/** After an account comes back: its deletion is marked undone in the journal, the restore journaled, the player told. */
+async function accountRestored(id: string, username: string, adminId: string) {
+  await db.update(schema.auditLog).set({ undoneAt: new Date() }).where(and(inArray(schema.auditLog.action, ['user.delete', 'account.delete']), eq(schema.auditLog.targetId, id), sql`${schema.auditLog.undoneAt} is null`));
+  await audit(adminId, 'user.restore', 'user', id, { username });
+  await notifyAccount(id, adminId, 'restored');
+}
 
 /** The journal line of a collection's deletion shows it was brought back. */
 const markListDeleteUndone = (listId: string) =>
@@ -99,12 +117,19 @@ export const adminRoutes = new Hono<AuthEnv>()
       count(db.select({ n }).from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, id))),
       count(db.select({ n }).from(schema.pvpPokemon).where(eq(schema.pvpPokemon.userId, id))),
     ]);
+    // Its open sessions (which browser, last used) and its friends.
+    const [sessionRows, friendRows] = await Promise.all([
+      db.select().from(schema.sessions).where(and(eq(schema.sessions.userId, id), gt(schema.sessions.expiresAt, new Date()))).orderBy(desc(schema.sessions.lastUsedAt)).limit(20),
+      db.select({ id: schema.users.id, username: schema.users.username }).from(schema.friendships).innerJoin(schema.users, eq(schema.users.id, schema.friendships.friendId)).where(eq(schema.friendships.userId, id)).orderBy(schema.users.username),
+    ]);
     // Why and by whom a suspended account was suspended: the latest suspension in the journal.
     const [why] = u.suspendedAt
       ? await db.select({ data: schema.auditLog.data, by: schema.users.username }).from(schema.auditLog).leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId)).where(and(eq(schema.auditLog.action, 'user.suspend'), eq(schema.auditLog.targetId, id))).orderBy(desc(schema.auditLog.createdAt)).limit(1)
       : [];
     return c.json({
-      user: { id: u.id, username: u.username, role: u.role, friendCode: u.friendCode, createdAt: u.createdAt.toISOString(), lastSeenAt: iso(u.lastSeenAt), suspendedAt: iso(u.suspendedAt), suspendedBy: why?.by ?? null, suspendReason: (why?.data.reason as string | null | undefined) ?? null },
+      user: { id: u.id, username: u.username, role: u.role, friendCode: u.friendCode, createdAt: u.createdAt.toISOString(), lastSeenAt: iso(u.lastSeenAt), suspendedAt: iso(u.suspendedAt), suspendedUntil: iso(u.suspendedUntil), suspendedBy: why?.by ?? null, suspendReason: (why?.data.reason as string | null | undefined) ?? null },
+      sessions: sessionRows.map((s) => ({ createdAt: s.createdAt.toISOString(), lastUsedAt: iso(s.lastUsedAt), expiresAt: s.expiresAt.toISOString(), userAgent: s.userAgent })),
+      friends: friendRows,
       counts: { lists, entries, friends, sessions, devices, pvp },
     });
   })
@@ -201,6 +226,34 @@ export const adminRoutes = new Hono<AuthEnv>()
     if (back.ownerId !== me.id) await notifyAccount(back.ownerId, me.id, 'list_restored', { value: back.name });
     return c.json({ ok: true });
   })
+  /** A message from the admins, in the player's notifications (and pushed). */
+  .post('/users/:id/message', zValidator('json', z.object({ message: z.string().trim().min(2).max(500) })), async (c) => {
+    const me = c.get('user');
+    const id = c.req.param('id');
+    const [u] = await db.select({ username: schema.users.username }).from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    if (!u) return c.json({ error: 'not_found' }, 404);
+    const { message } = c.req.valid('json');
+    await notifyAccount(id, me.id, 'message', { value: message });
+    await audit(me.id, 'user.message', 'user', id, { username: u.username, message });
+    return c.json({ ok: true });
+  })
+  /** Accounts deleted less than 30 days ago, by the player or an admin. */
+  .get('/trash/accounts', async (c) => {
+    const by = alias(schema.users, 'by');
+    const rows = await db
+      .select({ id: schema.deletedUsers.id, username: schema.deletedUsers.username, deletedAt: schema.deletedUsers.deletedAt, by: by.username })
+      .from(schema.deletedUsers)
+      .leftJoin(by, eq(by.id, schema.deletedUsers.deletedBy))
+      .orderBy(desc(schema.deletedUsers.deletedAt))
+      .limit(100);
+    return c.json({ accounts: rows.map((r) => ({ ...r, deletedAt: r.deletedAt.toISOString(), purgeAt: new Date(r.deletedAt.getTime() + TRASH_DAYS * 86400_000).toISOString() })) });
+  })
+  .post('/trash/accounts/:id/restore', async (c) => {
+    const r = await restoreAccount(c.req.param('id'));
+    if (!r.ok) return c.json({ error: r.error }, r.error === 'not_found' ? 404 : 409);
+    await accountRestored(c.req.param('id'), r.username, c.get('user').id);
+    return c.json({ ok: true });
+  })
   .post('/users/:id/logout', async (c) => {
     const id = c.req.param('id');
     const [u] = await db.select({ username: schema.users.username }).from(schema.users).where(eq(schema.users.id, id)).limit(1);
@@ -210,15 +263,16 @@ export const adminRoutes = new Hono<AuthEnv>()
     await notifyAccount(id, c.get('user').id, 'logout_all');
     return c.json({ ok: true, sessions: gone.length });
   })
-  .post('/users/:id/suspend', zValidator('json', z.object({ suspended: z.boolean(), reason: z.string().trim().max(300).optional() })), async (c) => {
+  .post('/users/:id/suspend', zValidator('json', z.object({ suspended: z.boolean(), reason: z.string().trim().max(300).optional(), days: z.number().int().min(1).max(365).optional() })), async (c) => {
     const me = c.get('user');
     const id = c.req.param('id');
     if (id === me.id) return c.json({ error: 'self' }, 400);
-    const { suspended, reason } = c.req.valid('json');
-    const [u] = await db.update(schema.users).set({ suspendedAt: suspended ? new Date() : null }).where(eq(schema.users.id, id)).returning({ username: schema.users.username, role: schema.users.role });
+    const { suspended, reason, days } = c.req.valid('json');
+    const until = suspended && days ? new Date(Date.now() + days * 86400_000) : null;
+    const [u] = await db.update(schema.users).set({ suspendedAt: suspended ? new Date() : null, suspendedUntil: until }).where(eq(schema.users.id, id)).returning({ username: schema.users.username, role: schema.users.role });
     if (!u) return c.json({ error: 'not_found' }, 404);
     if (suspended) await db.delete(schema.sessions).where(eq(schema.sessions.userId, id));
-    await audit(me.id, suspended ? 'user.suspend' : 'user.unsuspend', 'user', id, { username: u.username, reason: reason || null });
+    await audit(me.id, suspended ? 'user.suspend' : 'user.unsuspend', 'user', id, { username: u.username, reason: reason || null, ...(suspended ? { days: days ?? null, until: until?.toISOString() ?? null } : {}) });
     if (!suspended) await notifyAccount(id, me.id, 'unsuspended');
     return c.json({ ok: true });
   })
@@ -229,7 +283,8 @@ export const adminRoutes = new Hono<AuthEnv>()
     const [u] = await db.select({ username: schema.users.username, role: schema.users.role }).from(schema.users).where(eq(schema.users.id, id)).limit(1);
     if (!u) return c.json({ error: 'not_found' }, 404);
     if (u.role === 'admin') return c.json({ error: 'admin' }, 400); // demote first: no admin removes another by mistake
-    await db.delete(schema.users).where(eq(schema.users.id, id));
+    // Kept 30 days in the trash, then gone for good.
+    await trashAccount(id, me.id);
     await audit(me.id, 'user.delete', 'user', id, { username: u.username });
     return c.json({ ok: true });
   })
@@ -266,15 +321,7 @@ export const adminRoutes = new Hono<AuthEnv>()
   /* ---------- Journal ---------- */
   .get('/audit', async (c) => {
     const offset = Math.max(0, Number(c.req.query('offset') ?? 0) || 0);
-    // Accounts (players' own and admins' actions on them), collections, Pokédex corrections, or the rest of the admin work.
-    const a = schema.auditLog.action;
-    const kind = c.req.query('kind');
-    const where =
-      kind === 'accounts' ? sql`(${a} like 'account.%' or ${a} like 'user.%')`
-      : kind === 'lists' ? sql`${a} like 'list.%'`
-      : kind === 'data' ? sql`(${a} like 'override.%' or ${a} like 'report.%')`
-      : kind === 'admin' ? sql`not (${a} like 'account.%' or ${a} like 'user.%' or ${a} like 'list.%' or ${a} like 'override.%' or ${a} like 'report.%')`
-      : undefined;
+    const where = auditWhere(c.req.query('kind'));
     const rows = await db
       .select({ a: schema.auditLog, actor: schema.users.username })
       .from(schema.auditLog)
@@ -286,15 +333,40 @@ export const adminRoutes = new Hono<AuthEnv>()
     return c.json({
       entries: rows.map(({ a, actor }) => ({
         id: a.id, actor, action: a.action, targetType: a.targetType, targetId: a.targetId, data: a.data, createdAt: a.createdAt.toISOString(), undoneAt: iso(a.undoneAt),
-        // A deleted collection, while still in the trash.
-        undoable: !a.undoneAt && (a.action.startsWith('override.') || (a.action === 'list.delete' && a.createdAt.getTime() > Date.now() - TRASH_DAYS * 86400_000)),
+        // A deleted collection or account, while still in the trash.
+        undoable: !a.undoneAt && (a.action.startsWith('override.') || (['list.delete', 'user.delete', 'account.delete'].includes(a.action) && a.createdAt.getTime() > Date.now() - TRASH_DAYS * 86400_000)),
       })),
       offset,
     });
   })
+  /** The whole journal (or one filter of it) as a spreadsheet, newest first, at most 20,000 lines. */
+  .get('/audit.csv', async (c) => {
+    const rows = await db
+      .select({ a: schema.auditLog, actor: schema.users.username })
+      .from(schema.auditLog)
+      .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
+      .where(auditWhere(c.req.query('kind')))
+      .orderBy(desc(schema.auditLog.createdAt))
+      .limit(20_000);
+    const cell = (v: unknown) => {
+      const s = v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v);
+      // Quoted, and no formula can run when the file opens in a spreadsheet.
+      return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+    };
+    const lines = [['date', 'auteur', 'action', 'cible', 'id cible', 'détails', 'annulé le'].map(cell).join(',')];
+    for (const { a, actor } of rows) lines.push([a.createdAt.toISOString(), actor ?? (a.data as { username?: string }).username ?? '', a.action, a.targetType, a.targetId, a.data, a.undoneAt?.toISOString()].map(cell).join(','));
+    await audit(c.get('user').id, 'audit.export', 'audit', null, { kind: c.req.query('kind') ?? 'all', lines: rows.length });
+    return c.body(`\ufeff${lines.join('\r\n')}\r\n`, 200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="journal-${new Date().toISOString().slice(0, 10)}.csv"` });
+  })
   /** Puts a variant correction back as it was before this entry. */
   .post('/audit/:id/undo', async (c) => {
     const [e] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.id, c.req.param('id'))).limit(1);
+    if ((e?.action === 'user.delete' || e?.action === 'account.delete') && !e.undoneAt && e.targetId) {
+      const r = await restoreAccount(e.targetId);
+      if (!r.ok) return c.json({ error: r.error === 'not_found' ? 'not_undoable' : r.error }, r.error === 'not_found' ? 400 : 409);
+      await accountRestored(e.targetId, r.username, c.get('user').id);
+      return c.json({ ok: true });
+    }
     if (e?.action === 'list.delete' && !e.undoneAt && e.targetId) {
       const back = await restoreList(e.targetId);
       if (!back) return c.json({ error: 'not_undoable' }, 400);
@@ -374,6 +446,7 @@ export const reportRoutes = new Hono<AuthEnv>()
     const b = c.req.valid('json');
     const id = newId();
     await db.insert(schema.reports).values({ id, userId: c.get('user').id, variantKey: b.variantKey, kind: b.kind, message: b.message || null });
+    void notifyStaff({ kind: 'report', variant: dataService.variantName(b.variantKey), reportKind: b.kind, by: c.get('user').username }, c.get('user').id);
     return c.json({ id }, 201);
   })
   .get('/', requireRole('manager'), async (c) => {

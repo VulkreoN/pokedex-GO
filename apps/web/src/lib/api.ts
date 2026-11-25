@@ -2,6 +2,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
+    /** The rest of the error reply (a suspension's end date...). */
+    public data: Record<string, unknown> = {},
   ) {
     super(code);
   }
@@ -16,12 +18,14 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   });
   if (!res.ok) {
     let code = 'generic';
+    let body: Record<string, unknown> = {};
     try {
-      const data = (await res.json()) as { error?: string | { name?: string } };
+      const data = (await res.json()) as { error?: string | { name?: string } } & Record<string, unknown>;
+      body = data;
       code = typeof data.error === 'string' ? data.error : data.error?.name === 'ZodError' ? 'validation' : 'generic';
     } catch {}
     if (res.status === 400 && code === 'generic') code = 'validation';
-    throw new ApiError(res.status, code);
+    throw new ApiError(res.status, code, body);
   }
   return (await res.json()) as T;
 }

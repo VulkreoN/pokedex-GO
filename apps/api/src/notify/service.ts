@@ -3,7 +3,7 @@
  * Anti-spam: repeated events of the same kind from the same friend on the same list within a window are merged
  * into the unread row (no new push), each kind can be switched off, and pushes are capped per user per day.
  */
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { NotificationType } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { newId } from '../lib/ids.js';
@@ -81,7 +81,7 @@ export async function pruneNotifications() {
   await db.delete(schema.notifications).where(sql`${schema.notifications.readAt} is not null and ${schema.notifications.createdAt} < now() - interval '60 days'`);
 }
 
-export type AccountChange = 'role' | 'reset_code' | 'logout_all' | 'unsuspended' | 'renamed' | 'friend_code' | 'list_renamed' | 'list_deleted' | 'list_restored';
+export type AccountChange = 'role' | 'reset_code' | 'logout_all' | 'unsuspended' | 'renamed' | 'friend_code' | 'list_renamed' | 'list_deleted' | 'list_restored' | 'message' | 'restored';
 const ROLE_FR = { user: 'dresseur', manager: 'gérant', admin: 'admin' } as const;
 
 /** Tells a player what an admin did to their account: in the inbox and as a push, never switched off. */
@@ -96,6 +96,25 @@ export async function notifyAccount(userId: string, adminId: string, change: Acc
     change === 'list_renamed' ? `Un admin a renommé ta collection en « ${data.value} ».` :
     change === 'list_deleted' ? `Un admin a supprimé ta collection « ${data.value} ».` :
     change === 'list_restored' ? `Un admin a restauré ta collection « ${data.value} ».` :
+    change === 'message' ? String(data.value) :
+    change === 'restored' ? 'Un admin a restauré ton compte, avec tes collections et tes amis.' :
     'Ton compte est de nouveau actif.';
   await notify({ userId, type: 'account', actorId: adminId === userId ? null : adminId, data: { change, ...data }, push: () => ({ title: 'Ton compte MyDexPoGo', body, url: '/me', tag: `account-${change}` }) });
+}
+
+export type StaffAlert = { kind: 'report'; variant: string; reportKind: string; by: string } | { kind: 'data_error'; error: string };
+
+/**
+ * Tells the staff something needs them: a player's report reaches managers and admins, a failed data update the
+ * admins. Pushed unless they switched "admin" alerts off.
+ */
+export async function notifyStaff(alert: StaffAlert, exceptUserId?: string) {
+  const roles = alert.kind === 'report' ? ['manager', 'admin'] : ['admin'];
+  const staff = await db.select({ id: schema.users.id }).from(schema.users).where(and(inArray(schema.users.role, roles as ('manager' | 'admin')[]), isNull(schema.users.suspendedAt)));
+  const body = alert.kind === 'report' ? `${alert.by} a signalé une erreur sur ${alert.variant}.` : `La mise à jour des données a échoué : ${alert.error.slice(0, 120)}`;
+  const url = alert.kind === 'report' ? '/review' : '/admin?tab=health';
+  for (const s of staff) {
+    if (s.id === exceptUserId) continue;
+    await notify({ userId: s.id, type: 'admin', actorId: null, data: alert, push: () => ({ title: 'MyDexPoGo · admin', body, url, tag: `admin-${alert.kind}` }) }).catch((e) => console.error('staff alert', e));
+  }
 }

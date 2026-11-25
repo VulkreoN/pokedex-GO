@@ -219,7 +219,7 @@ export interface ListDetail extends ListSummary {
 }
 
 /** 'account': changes made to your account by an admin; always sent, cannot be switched off. */
-export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid' | 'announcement' | 'account';
+export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid' | 'announcement' | 'account' | 'admin';
 
 export interface AppNotification {
   id: string;

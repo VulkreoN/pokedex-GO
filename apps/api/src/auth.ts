@@ -1,9 +1,10 @@
 import { hash, verify } from '@node-rs/argon2';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { db, schema } from './db/index.js';
 import { env } from './env.js';
+import { audit } from './lib/audit.js';
 import { hashToken, newId, newSessionToken } from './lib/ids.js';
 
 export const SESSION_COOKIE = 'sid';
@@ -23,7 +24,7 @@ export async function verifyPassword(stored: string, password: string): Promise<
 export async function createSession(c: Context, userId: string): Promise<void> {
   const token = newSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
-  await db.insert(schema.sessions).values({ id: hashToken(token), userId, expiresAt });
+  await db.insert(schema.sessions).values({ id: hashToken(token), userId, expiresAt, userAgent: c.req.header('user-agent')?.slice(0, 300) ?? null, lastUsedAt: new Date() });
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'Lax',
@@ -43,7 +44,7 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
   const token = getCookie(c, SESSION_COOKIE);
   if (!token) return null;
   const rows = await db
-    .select({ user: schema.users, expiresAt: schema.sessions.expiresAt, sid: schema.sessions.id })
+    .select({ user: schema.users, expiresAt: schema.sessions.expiresAt, sid: schema.sessions.id, lastUsedAt: schema.sessions.lastUsedAt })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
     .where(eq(schema.sessions.id, hashToken(token)))
@@ -54,13 +55,29 @@ export async function userFromRequest(c: Context): Promise<AuthUser | null> {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, row.sid));
     return null;
   }
-  // A suspended account's sessions stop working at once.
-  if (row.user.suspendedAt) return null;
+  // A suspended account's sessions stop working at once (a suspension for a set time ends on its own).
+  if (row.user.suspendedAt && !(await liftEndedSuspension(row.user))) return null;
+  if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 3600_000) {
+    void db.update(schema.sessions).set({ lastUsedAt: new Date() }).where(eq(schema.sessions.id, row.sid)).catch(() => {});
+  }
   const { id, username, friendCode, role, createdAt, lastSeenAt, onboardedAt } = row.user;
   if (!lastSeenAt || Date.now() - lastSeenAt.getTime() > 3600_000) {
     void db.update(schema.users).set({ lastSeenAt: new Date() }).where(eq(schema.users.id, id)).catch(() => {});
   }
   return { id, username, friendCode, role, createdAt, onboardedAt };
+}
+
+/**
+ * A suspension for a set time whose end has passed is lifted (and journaled) when the player comes back.
+ * True when the account is free again.
+ */
+export async function liftEndedSuspension(u: { id: string; username: string; suspendedAt: Date | null; suspendedUntil: Date | null }): Promise<boolean> {
+  if (!u.suspendedAt) return true;
+  if (!u.suspendedUntil || u.suspendedUntil.getTime() > Date.now()) return false;
+  const lifted = await db.update(schema.users).set({ suspendedAt: null, suspendedUntil: null }).where(and(eq(schema.users.id, u.id), isNotNull(schema.users.suspendedAt))).returning({ id: schema.users.id });
+  if (lifted.length) await audit(null, 'user.unsuspend', 'user', u.id, { username: u.username, auto: true });
+  u.suspendedAt = null;
+  return true;
 }
 
 export type AuthEnv = { Variables: { user: AuthUser } };

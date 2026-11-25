@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'account'] as const;
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'account', 'admin'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(
@@ -25,6 +25,8 @@ export const users = pgTable(
     onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
     /** Set by an admin: the account cannot log in or use its sessions until lifted. */
     suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    /** A suspension for a set time is lifted on its own past this date; null = until an admin lifts it. */
+    suspendedUntil: timestamp('suspended_until', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('users_username_lower_idx').on(sql`lower(${t.username})`),
@@ -39,6 +41,10 @@ export const sessions = pgTable(
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The browser that opened it, for admins ("Safari on iPhone"). */
+    userAgent: text('user_agent'),
+    /** Last request on this session, updated at most once an hour. */
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   },
   (t) => [index('sessions_user_idx').on(t.userId)],
 );
@@ -403,4 +409,18 @@ export const deletedLists = pgTable(
     snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
   },
   (t) => [index('deleted_lists_owner_idx').on(t.ownerId), index('deleted_lists_deleted_idx').on(t.deletedAt)],
+);
+
+/** Accounts deleted by their owner or an admin, kept whole for 30 days so an admin can bring one back. */
+export const deletedUsers = pgTable(
+  'deleted_users',
+  {
+    id: text('id').primaryKey(),
+    username: text('username').notNull(),
+    friendCode: text('friend_code').notNull(),
+    deletedBy: text('deleted_by').references(() => users.id, { onDelete: 'set null' }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }).notNull().defaultNow(),
+    snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+  },
+  (t) => [index('deleted_users_deleted_idx').on(t.deletedAt)],
 );

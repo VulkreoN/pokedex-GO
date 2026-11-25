@@ -134,6 +134,13 @@
       "when": 1795570100078,
       "tag": "0018_deleted_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795570522092,
+      "tag": "0019_admin_tools",
+      "breakpoints": true
     }
   ]
 }

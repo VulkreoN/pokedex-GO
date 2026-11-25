@@ -648,6 +648,94 @@ describe('admin panel', () => {
     expect((await u.get('/notifications')).body.items.filter((n: any) => n.type === 'account').map((n: any) => n.data.change)).toEqual(expect.arrayContaining(['list_deleted', 'list_restored']));
   });
 
+  it('the account sheet shows signed-in devices and friends; admins send messages and suspend for a set time', async () => {
+    const u = await register(name('dev'));
+    const phone = new Client();
+    await phone.req('POST', '/auth/login', { username: u.user.username, password: PASSWORD }, { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' });
+    const detail = (await admin.get(`/admin/users/${u.user.id}`)).body;
+    expect(detail.sessions.length).toBe(2);
+    expect(detail.sessions.some((s: any) => /iPhone/.test(s.userAgent))).toBe(true);
+    expect(detail.friends).toEqual([]);
+    const pal = await register(name('pal'));
+    await u.post('/friends/requests', { friendCode: pal.user.friendCode });
+    const asked = (await pal.get('/friends/requests')).body.requests.find((r: any) => r.from.id === u.user.id);
+    await pal.post(`/friends/requests/${asked.id}/accept`);
+    expect((await admin.get(`/admin/users/${u.user.id}`)).body.friends).toEqual([{ id: pal.user.id, username: pal.user.username }]);
+
+    expect((await alice.post(`/admin/users/${u.user.id}/message`, { message: 'coucou' })).status).toBe(403);
+    expect((await admin.post(`/admin/users/${u.user.id}/message`, { message: 'Ton pseudo a été changé, merci de ta compréhension.' })).status).toBe(200);
+    const note = (await u.get('/notifications')).body.items.find((n: any) => n.type === 'account' && n.data.change === 'message');
+    expect(note.data.value).toBe('Ton pseudo a été changé, merci de ta compréhension.');
+
+    expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: true, days: 7, reason: 'Spam' })).status).toBe(200);
+    const until = (await admin.get(`/admin/users/${u.user.id}`)).body.user.suspendedUntil;
+    expect(new Date(until).getTime()).toBeGreaterThan(Date.now() + 6.9 * 86400_000);
+    const refused = await new Client().post('/auth/login', { username: u.user.username, password: PASSWORD });
+    expect(refused.status).toBe(403);
+    expect(refused.body.until).toBe(until);
+    expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: true, days: 0 })).status).toBe(400);
+    await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: false });
+    expect((await admin.get(`/admin/users/${u.user.id}`)).body.user.suspendedUntil).toBeNull();
+  });
+
+  it('a deleted account stays 30 days in the trash; an admin restores it with its collections and friends', async () => {
+    const u = await register(name('gone'));
+    const listId = (await u.post('/lists', { name: 'Ma chasse' })).body.list.id;
+    await u.put(`/lists/${listId}/entries`, { entries: [{ variantKey: '25', gender: 'm', shiny: true, done: true }] });
+    const req = await u.post('/friends/requests', { friendCode: alice.user.friendCode });
+    expect(req.status).toBe(201);
+    const pending = (await alice.get('/friends/requests')).body.requests.find((r: any) => r.from.id === u.user.id);
+    await alice.post(`/friends/requests/${pending.id}/accept`);
+
+    expect((await u.del('/auth/me', { password: PASSWORD })).status).toBe(200);
+    expect((await alice.get('/friends')).body.friends.map((f: any) => f.id)).not.toContain(u.user.id);
+    const trash = (await admin.get('/admin/trash/accounts')).body.accounts;
+    expect(trash.find((a: any) => a.id === u.user.id)).toMatchObject({ username: u.user.username, by: null });
+    const entry = (await admin.get('/admin/audit?kind=accounts')).body.entries.find((e: any) => e.action === 'account.delete' && e.targetId === u.user.id);
+    expect(entry.undoable).toBe(true);
+
+    expect((await alice.post(`/admin/trash/accounts/${u.user.id}/restore`)).status).toBe(403);
+    expect((await admin.post(`/admin/audit/${entry.id}/undo`)).status).toBe(200);
+    expect((await admin.post(`/admin/trash/accounts/${u.user.id}/restore`)).status).toBe(404); // once
+    // Back as before: same password, collection, friend.
+    const back = new Client();
+    expect((await back.post('/auth/login', { username: u.user.username, password: PASSWORD })).status).toBe(200);
+    const list = (await back.get(`/lists/${listId}`)).body.list;
+    expect(list.entries.map((e: any) => [e.variantKey, e.shiny, e.done])).toEqual([['25', true, true]]);
+    expect((await alice.get('/friends')).body.friends.map((f: any) => f.id)).toContain(u.user.id);
+    expect((await back.get('/notifications')).body.items.some((n: any) => n.type === 'account' && n.data.change === 'restored')).toBe(true);
+
+    // Deleted by an admin; its name taken meanwhile: not restored.
+    expect((await admin.del(`/admin/users/${u.user.id}`)).status).toBe(200);
+    const thief = await register(u.user.username);
+    expect((await admin.post(`/admin/trash/accounts/${u.user.id}/restore`)).body.error).toBe('username_taken');
+    expect((await thief.del('/auth/me', { password: PASSWORD })).status).toBe(200);
+    expect((await admin.post(`/admin/trash/accounts/${u.user.id}/restore`)).status).toBe(200);
+  });
+
+  it('the journal exports as a spreadsheet; reports and alerts reach the staff', async () => {
+    const csv = await admin.get('/admin/audit.csv?kind=accounts');
+    expect(csv.status).toBe(200);
+    expect(csv.headers.get('content-type')).toMatch(/text\/csv/);
+    const text = String(csv.body);
+    expect(text.split('\r\n')[0]).toContain('"date","auteur","action"');
+    expect(text).toContain('account.create');
+    expect(text).not.toMatch(/override\.set/);
+    expect((await alice.get('/admin/audit.csv')).status).toBe(403);
+
+    const mgr = await register(name('staff'));
+    await admin.patch(`/users/${mgr.user.id}/role`, { role: 'manager' });
+    expect((await alice.post('/reports', { variantKey: '25', kind: 'name', message: 'faute' })).status).toBe(201);
+    await new Promise((r) => setTimeout(r, 200));
+    for (const staff of [admin, mgr]) {
+      const alert = (await staff.get('/notifications')).body.items.find((n: any) => n.type === 'admin' && n.data.kind === 'report' && n.data.by === alice.user.username);
+      expect(alert?.data.variant).toMatch(/Pikachu|^25$/);
+    }
+    expect((await alice.get('/notifications')).body.items.some((n: any) => n.type === 'admin')).toBe(false);
+    expect((await mgr.get('/notifications/prefs')).body.prefs.admin).toBe(true);
+    expect((await mgr.put('/notifications/prefs', { admin: false })).status).toBe(200);
+  });
+
   it('a suspension keeps its reason; the journal shows sign-ups, password changes and who gave a reset code', async () => {
     const u = await register(name('sus'));
     expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: true, reason: 'Pseudo offensant' })).status).toBe(200);

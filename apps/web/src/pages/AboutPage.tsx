@@ -1,4 +1,5 @@
-import { TopBar } from '../components/ui.js';
+import { Button, TopBar } from '../components/ui.js';
+import { setXEmbeds, useXEmbeds } from '../components/XEmbed.js';
 import { relativeTime, useDataStatus } from '../lib/admin.js';
 import { useDataset } from '../lib/dataset.js';
 import { useLang, useT } from '../lib/i18n.js';
@@ -14,6 +15,7 @@ export function AboutPage() {
   const status = useDataStatus();
   const dataset = useDataset();
   const ds = dataset.data?.ds;
+  const xOn = useXEmbeds();
   const date = (iso: string) => new Date(iso).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -81,6 +83,21 @@ export function AboutPage() {
         <section className="card p-4 text-sm text-ink-2">
           <h2 className="mb-2 text-base font-bold text-ink">{t.about_thanks_title}</h2>
           <p>{t.about_thanks}</p>
+        </section>
+
+        <section className="card p-4 text-sm text-ink-2" aria-labelledby="privacy">
+          <h2 id="privacy" className="mb-2 text-base font-bold text-ink">{t.privacy_title}</h2>
+          <p>{t.privacy_intro}</p>
+          {t.privacy_items.map(([title, text]) => (
+            <div key={title} className="mt-3">
+              <h3 className="font-semibold text-ink">{title}</h3>
+              <p>{text}</p>
+            </div>
+          ))}
+          <div className="mt-3 flex items-center gap-3 rounded-lg bg-paper-2 p-2">
+            <span className="min-w-0 flex-1 text-xs">{xOn ? t.privacy_x_on : t.privacy_x_off}</span>
+            {xOn && <Button tone="ghost" className="min-h-8 shrink-0 px-3 text-xs" onClick={() => setXEmbeds(false)}>{t.privacy_x_withdraw}</Button>}
+          </div>
         </section>
 
         <p className="px-1 text-xs leading-relaxed text-ink-3">{t.about_legal}</p>

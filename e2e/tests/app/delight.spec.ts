@@ -115,3 +115,24 @@ test('Me leads to an About page: who made the app, the Discord, the version', as
   await expect(page.getByText('Version de l’appli')).toBeVisible();
   await expect(page.getByText(/^\d+ Pokémon · \d+ variantes/)).toBeVisible();
 });
+
+test("X's widget waits for the player's yes, kept on the device and withdrawn from About", async ({ page }) => {
+  const fromX: string[] = [];
+  page.on('request', (r) => { if (/platform\.twitter\.com/.test(r.url())) fromX.push(r.url()); });
+  // No call out to X during the test: answer with an empty script.
+  await page.route(/platform\.twitter\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+  await page.goto('/game?tab=events');
+  const show = page.getByRole('button', { name: /Afficher le contenu de X/ }).first();
+  await show.scrollIntoViewIfNeeded();
+  await expect(show).toBeVisible();
+  expect(fromX).toEqual([]);
+  await show.click();
+  await expect.poll(() => fromX.length).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: /Afficher le contenu de X/ })).toHaveCount(0);
+
+  await page.goto('/about');
+  await expect(page.getByRole('heading', { name: 'Confidentialité et cookies' })).toBeVisible();
+  await expect(page.getByText('Les posts X s’affichent sur cet appareil.')).toBeVisible();
+  await page.getByRole('button', { name: 'Ne plus les charger' }).click();
+  await expect(page.getByText('Les posts X ne se chargent pas tant que tu ne le demandes pas.')).toBeVisible();
+});

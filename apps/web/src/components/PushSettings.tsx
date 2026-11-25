@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { NotificationType } from '@mydexpogo/shared';
+import { useMe } from '../lib/auth.js';
 import { useT } from '../lib/i18n.js';
 import { disablePush, enablePush, pushState, useNotifyPrefs, useSetNotifyPrefs, type PushState } from '../lib/social.js';
 import { Button } from './ui.js';
 import { useToast } from './toast.js';
 
-/** Account changes are not here: they always reach the player. */
-const KINDS: Exclude<NotificationType, 'account'>[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement'];
+/** Account changes are not here: they always reach the player. Staff alerts only for managers and admins. */
+const KINDS: Exclude<NotificationType, 'account'>[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'admin'];
 
 export function PushSettings() {
   const t = useT();
@@ -15,6 +16,8 @@ export function PushSettings() {
   const [busy, setBusy] = useState(false);
   const prefs = useNotifyPrefs();
   const setPrefs = useSetNotifyPrefs();
+  const role = useMe().data?.role;
+  const staff = role === 'manager' || role === 'admin';
   // Local copy so a switch flips on tap, before the server answers.
   const [local, setLocal] = useState<Partial<Record<NotificationType, boolean>>>({});
   useEffect(() => {
@@ -48,7 +51,7 @@ export function PushSettings() {
 
       <h3 className="mb-1 mt-4 text-sm font-semibold text-ink-2">{t.push_kinds}</h3>
       <ul className="space-y-1">
-        {KINDS.map((k) => (
+        {KINDS.filter((k) => k !== 'admin' || staff).map((k) => (
           <li key={k}>
             <label className="flex min-h-10 cursor-pointer items-center gap-3">
               <input
