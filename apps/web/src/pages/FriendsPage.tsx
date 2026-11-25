@@ -40,8 +40,11 @@ export function errorMessage(t: T, e: unknown): string {
   return t.err_generic;
 }
 
-/** Puts the friend code of the game on the account, typed or read from a screenshot of its QR code. */
-function FriendCodeSheet({ open, onClose, current }: { open: boolean; onClose: () => void; current: string }) {
+/**
+ * Puts the friend code of the game on the account, typed or read from a screenshot of its QR code. Used in Friends
+ * and in the welcome tour.
+ */
+export function FriendCodeForm({ current, onSaved, note = true }: { current: string; onSaved: () => void; note?: boolean }) {
   const t = useT();
   const toast = useToast();
   const save = useSetFriendCode();
@@ -55,22 +58,21 @@ function FriendCodeSheet({ open, onClose, current }: { open: boolean; onClose: (
       await save.mutateAsync(code);
       toast(t.my_code_saved);
       setCode('');
-      onClose();
+      onSaved();
     } catch (err) {
       setError(errorMessage(t, err));
     }
   };
   return (
-    <Sheet open={open} onClose={onClose} title={t.my_code_edit_title}>
+    <>
       <form onSubmit={submit} className="space-y-3">
-        <p className="text-sm text-ink-2">{t.my_code_edit_help}</p>
         <TextField label={t.my_code_game} placeholder={fmtCode(current)} inputMode="numeric" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} />
         {error && <p className="text-sm text-berry">{error}</p>}
         <div className="flex gap-2">
           <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>QR</Button>
           <Button tone="primary" type="submit" className="flex-1" disabled={save.isPending || code.replace(/\D/g, '').length !== 12}>{t.save}</Button>
         </div>
-        <p className="text-xs text-ink-3">{t.my_code_edit_note}</p>
+        {note && <p className="text-xs text-ink-3">{t.my_code_edit_note}</p>}
       </form>
       <QrScanSheet
         open={scanning}
@@ -81,6 +83,16 @@ function FriendCodeSheet({ open, onClose, current }: { open: boolean; onClose: (
           setError(null);
         }}
       />
+    </>
+  );
+}
+
+function FriendCodeSheet({ open, onClose, current }: { open: boolean; onClose: () => void; current: string }) {
+  const t = useT();
+  return (
+    <Sheet open={open} onClose={onClose} title={t.my_code_edit_title}>
+      <p className="mb-3 text-sm text-ink-2">{t.my_code_edit_help}</p>
+      <FriendCodeForm current={current} onSaved={onClose} />
     </Sheet>
   );
 }

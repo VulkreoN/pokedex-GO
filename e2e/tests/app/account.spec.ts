@@ -318,7 +318,14 @@ test('the welcome tour: game language, a first list, friends, notifications; not
   expect(await page.evaluate(() => localStorage.getItem('gameLang'))).toBe('en');
   await page.getByRole('radio', { name: /Chanceux à échanger/ }).click();
   await page.getByRole('button', { name: 'Créer la collection' }).click();
+  // The friend code of the game, now (or "Later").
+  await expect(page.getByRole('heading', { name: 'Ton code ami' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Plus tard' })).toBeVisible();
+  const game = `7${Date.now()}`.slice(0, 12);
+  await page.getByLabel('Code ami du jeu').fill(game);
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByRole('heading', { name: 'Ajoute tes amis' })).toBeVisible();
+  await expect(page.getByText(game.replace(/(\d{4})(?=\d)/g, '$1 '), { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Suivant' }).click();
   await page.getByRole('button', { name: 'Terminer et ouvrir ma collection' }).click();
   await expect(page).toHaveURL(/\/lists\//);

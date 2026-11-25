@@ -12,7 +12,7 @@ import { useMe } from '../lib/auth.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { useCreateList } from '../lib/lists.js';
 import { saveGameLang, savedGameLang } from '../lib/searchString.js';
-import { fmtCode } from './FriendsPage.js';
+import { FriendCodeForm, fmtCode } from './FriendsPage.js';
 
 const STEPS = ['hello', 'game', 'list', 'friends', 'notify'] as const;
 type Step = (typeof STEPS)[number];
@@ -31,6 +31,7 @@ export function WelcomePage() {
   const [gameLang, setGameLang] = useState<GameLang>(() => savedGameLang(lang));
   const [template, setTemplate] = useState<(typeof TEMPLATES)[number] | null>('shiny');
   const [listId, setListId] = useState<string | null>(null);
+  const [codeSaved, setCodeSaved] = useState(false);
 
   if (me.isPending) return <Spinner />;
   if (!me.data) return <Navigate to="/login" replace />;
@@ -129,17 +130,27 @@ export function WelcomePage() {
           </>,
         )}
 
+      {/* The friend code of the game, now or later; once saved, the code and QR to hand out. */}
       {step === 'friends' &&
         page(
-          t.welcome_friends_title,
-          t.welcome_friends_text,
-          <div className="sky-header flex flex-col items-center gap-3 rounded-card p-4">
-            <div className="text-sm opacity-80">{t.my_code}</div>
-            <div className="tnum text-[26px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
-            <FriendQr code={me.data.friendCode} size={160} />
-            <CopyButton tone="ghost" className="bg-white/15 text-inherit hover:bg-white/25" text={me.data!.friendCode} />
-          </div>,
-          <Button tone="primary" className="flex-1" onClick={next}>{t.welcome_next}</Button>,
+          codeSaved ? t.welcome_friends_title : t.welcome_code_title,
+          codeSaved ? t.welcome_friends_text : t.welcome_code_text,
+          codeSaved ? (
+            <div className="sky-header flex flex-col items-center gap-3 rounded-card p-4">
+              <div className="text-sm opacity-80">{t.my_code}</div>
+              <div className="tnum text-[26px] font-bold tracking-wider">{fmtCode(me.data.friendCode)}</div>
+              <FriendQr code={me.data.friendCode} size={160} />
+              <CopyButton tone="ghost" className="bg-white/15 text-inherit hover:bg-white/25" text={me.data!.friendCode} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="card p-4">
+                <FriendCodeForm current={me.data.friendCode} onSaved={() => setCodeSaved(true)} note={false} />
+              </div>
+              <p className="text-sm text-ink-3">{t.welcome_code_meanwhile(fmtCode(me.data.friendCode))}</p>
+            </div>
+          ),
+          codeSaved ? <Button tone="primary" className="flex-1" onClick={next}>{t.welcome_next}</Button> : <Button tone="ghost" className="flex-1" onClick={next}>{t.welcome_later}</Button>,
         )}
 
       {step === 'notify' &&
