@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
-import { SearchStrings } from '../components/SearchStrings.js';
+import { SearchSettingsPanel, SearchStrings, useSearchSettings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
@@ -210,7 +210,10 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       for (const m of open) if (!!m.offeredByMe !== on) setOffer(m, on);
     } else if (owner) setDone(c.members, cardMissing(c));
   };
-  const search = useMemo(() => exportSearchText(idx, list.entries, lang), [idx, list.entries, lang]);
+  // The same settings as "Copy for the game", always for the missing ones.
+  const searchSettings = useSearchSettings();
+  const ss = { ...searchSettings.settings, onlyMissing: true };
+  const search = useMemo(() => exportSearchText(idx, list.entries, ss), [idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength]);
 
   const memberId = (c: EntryCard, m: ListDetailEntry) => `${c.id}|${m.gender}`;
   const fits = (c: EntryCard, m: ListDetailEntry, sex = pickSex, version = pickVersion) =>
@@ -604,14 +607,18 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
               <span className="block text-xs text-ink-3">{t.export_pdf_hint}</span>
             </span>
           </button>
-          {search && (
-            <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
-                <span className="block text-xs text-ink-3">{t.export_with_search}</span>
-              </span>
-              <SwitchThumb on={withSearch} />
-            </button>
+          <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
+              <span className="block text-xs text-ink-3">{t.export_with_search}</span>
+            </span>
+            <SwitchThumb on={withSearch} />
+          </button>
+          {withSearch && (
+            <>
+              {!search && <p className="text-xs text-ink-3">{t.export_search_empty}</p>}
+              <SearchSettingsPanel s={searchSettings} showOnlyMissing={false} />
+            </>
           )}
         </div>
       </Sheet>

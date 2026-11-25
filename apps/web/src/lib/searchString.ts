@@ -118,13 +118,12 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
   return { strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out, ...(opts.maxLength ? { maxLength: opts.maxLength } : {}) }), dropped };
 }
 
-/** The missing Pokémon's search with this device's settings, for exports. */
-export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], appLang: string): string | null {
-  const exclude = savedExclusions();
-  const preEvolutions = savedPreEvolutions();
-  const maxLength = savedMaxLength();
-  let { strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude, preEvolutions, maxLength });
+export interface SearchSettings { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions: boolean; maxLength: number }
+
+/** The search for exports, with the settings shown next to it (the same as "Copy for the game"). */
+export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], settings: SearchSettings): string | null {
+  let { strings } = listSearch(idx, entries, settings);
   // A collection of shinies or costumes only would get no search at all with those excluded: keep them then.
-  if (!strings.length) ({ strings } = listSearch(idx, entries, { onlyMissing: true, gameLang: savedGameLang(appLang), exclude: exclude.filter((d) => d !== 'shiny' && d !== 'costume'), preEvolutions, maxLength }));
+  if (!strings.length) ({ strings } = listSearch(idx, entries, { ...settings, exclude: settings.exclude.filter((d) => d !== 'shiny' && d !== 'costume') }));
   return strings.length ? strings.map((s) => s.text).join('\n') : null;
 }

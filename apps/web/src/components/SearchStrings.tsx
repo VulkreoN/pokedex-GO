@@ -2,44 +2,38 @@ import { useMemo, useState } from 'react';
 import type { GameLang, ListEntry } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions } from '../lib/searchString.js';
+import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions, type SearchSettings } from '../lib/searchString.js';
 import { Chip, CopyButton, SwitchThumb } from './ui.js';
 
-export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
-  const t = useT();
+/** The game-search settings, the same in "Copy for the game" and in the picture / PDF exports, kept on this device. */
+export function useSearchSettings() {
   const { lang } = useLang();
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [gameLang, setGameLangState] = useState<GameLang>(() => savedGameLang(lang));
   // For luckies by trade: what cannot or need not be traded is left out of the whole search.
   const [exclude, setExcludeState] = useState<string[]>(savedExclusions);
-  const toggleExclude = (d: string) =>
-    setExcludeState((prev) => {
-      const next = prev.includes(d) ? prev.filter((x) => x !== d) : TRADE_EXCLUSIONS.filter((x) => x === d || prev.includes(x));
-      saveExclusions(next);
-      return next;
-    });
-  const setGameLang = (l: GameLang) => {
-    setGameLangState(l);
-    saveGameLang(l);
-  };
-  const [preEvo, setPreEvoState] = useState(savedPreEvolutions);
-  const setPreEvo = (on: boolean) => {
-    setPreEvoState(on);
-    savePreEvolutions(on);
-  };
+  const [preEvolutions, setPreEvoState] = useState(savedPreEvolutions);
   const [maxLength, setMaxLengthState] = useState(savedMaxLength);
-  const setMaxLength = (n: number) => {
-    setMaxLengthState(n);
-    saveMaxLength(n);
+  const settings: SearchSettings = { onlyMissing, gameLang, exclude, preEvolutions, maxLength };
+  return {
+    settings,
+    setOnlyMissing,
+    setGameLang: (l: GameLang) => { setGameLangState(l); saveGameLang(l); },
+    toggleExclude: (d: string) =>
+      setExcludeState((prev) => {
+        const next = prev.includes(d) ? prev.filter((x) => x !== d) : TRADE_EXCLUSIONS.filter((x) => x === d || prev.includes(x));
+        saveExclusions(next);
+        return next;
+      }),
+    setPreEvolutions: (on: boolean) => { setPreEvoState(on); savePreEvolutions(on); },
+    setMaxLength: (n: number) => { setMaxLengthState(n); saveMaxLength(n); },
   };
-  const { strings, dropped } = useMemo(() => listSearch(idx, entries, { onlyMissing, gameLang, exclude, preEvolutions: preEvo, maxLength }), [entries, idx, onlyMissing, gameLang, exclude, preEvo, maxLength]);
+}
 
-  const names: Record<string, string> = {
-    shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
-    shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs, alola: 'Alola', galar: 'Galar', hisui: 'Hisui', paldea: 'Paldea',
-  };
-  const name = (m: string) => (m.startsWith('!') ? t.without(names[m.slice(1)] ?? m.slice(1)) : (names[m] ?? m));
-
+/** The settings block itself; `onlyMissing` is left out where the page decides it. */
+export function SearchSettingsPanel({ s, showOnlyMissing = true }: { s: ReturnType<typeof useSearchSettings>; showOnlyMissing?: boolean }) {
+  const t = useT();
+  const { settings } = s;
   /** Two or more choices side by side, one on. */
   const segmented = <T extends string | number>(value: T, options: { v: T; label: string }[], set: (v: T) => void) => (
     <div className="inline-flex shrink-0 rounded-full bg-paper-2 p-0.5">
@@ -66,6 +60,48 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       <SwitchThumb on={on} />
     </button>
   );
+  return (
+    <section aria-label={t.search_settings} className="overflow-hidden rounded-card border border-line">
+      <h3 className="bg-paper-2 px-3 py-2 text-sm font-bold text-ink-2">{t.search_settings}</h3>
+      <div className="divide-y divide-line">
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <span className="min-w-0 flex-1 text-sm font-semibold">{t.game_lang}</span>
+          {segmented<GameLang>(settings.gameLang, [{ v: 'fr', label: 'Français' }, { v: 'en', label: 'English' }], s.setGameLang)}
+        </div>
+        {showOnlyMissing && toggle(t.only_missing, settings.onlyMissing, s.setOnlyMissing)}
+        {toggle(t.with_pre_evolutions, settings.preEvolutions, s.setPreEvolutions, t.with_pre_evolutions_hint)}
+        <div className="px-3 py-2.5">
+          <p className="mb-2 text-sm font-semibold">{t.exclude_title}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {TRADE_EXCLUSIONS.map((d) => (
+              <Chip key={d} active={settings.exclude.includes(d)} onClick={() => s.toggleExclude(d)} className="min-h-8 px-2.5 text-xs">
+                {t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div className="px-3 py-2.5">
+          <p className="text-sm font-semibold">{t.max_length_title}</p>
+          <p className="mb-2 text-xs text-ink-3">{t.max_length_hint}</p>
+          {segmented<number>(settings.maxLength, MAX_LENGTHS.map((n) => ({ v: n, label: n ? t.max_length(n) : t.max_length_none })), s.setMaxLength)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: ListEntry[] }) {
+  const t = useT();
+  const { lang } = useLang();
+  const search = useSearchSettings();
+  const { settings } = search;
+  const { strings, dropped } = useMemo(() => listSearch(idx, entries, settings), [entries, idx, settings.onlyMissing, settings.gameLang, settings.exclude, settings.preEvolutions, settings.maxLength]);
+
+  const names: Record<string, string> = {
+    shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
+    shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs, alola: 'Alola', galar: 'Galar', hisui: 'Hisui', paldea: 'Paldea',
+  };
+  const name = (m: string) => (m.startsWith('!') ? t.without(names[m.slice(1)] ?? m.slice(1)) : (names[m] ?? m));
 
   return (
     <div className="space-y-4">
@@ -92,32 +128,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
       </ul>
       {dropped > 0 && <p className="text-xs text-ink-3">{t.exclude_dropped(dropped)} {t.exclude_fixed}</p>}
 
-      <section aria-label={t.search_settings} className="overflow-hidden rounded-card border border-line">
-        <h3 className="bg-paper-2 px-3 py-2 text-sm font-bold text-ink-2">{t.search_settings}</h3>
-        <div className="divide-y divide-line">
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <span className="min-w-0 flex-1 text-sm font-semibold">{t.game_lang}</span>
-            {segmented<GameLang>(gameLang, [{ v: 'fr', label: 'Français' }, { v: 'en', label: 'English' }], setGameLang)}
-          </div>
-          {toggle(t.only_missing, onlyMissing, setOnlyMissing)}
-          {toggle(t.with_pre_evolutions, preEvo, setPreEvo, t.with_pre_evolutions_hint)}
-          <div className="px-3 py-2.5">
-            <p className="mb-2 text-sm font-semibold">{t.exclude_title}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {TRADE_EXCLUSIONS.map((d) => (
-                <Chip key={d} active={exclude.includes(d)} onClick={() => toggleExclude(d)} className="min-h-8 px-2.5 text-xs">
-                  {t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']}
-                </Chip>
-              ))}
-            </div>
-          </div>
-          <div className="px-3 py-2.5">
-            <p className="text-sm font-semibold">{t.max_length_title}</p>
-            <p className="mb-2 text-xs text-ink-3">{t.max_length_hint}</p>
-            {segmented<number>(maxLength, MAX_LENGTHS.map((n) => ({ v: n, label: n ? t.max_length(n) : t.max_length_none })), setMaxLength)}
-          </div>
-        </div>
-      </section>
+      <SearchSettingsPanel s={search} />
     </div>
   );
 }
