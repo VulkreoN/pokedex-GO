@@ -71,7 +71,7 @@ Tests et typage : `pnpm test`, `pnpm typecheck`.
 
 ## Données
 
-L'API reconstruit le dataset toutes les `DATA_REFRESH_HOURS` heures (6 par défaut) et le sert sur `/api/data/pokedex.json`, avec les corrections des gérants appliquées. « Moi » affiche la date de génération, la dernière modification de chaque source amont et la prochaine exécution. `pnpm data:build` fait la même chose en ligne de commande vers `packages/data/dist` pour déboguer.
+L'API reconstruit le dataset à heures fixes (`DATA_REFRESH_AT`, 0 h, 6 h, 12 h et 18 h par défaut, heure de `DATA_TIME_ZONE` : Europe/Paris), et rattrape au démarrage un créneau manqué et le sert sur `/api/data/pokedex.json`, avec les corrections des gérants appliquées. « Moi » affiche la date de génération, la dernière modification de chaque source amont et la prochaine exécution. `pnpm data:build` fait la même chose en ligne de commande vers `packages/data/dist` pour déboguer.
 
 Sources :
 

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
 import type { Dataset, Gender, LocalizedText, Variant } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
+import { lastSlot, nextSlot } from '../lib/slots.js';
 import { env } from '../env.js';
 
 export interface SourceFreshness {
@@ -128,13 +129,25 @@ class DataService {
     await mkdir(env.dataDir, { recursive: true });
     await this.loadFromDisk();
     await this.notifyDataset();
-    const ageMs = this.status.generatedAt ? Date.now() - new Date(this.status.generatedAt).getTime() : Infinity;
-    const refreshMs = env.dataRefreshHours * 3600_000;
     const outdated = this.status.pipelineVersion !== PIPELINE_VERSION;
-    const delay = outdated ? 0 : Math.max(0, refreshMs - ageMs);
+    let delay: number;
+    if (env.dataRefreshAt.length) {
+      // A slot passed while the server was down: catch up now; otherwise wait for the next one.
+      const built = this.status.generatedAt ? new Date(this.status.generatedAt).getTime() : 0;
+      delay = outdated || built < lastSlot(new Date(), env.dataRefreshAt, env.dataTimeZone).getTime() ? 0 : this.untilNextSlot();
+    } else {
+      const ageMs = this.status.generatedAt ? Date.now() - new Date(this.status.generatedAt).getTime() : Infinity;
+      delay = outdated ? 0 : Math.max(0, env.dataRefreshHours * 3600_000 - ageMs);
+    }
     // refresh() schedules the next run itself when it ends.
     if (delay === 0) void this.refresh(outdated ? `pipeline v${this.status.pipelineVersion ?? '?'} -> v${PIPELINE_VERSION}` : 'startup');
     else this.schedule(delay);
+  }
+
+  /** Time until the next fixed update, or the usual interval when no fixed times are set. */
+  private untilNextSlot(): number {
+    if (!env.dataRefreshAt.length) return env.dataRefreshHours * 3600_000;
+    return nextSlot(new Date(), env.dataRefreshAt, env.dataTimeZone).getTime() - Date.now();
   }
 
   private schedule(delayMs: number) {
@@ -233,8 +246,8 @@ class DataService {
     } finally {
       this.status.durationMs = Date.now() - started;
       this.status.running = false;
-      // after a failure, try again within the hour instead of waiting for the next slot
-      this.schedule(this.status.lastError ? Math.min(3600_000, env.dataRefreshHours * 3600_000) : env.dataRefreshHours * 3600_000);
+      // After a failure, try again within the hour rather than waiting for the next slot.
+      this.schedule(this.status.lastError ? Math.min(3600_000, this.untilNextSlot()) : this.untilNextSlot());
       await writeFile(path.join(env.dataDir, FILES.status), JSON.stringify({ ...this.status, running: false })).catch(() => {});
     }
   }

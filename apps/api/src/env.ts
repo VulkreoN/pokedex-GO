@@ -10,6 +10,12 @@ export const env = {
   /** Where the generated dataset, event archive and source cache live (a Docker volume in production). */
   dataDir: process.env.DATA_DIR ?? new URL('../.data', import.meta.url).pathname,
   dataRefreshHours: Number(process.env.DATA_REFRESH_HOURS ?? 6),
+  /**
+   * The Pokédex data is rebuilt at these hours of the day (DATA_TIME_ZONE), "0,6,12,18" by default. Setting
+   * DATA_REFRESH_HOURS alone switches to "every N hours since the last build" instead (the tests do).
+   */
+  dataRefreshAt: process.env.DATA_REFRESH_HOURS && !process.env.DATA_REFRESH_AT ? [] : (process.env.DATA_REFRESH_AT ?? '0,6,12,18').split(',').map((h) => Number(h.trim())).filter((h) => Number.isInteger(h) && h >= 0 && h < 24),
+  dataTimeZone: process.env.DATA_TIME_ZONE ?? 'Europe/Paris',
   githubToken: process.env.GITHUB_TOKEN ?? '',
   feedPollMinutes: Number(process.env.FEED_POLL_MINUTES ?? 5),
   /** Official news locales to follow, e.g. "fr,en". Empty disables news polling. */

@@ -16,7 +16,9 @@ configMapGenerator:
   - name: mydexpogo-config
     literals:
       - ADMIN_USERNAMES=vulk
-      - DATA_REFRESH_HOURS=6
+      # The Pokédex data is rebuilt at these hours, Paris time.
+      - DATA_REFRESH_AT=0,6,12,18
+      - DATA_TIME_ZONE=Europe/Paris
       - NEWS_LOCALES=fr
       - FEED_POLL_MINUTES=5
       # Contact given to the push services (Google, Apple, Mozilla) in case of trouble: mailto: or the site's https URL.

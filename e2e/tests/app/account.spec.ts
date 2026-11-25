@@ -286,7 +286,10 @@ test('admin panel: only for admins, an announcement reaches everyone, a report r
   await admin.getByRole('tab', { name: 'Annonces' }).click();
   const message = `Test ${uniq('annonce')}`;
   await admin.getByLabel('Message').fill(message);
+  // Published before the player looks (a busy machine could open the page first).
+  const published = admin.waitForResponse((r) => /\/api\/admin\/announcements$/.test(r.url()) && r.request().method() === 'POST');
   await admin.getByRole('button', { name: 'Publier' }).click();
+  expect((await published).ok()).toBe(true);
   await player.goto('/dex');
   await expect(player.getByRole('status').getByText(message)).toBeVisible();
   await player.getByRole('button', { name: 'Fermer l’annonce' }).click();
