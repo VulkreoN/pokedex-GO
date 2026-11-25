@@ -127,6 +127,13 @@
       "when": 1795479077491,
       "tag": "0017_no_mega",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795570100078,
+      "tag": "0018_deleted_lists",
+      "breakpoints": true
     }
   ]
 }

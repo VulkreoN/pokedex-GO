@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createSession, destroySession, hashPassword, publicUser, requireAuth, userFromRequest, verifyPassword, type AuthEnv } from '../auth.js';
@@ -8,6 +8,7 @@ import { hashToken, newFriendCode, newId, normalizeFriendCode } from '../lib/ids
 import { rateLimit } from '../lib/ratelimit.js';
 import { env } from '../env.js';
 import { getSetting } from '../lib/settings.js';
+import { audit } from '../lib/audit.js';
 
 const credentials = z.object({
   username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/, 'letters, digits and _ only'),
@@ -72,7 +73,12 @@ export const authRoutes = new Hono<AuthEnv>()
       }
       throw e;
     }
-    if (gate.inviteId) await db.update(schema.inviteCodes).set({ uses: sql`${schema.inviteCodes.uses} + 1` }).where(eq(schema.inviteCodes.id, gate.inviteId));
+    let inviteNote: string | null = null;
+    if (gate.inviteId) {
+      const [used] = await db.update(schema.inviteCodes).set({ uses: sql`${schema.inviteCodes.uses} + 1` }).where(eq(schema.inviteCodes.id, gate.inviteId)).returning({ note: schema.inviteCodes.note });
+      inviteNote = used?.note ?? '';
+    }
+    await audit(id, 'account.create', 'user', id, { username, role, invite: gate.inviteId ? { id: gate.inviteId, note: inviteNote } : null });
     await createSession(c, id);
     return c.json({ user: publicUser(user!) }, 201);
   })
@@ -80,7 +86,12 @@ export const authRoutes = new Hono<AuthEnv>()
     const { username, password } = c.req.valid('json');
     const [user] = await db.select().from(schema.users).where(sql`lower(${schema.users.username}) = lower(${username})`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, password))) return c.json({ error: 'invalid_credentials' }, 401);
-    if (user.suspendedAt) return c.json({ error: 'suspended' }, 403);
+    if (user.suspendedAt) {
+      // Once an hour at most, so a player retrying does not flood the journal.
+      const [recent] = await db.select({ id: schema.auditLog.id }).from(schema.auditLog).where(and(eq(schema.auditLog.action, 'account.login_suspended'), eq(schema.auditLog.targetId, user.id), gt(schema.auditLog.createdAt, new Date(Date.now() - 3600_000)))).limit(1);
+      if (!recent) await audit(user.id, 'account.login_suspended', 'user', user.id, { username: user.username });
+      return c.json({ error: 'suspended' }, 403);
+    }
     if (user.role !== 'admin' && env.adminUsernames.includes(user.username.toLowerCase())) {
       await db.update(schema.users).set({ role: 'admin' }).where(sql`${schema.users.id} = ${user.id}`);
       user.role = 'admin';
@@ -114,6 +125,7 @@ export const authRoutes = new Hono<AuthEnv>()
     if (clash) return c.json({ error: 'friend_code_taken' }, 409);
     try {
       await db.update(schema.users).set({ friendCode: code }).where(eq(schema.users.id, me.id));
+      await audit(me.id, 'account.friend_code', 'user', me.id, { username: me.username, before: me.friendCode, after: code });
     } catch {
       // Taken between the check and the update.
       return c.json({ error: 'friend_code_taken' }, 409);
@@ -128,6 +140,8 @@ export const authRoutes = new Hono<AuthEnv>()
     await db.update(schema.users).set({ passwordHash: await hashPassword(c.req.valid('json').password) }).where(sql`${schema.users.id} = ${me.id}`);
     await db.delete(schema.sessions).where(sql`${schema.sessions.userId} = ${me.id}`);
     await createSession(c, me.id);
+    // Never the password itself: only that it changed.
+    await audit(me.id, 'account.password', 'user', me.id, { username: me.username });
     return c.json({ ok: true });
   })
   /** Logged-out: username + one-time code handed over by an admin + new password. */
@@ -137,6 +151,15 @@ export const authRoutes = new Hono<AuthEnv>()
     const valid = user?.resetHash && user.resetExpiresAt && user.resetExpiresAt.getTime() > Date.now() && user.resetHash === hashToken(code.toUpperCase().replace(/-/g, ''));
     if (!user || !valid) return c.json({ error: 'invalid_code' }, 401);
     await db.update(schema.users).set({ passwordHash: await hashPassword(password), resetHash: null, resetExpiresAt: null }).where(sql`${schema.users.id} = ${user.id}`);
+    // Who handed the code over: the latest reset code made for this account.
+    const [issued] = await db
+      .select({ by: schema.users.username, at: schema.auditLog.createdAt })
+      .from(schema.auditLog)
+      .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
+      .where(and(eq(schema.auditLog.action, 'user.reset_code'), eq(schema.auditLog.targetId, user.id)))
+      .orderBy(desc(schema.auditLog.createdAt))
+      .limit(1);
+    await audit(user.id, 'account.password_reset', 'user', user.id, { username: user.username, codeBy: issued?.by ?? null, codeAt: issued?.at?.toISOString() ?? null });
     await db.delete(schema.sessions).where(sql`${schema.sessions.userId} = ${user.id}`);
     await createSession(c, user.id);
     return c.json({ user: publicUser({ ...user, role: user.role }) });
@@ -146,6 +169,8 @@ export const authRoutes = new Hono<AuthEnv>()
     const [user] = await db.select().from(schema.users).where(sql`${schema.users.id} = ${me.id}`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, c.req.valid('json').password))) return c.json({ error: 'invalid_credentials' }, 401);
     await db.delete(schema.users).where(sql`${schema.users.id} = ${me.id}`);
+    // The account is gone, so the entry has no author: the name is kept in it.
+    await audit(null, 'account.delete', 'user', me.id, { username: me.username });
     await destroySession(c);
     return c.json({ ok: true });
   });

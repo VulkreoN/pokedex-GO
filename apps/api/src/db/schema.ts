@@ -386,3 +386,21 @@ export const announcements = pgTable('announcements', {
   pushedAt: timestamp('pushed_at', { withTimezone: true }),
   pushCount: integer('push_count'),
 });
+
+/**
+ * Collections deleted by their owner or an admin, kept whole (entries, history, follows) for 30 days so an admin can
+ * bring one back. Gone with the account.
+ */
+export const deletedLists = pgTable(
+  'deleted_lists',
+  {
+    id: text('id').primaryKey(),
+    ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    entries: integer('entries').notNull().default(0),
+    deletedBy: text('deleted_by').references(() => users.id, { onDelete: 'set null' }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }).notNull().defaultNow(),
+    snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+  },
+  (t) => [index('deleted_lists_owner_idx').on(t.ownerId), index('deleted_lists_deleted_idx').on(t.deletedAt)],
+);

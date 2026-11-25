@@ -13,17 +13,20 @@ import {
   useAdminHealth,
   useAdminStats,
   useAdminUser,
+  useAdminUserLists,
+  useAdminUserTrash,
   useAudit,
   useReports,
   useSignups,
   useUsers,
   type AuditEntry,
+  type AuditKind,
   type Report,
   type SignupSettings,
 } from '../lib/admin.js';
 import { useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { fmtCode } from './FriendsPage.js';
+import { errorMessage, fmtCode } from './FriendsPage.js';
 
 const TABS = ['dashboard', 'health', 'users', 'signups', 'audit', 'reports', 'announcements', 'errors'] as const;
 type Tab = (typeof TABS)[number];
@@ -194,20 +197,32 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
   const q = useAdminUser(id);
   const [issued, setIssued] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [suspending, setSuspending] = useState(false);
+  const [reason, setReason] = useState('');
   const act = useAdminAction(async (v: { path: string; method?: string; body?: unknown }) => api(v.path, { method: v.method ?? 'POST', body: v.body }));
   const u = q.data?.user;
   const self = u?.id === me.data?.id;
-  const close = () => { setIssued(null); setConfirmDelete(false); onClose(); };
+  const close = () => { setIssued(null); setConfirmDelete(false); setSuspending(false); setReason(''); onClose(); };
+  const suspend = async (on: boolean) => {
+    await act.mutateAsync({ path: `/admin/users/${u!.id}/suspend`, body: { suspended: on, reason: on ? reason.trim() || undefined : undefined } });
+    setSuspending(false);
+    setReason('');
+    toast(on ? t.admin_suspended_done : t.admin_unsuspended_done);
+  };
   return (
     <Sheet open={!!id} onClose={close} title={u?.username ?? ''}>
       {!q.data ? (
         <Spinner />
       ) : (
         <div className="space-y-4 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            {u!.suspendedAt && <Badge tone="muted">{t.admin_suspended}</Badge>}
-            <span className="tnum text-ink-2">{fmtCode(u!.friendCode)}</span>
-          </div>
+          {u!.suspendedAt && (
+            <div className="rounded-lg bg-paper-2 p-2">
+              <Badge tone="muted">{t.admin_suspended}</Badge>
+              <p className="mt-1 text-xs text-ink-2">{t.admin_suspended_by(u!.suspendedBy ?? '?', relativeTime(u!.suspendedAt, lang))}</p>
+              {u!.suspendReason && <p className="mt-0.5 text-sm">« {u!.suspendReason} »</p>}
+            </div>
+          )}
+          <AccountEdit key={u!.id} id={u!.id} username={u!.username} friendCode={u!.friendCode} />
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
             <dt className="text-ink-3">{t.admin_created}</dt><dd className="tnum text-right">{new Date(u!.createdAt).toLocaleDateString(lang)}</dd>
             <dt className="text-ink-3">{t.admin_last_seen}</dt><dd className="tnum text-right">{u!.lastSeenAt ? relativeTime(u!.lastSeenAt, lang) : '—'}</dd>
@@ -241,7 +256,7 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
             <Button className="text-sm" onClick={async () => { const r = (await act.mutateAsync({ path: `/users/${u!.id}/reset-code` })) as { code: string }; setIssued(r.code); }}>{t.issue_reset}</Button>
             <Button className="text-sm" disabled={!q.data.counts.sessions} onClick={async () => { await act.mutateAsync({ path: `/admin/users/${u!.id}/logout` }); toast(t.admin_logged_out); }}>{t.admin_logout_all}</Button>
             {!self && (
-              <Button tone={u!.suspendedAt ? 'quiet' : 'danger'} className="text-sm" onClick={async () => { await act.mutateAsync({ path: `/admin/users/${u!.id}/suspend`, body: { suspended: !u!.suspendedAt } }); toast(u!.suspendedAt ? t.admin_unsuspended_done : t.admin_suspended_done); }}>
+              <Button tone={u!.suspendedAt ? 'quiet' : 'danger'} className="text-sm" disabled={act.isPending} onClick={() => (u!.suspendedAt ? void suspend(false) : setSuspending((v) => !v))}>
                 {u!.suspendedAt ? t.admin_unsuspend : t.admin_suspend}
               </Button>
             )}
@@ -253,9 +268,122 @@ function UserSheet({ id, onClose }: { id: string | null; onClose: () => void }) 
               )
             )}
           </div>
+          {suspending && !u!.suspendedAt && (
+            <div className="space-y-2 rounded-lg border border-line p-2">
+              <TextField label={t.admin_suspend_reason} placeholder={t.admin_suspend_reason_hint} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />
+              <Button tone="danger" className="w-full text-sm" disabled={act.isPending} onClick={() => void suspend(true)}>{t.admin_suspend_confirm}</Button>
+            </div>
+          )}
+          <UserLists id={u!.id} />
+          <UserTrash id={u!.id} />
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** The account's name and friend code, each changed in place; the player is told. */
+function AccountEdit({ id, username, friendCode }: { id: string; username: string; friendCode: string }) {
+  const t = useT();
+  const toast = useToast();
+  const [name, setName] = useState(username);
+  const [code, setCode] = useState(fmtCode(friendCode));
+  const [error, setError] = useState<string | null>(null);
+  const act = useAdminAction((body: { username?: string; friendCode?: string }) => api(`/admin/users/${id}`, { method: 'PATCH', body }));
+  const save = async (body: { username?: string; friendCode?: string }, done: string) => {
+    setError(null);
+    try {
+      await act.mutateAsync(body);
+      toast(done);
+    } catch (e) {
+      setError(errorMessage(t, e));
+    }
+  };
+  const codeDigits = code.replace(/\D/g, '');
+  return (
+    <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <TextField className="flex-1" label={t.admin_username} value={name} maxLength={20} autoComplete="off" onChange={(e) => setName(e.target.value)} />
+        <Button className="min-h-11 text-sm" disabled={act.isPending || !name.trim() || name.trim() === username} onClick={() => void save({ username: name.trim() }, t.admin_renamed)}>{t.admin_rename}</Button>
+      </div>
+      <div className="flex items-end gap-2">
+        <TextField className="flex-1" label={t.admin_friend_code} inputMode="numeric" value={code} autoComplete="off" onChange={(e) => setCode(e.target.value)} />
+        <Button className="min-h-11 text-sm" disabled={act.isPending || codeDigits.length !== 12 || codeDigits === friendCode} onClick={() => void save({ friendCode: codeDigits }, t.my_code_saved)}>{t.save}</Button>
+      </div>
+      <Button tone="ghost" className="min-h-9 w-full text-sm" disabled={act.isPending} onClick={async () => { await save({ friendCode: 'random' }, t.admin_code_regenerated); }}>{t.admin_code_random}</Button>
+      {error && <p className="text-sm text-berry">{error}</p>}
+      <p className="text-xs text-ink-3">{t.admin_notified}</p>
+    </div>
+  );
+}
+
+/** Collections the account deleted, or an admin did, still restorable for 30 days. */
+function UserTrash({ id }: { id: string }) {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const q = useAdminUserTrash(id);
+  const restore = useAdminAction((listId: string) => api(`/admin/trash/${listId}/restore`, { method: 'POST' }));
+  if (!q.data?.length) return null;
+  return (
+    <section>
+      <p className="mb-1 text-xs font-medium text-ink-3">{t.admin_trash}</p>
+      <ul className="divide-y divide-line rounded-lg border border-dashed border-line">
+        {q.data.map((l) => (
+          <li key={l.id} className="flex items-center gap-2 p-2">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold">{l.name}</span>
+              <span className="block text-xs text-ink-3">{t.admin_trash_line(l.entries, l.by ?? '?', relativeTime(l.deletedAt, lang), Math.max(0, Math.ceil((new Date(l.purgeAt).getTime() - Date.now()) / 86400_000)))}</span>
+            </span>
+            <Button className="min-h-8 px-2 text-xs" disabled={restore.isPending} onClick={async () => { await restore.mutateAsync(l.id); toast(t.admin_restored); }}>{t.admin_restore}</Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The account's collections: rename one, or remove it. */
+function UserLists({ id }: { id: string }) {
+  const t = useT();
+  const toast = useToast();
+  const q = useAdminUserLists(id);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const rename = useAdminAction((v: { id: string; name: string }) => api(`/admin/lists/${v.id}`, { method: 'PATCH', body: { name: v.name } }));
+  const remove = useAdminAction((listId: string) => api(`/admin/lists/${listId}`, { method: 'DELETE' }));
+  if (!q.data?.length) return null;
+  return (
+    <section>
+      <p className="mb-1 text-xs font-medium text-ink-3">{t.nav_lists}</p>
+      <ul className="divide-y divide-line rounded-lg border border-line">
+        {q.data.map((l) => (
+          <li key={l.id} className="p-2">
+            {editing === l.id ? (
+              <div className="flex gap-2">
+                <input aria-label={t.list_name} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} className="min-h-9 min-w-0 flex-1 rounded-lg border border-line bg-card px-2 text-[16px]" />
+                <Button tone="primary" className="min-h-9 px-3 text-xs" disabled={!name.trim() || rename.isPending} onClick={async () => { await rename.mutateAsync({ id: l.id, name: name.trim() }); setEditing(null); toast(t.admin_renamed); }}>{t.save}</Button>
+                <Button tone="ghost" className="min-h-9 px-2 text-xs" onClick={() => setEditing(null)}>{t.cancel}</Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{l.name}</span>
+                  <span className="tnum block text-xs text-ink-3">{l.entries} {t.admin_entries}</span>
+                </span>
+                <Button tone="ghost" className="min-h-8 px-2 text-xs" onClick={() => { setEditing(l.id); setName(l.name); setDeleting(null); }}>{t.admin_rename}</Button>
+                {deleting === l.id ? (
+                  <Button tone="danger" className="min-h-8 px-2 text-xs" disabled={remove.isPending} onClick={async () => { await remove.mutateAsync(l.id); setDeleting(null); toast(t.admin_list_deleted); }}>{t.admin_list_delete_confirm}</Button>
+                ) : (
+                  <Button tone="ghost" className="min-h-8 px-2 text-xs text-berry" onClick={() => setDeleting(l.id)}>{t.delete}</Button>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -338,8 +466,20 @@ function describe(e: AuditEntry, t: ReturnType<typeof useT>, variant: (key: stri
     case 'user.reset_code': return t.audit.reset(who, d.username);
     case 'user.logout_all': return t.audit.logout(who, d.username ?? e.targetId);
     case 'user.suspend': return t.audit.suspend(who, d.username);
+    case 'user.rename': return t.audit.rename(who, d.before, d.after);
+    case 'user.friend_code': return d.random ? t.audit.friendCodeRandom(who, d.username) : t.audit.friendCode(who, d.username);
+    case 'list.rename': return t.audit.listRename(who, d.username, d.before, d.after);
+    case 'list.delete': return who === d.username ? t.audit.listDeleteOwn(who, d.name) : t.audit.listDelete(who, d.username, d.name);
+    case 'list.restore': return t.audit.listRestore(who, d.username ?? '?', d.name);
     case 'user.unsuspend': return t.audit.unsuspend(who, d.username);
     case 'user.delete': return t.audit.delete(who, d.username);
+    // A player's own actions: named from the entry, the account may be gone since.
+    case 'account.create': return d.invite ? t.audit.accountCreateInvite(d.username, d.invite.note ?? '') : t.audit.accountCreate(d.username);
+    case 'account.password': return t.audit.accountPassword(d.username);
+    case 'account.password_reset': return d.codeBy ? t.audit.accountReset(d.username, d.codeBy) : t.audit.accountResetUnknown(d.username);
+    case 'account.friend_code': return t.audit.accountFriendCode(d.username);
+    case 'account.delete': return t.audit.accountDelete(d.username);
+    case 'account.login_suspended': return t.audit.accountSuspendedLogin(d.username);
     case 'override.set': return t.audit.override(who, variant(e.targetId ?? ''));
     case 'override.reset': return t.audit.overrideReset(who, variant(e.targetId ?? ''));
     case 'override.undo': return t.audit.undo(who, variant(e.targetId ?? ''));
@@ -389,7 +529,8 @@ function Journal() {
   const { lang } = useLang();
   const toast = useToast();
   const [offset, setOffset] = useState(0);
-  const q = useAudit(offset);
+  const [kind, setKind] = useState<AuditKind>('all');
+  const q = useAudit(offset, kind);
   const undo = useAdminAction((id: string) => api(`/admin/audit/${id}/undo`, { method: 'POST' }));
   const dataset = useDataset();
   /** "Pikachu · Casque de verre" rather than the variant key. */
@@ -399,15 +540,27 @@ function Journal() {
     const v = idx?.variantByKey.get(key);
     return sp ? [localized(sp.name, lang), v?.label ? localized(v.label, lang) : ''].filter(Boolean).join(' · ') : key;
   };
-  if (!q.data) return <Spinner />;
+  const kinds = (
+    <div className="mb-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
+      {(['all', 'accounts', 'lists', 'data', 'admin'] as AuditKind[]).map((k) => (
+        <Chip key={k} active={kind === k} onClick={() => { setKind(k); setOffset(0); }}>{t.audit_kind[k]}</Chip>
+      ))}
+    </div>
+  );
+  if (!q.data) return <section>{kinds}<Spinner /></section>;
   return (
     <section>
+      {kinds}
       {q.data.entries.length === 0 && <Empty>{t.nothing_here}</Empty>}
       <ul className="divide-y divide-line">
         {q.data.entries.map((e) => (
           <li key={e.id} className="flex items-start gap-2 py-2.5">
             <span className="min-w-0 flex-1">
               <span className={`block text-sm ${e.undoneAt ? 'text-ink-3 line-through' : ''}`}>{describe(e, t, variant)}</span>
+              {e.action === 'user.suspend' && (e.data as any).reason && <span className="block text-xs text-ink-2">{t.audit_reason((e.data as any).reason)}</span>}
+              {e.action === 'user.friend_code' && <span className="tnum block text-xs text-ink-2">{fmtCode(String((e.data as any).before))} → {fmtCode(String((e.data as any).after))}</span>}
+              {e.action === 'account.friend_code' && <span className="tnum block text-xs text-ink-2">{fmtCode(String((e.data as any).before))} → {fmtCode(String((e.data as any).after))}</span>}
+              {e.action === 'account.password_reset' && (e.data as any).codeAt && <span className="block text-xs text-ink-2">{t.audit_code_made(new Date((e.data as any).codeAt).toLocaleString(lang, { dateStyle: 'short', timeStyle: 'short' }))}</span>}
               {e.action.startsWith('override.') &&
                 variantChanges(e.data as Record<string, any>, t).map((line) => (
                   <span key={line} className="block text-xs text-ink-2">{line}</span>

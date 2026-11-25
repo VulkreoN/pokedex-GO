@@ -81,7 +81,7 @@ export async function pruneNotifications() {
   await db.delete(schema.notifications).where(sql`${schema.notifications.readAt} is not null and ${schema.notifications.createdAt} < now() - interval '60 days'`);
 }
 
-export type AccountChange = 'role' | 'reset_code' | 'logout_all' | 'unsuspended';
+export type AccountChange = 'role' | 'reset_code' | 'logout_all' | 'unsuspended' | 'renamed' | 'friend_code' | 'list_renamed' | 'list_deleted' | 'list_restored';
 const ROLE_FR = { user: 'dresseur', manager: 'gérant', admin: 'admin' } as const;
 
 /** Tells a player what an admin did to their account: in the inbox and as a push, never switched off. */
@@ -91,6 +91,11 @@ export async function notifyAccount(userId: string, adminId: string, change: Acc
     change === 'role' ? `Ton compte est maintenant ${role ? ROLE_FR[role] : data.role}.` :
     change === 'reset_code' ? 'Un admin a créé un code pour réinitialiser ton mot de passe. Si tu ne l’as pas demandé, préviens-le.' :
     change === 'logout_all' ? 'Un admin a fermé toutes tes sessions : reconnecte-toi.' :
+    change === 'renamed' ? `Un admin a changé ton pseudo : c’est maintenant ${data.value}. Connecte-toi avec ce pseudo.` :
+    change === 'friend_code' ? `Un admin a changé ton code ami : ${data.value}.` :
+    change === 'list_renamed' ? `Un admin a renommé ta collection en « ${data.value} ».` :
+    change === 'list_deleted' ? `Un admin a supprimé ta collection « ${data.value} ».` :
+    change === 'list_restored' ? `Un admin a restauré ta collection « ${data.value} ».` :
     'Ton compte est de nouveau actif.';
   await notify({ userId, type: 'account', actorId: adminId === userId ? null : adminId, data: { change, ...data }, push: () => ({ title: 'Ton compte MyDexPoGo', body, url: '/me', tag: `account-${change}` }) });
 }

@@ -13,7 +13,7 @@ import { resetPvpokeCache } from '../game/pvpRankings.js';
 import { resetResearchCache } from '../game/research.js';
 import { audit } from '../lib/audit.js';
 import { sourceHealth, type SourceName } from '../lib/health.js';
-import { hashToken, newId } from '../lib/ids.js';
+import { hashToken, newFriendCode, newId, normalizeFriendCode } from '../lib/ids.js';
 import { rateLimit } from '../lib/ratelimit.js';
 import { getSetting, setSetting } from '../lib/settings.js';
 import { hub } from '../notify/hub.js';
@@ -21,6 +21,12 @@ import { pushToUser } from '../notify/push.js';
 import { runRaidAlerts } from '../notify/raidAlerts.js';
 import { notifyAccount } from '../notify/service.js';
 import { overrideState } from './data.js';
+import { alias } from 'drizzle-orm/pg-core';
+import { TRASH_DAYS, restoreList, trashList } from '../lib/trash.js';
+
+/** The journal line of a collection's deletion shows it was brought back. */
+const markListDeleteUndone = (listId: string) =>
+  db.update(schema.auditLog).set({ undoneAt: new Date() }).where(and(eq(schema.auditLog.action, 'list.delete'), eq(schema.auditLog.targetId, listId), sql`${schema.auditLog.undoneAt} is null`));
 
 const started = Date.now();
 const count = (q: Promise<{ n: number }[]>) => q.then((r) => r[0]?.n ?? 0);
@@ -93,10 +99,107 @@ export const adminRoutes = new Hono<AuthEnv>()
       count(db.select({ n }).from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, id))),
       count(db.select({ n }).from(schema.pvpPokemon).where(eq(schema.pvpPokemon.userId, id))),
     ]);
+    // Why and by whom a suspended account was suspended: the latest suspension in the journal.
+    const [why] = u.suspendedAt
+      ? await db.select({ data: schema.auditLog.data, by: schema.users.username }).from(schema.auditLog).leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId)).where(and(eq(schema.auditLog.action, 'user.suspend'), eq(schema.auditLog.targetId, id))).orderBy(desc(schema.auditLog.createdAt)).limit(1)
+      : [];
     return c.json({
-      user: { id: u.id, username: u.username, role: u.role, friendCode: u.friendCode, createdAt: u.createdAt.toISOString(), lastSeenAt: iso(u.lastSeenAt), suspendedAt: iso(u.suspendedAt) },
+      user: { id: u.id, username: u.username, role: u.role, friendCode: u.friendCode, createdAt: u.createdAt.toISOString(), lastSeenAt: iso(u.lastSeenAt), suspendedAt: iso(u.suspendedAt), suspendedBy: why?.by ?? null, suspendReason: (why?.data.reason as string | null | undefined) ?? null },
       counts: { lists, entries, friends, sessions, devices, pvp },
     });
+  })
+  /**
+   * Renames an account, or changes its friend code: one typed in, or a new random one ("random"). Both must be free.
+   * The player is told; friends made before stay friends.
+   */
+  .patch('/users/:id', zValidator('json', z.object({ username: z.string().trim().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/).optional(), friendCode: z.string().max(40).optional() })), async (c) => {
+    const me = c.get('user');
+    const id = c.req.param('id');
+    const b = c.req.valid('json');
+    const [u] = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    if (!u) return c.json({ error: 'not_found' }, 404);
+    if (b.username !== undefined && b.username !== u.username) {
+      const [taken] = await db.select({ id: schema.users.id }).from(schema.users).where(sql`lower(${schema.users.username}) = lower(${b.username}) and ${schema.users.id} <> ${id}`).limit(1);
+      if (taken) return c.json({ error: 'username_taken' }, 409);
+      try {
+        await db.update(schema.users).set({ username: b.username }).where(eq(schema.users.id, id));
+      } catch {
+        return c.json({ error: 'username_taken' }, 409);
+      }
+      await audit(me.id, 'user.rename', 'user', id, { username: b.username, before: u.username, after: b.username });
+      if (id !== me.id) await notifyAccount(id, me.id, 'renamed', { value: b.username });
+    }
+    if (b.friendCode !== undefined) {
+      const random = b.friendCode === 'random';
+      let code = random ? newFriendCode() : normalizeFriendCode(b.friendCode);
+      if (!code) return c.json({ error: 'invalid_code' }, 400);
+      if (code !== u.friendCode) {
+        for (let i = 0; ; i++) {
+          const [clash] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.friendCode, code)).limit(1);
+          if (!clash) break;
+          if (!random || i > 5) return c.json({ error: 'friend_code_taken' }, 409);
+          code = newFriendCode();
+        }
+        try {
+          await db.update(schema.users).set({ friendCode: code }).where(eq(schema.users.id, id));
+        } catch {
+          return c.json({ error: 'friend_code_taken' }, 409);
+        }
+        await audit(me.id, 'user.friend_code', 'user', id, { username: b.username ?? u.username, before: u.friendCode, after: code, random });
+        if (id !== me.id) await notifyAccount(id, me.id, 'friend_code', { value: code.replace(/(\d{4})(?=\d)/g, '$1 ') });
+      }
+    }
+    return c.json({ ok: true });
+  })
+  /** A player's collections, to rename or remove one (an offensive name, a duplicate made by mistake). */
+  .get('/users/:id/lists', async (c) => {
+    const rows = await db
+      .select({ id: schema.lists.id, name: schema.lists.name, visibility: schema.lists.visibility, entries: sql<number>`(select count(*) from ${schema.listEntries} where ${schema.listEntries.listId} = ${schema.lists.id})`.mapWith(Number) })
+      .from(schema.lists)
+      .where(eq(schema.lists.ownerId, c.req.param('id')))
+      .orderBy(schema.lists.position, schema.lists.createdAt);
+    return c.json({ lists: rows });
+  })
+  .patch('/lists/:id', zValidator('json', z.object({ name: z.string().trim().min(1).max(60) })), async (c) => {
+    const me = c.get('user');
+    const [l] = await db.select({ name: schema.lists.name, ownerId: schema.lists.ownerId, owner: schema.users.username }).from(schema.lists).innerJoin(schema.users, eq(schema.users.id, schema.lists.ownerId)).where(eq(schema.lists.id, c.req.param('id'))).limit(1);
+    if (!l) return c.json({ error: 'not_found' }, 404);
+    const name = c.req.valid('json').name;
+    if (name === l.name) return c.json({ ok: true });
+    await db.update(schema.lists).set({ name, updatedAt: new Date() }).where(eq(schema.lists.id, c.req.param('id')));
+    await audit(me.id, 'list.rename', 'list', c.req.param('id'), { username: l.owner, before: l.name, after: name });
+    if (l.ownerId !== me.id) await notifyAccount(l.ownerId, me.id, 'list_renamed', { value: name });
+    return c.json({ ok: true });
+  })
+  .delete('/lists/:id', async (c) => {
+    const me = c.get('user');
+    const [l] = await db.select({ name: schema.lists.name, ownerId: schema.lists.ownerId, owner: schema.users.username }).from(schema.lists).innerJoin(schema.users, eq(schema.users.id, schema.lists.ownerId)).where(eq(schema.lists.id, c.req.param('id'))).limit(1);
+    if (!l) return c.json({ error: 'not_found' }, 404);
+    const gone = await trashList(c.req.param('id'), me.id);
+    await audit(me.id, 'list.delete', 'list', c.req.param('id'), { username: l.owner, name: l.name, entries: gone?.entries ?? 0 });
+    if (l.ownerId !== me.id) await notifyAccount(l.ownerId, me.id, 'list_deleted', { value: l.name });
+    return c.json({ ok: true });
+  })
+  /** The account's deleted collections still in the trash (30 days), by them or by an admin. */
+  .get('/users/:id/trash', async (c) => {
+    const by = alias(schema.users, 'by');
+    const rows = await db
+      .select({ id: schema.deletedLists.id, name: schema.deletedLists.name, entries: schema.deletedLists.entries, deletedAt: schema.deletedLists.deletedAt, by: by.username })
+      .from(schema.deletedLists)
+      .leftJoin(by, eq(by.id, schema.deletedLists.deletedBy))
+      .where(eq(schema.deletedLists.ownerId, c.req.param('id')))
+      .orderBy(desc(schema.deletedLists.deletedAt));
+    return c.json({ lists: rows.map((r) => ({ ...r, deletedAt: r.deletedAt.toISOString(), purgeAt: new Date(r.deletedAt.getTime() + TRASH_DAYS * 86400_000).toISOString() })) });
+  })
+  .post('/trash/:id/restore', async (c) => {
+    const me = c.get('user');
+    const back = await restoreList(c.req.param('id'));
+    if (!back) return c.json({ error: 'not_found' }, 404);
+    await markListDeleteUndone(c.req.param('id'));
+    const [owner] = await db.select({ username: schema.users.username }).from(schema.users).where(eq(schema.users.id, back.ownerId)).limit(1);
+    await audit(me.id, 'list.restore', 'list', c.req.param('id'), { username: owner?.username, name: back.name });
+    if (back.ownerId !== me.id) await notifyAccount(back.ownerId, me.id, 'list_restored', { value: back.name });
+    return c.json({ ok: true });
   })
   .post('/users/:id/logout', async (c) => {
     const id = c.req.param('id');
@@ -107,15 +210,15 @@ export const adminRoutes = new Hono<AuthEnv>()
     await notifyAccount(id, c.get('user').id, 'logout_all');
     return c.json({ ok: true, sessions: gone.length });
   })
-  .post('/users/:id/suspend', zValidator('json', z.object({ suspended: z.boolean() })), async (c) => {
+  .post('/users/:id/suspend', zValidator('json', z.object({ suspended: z.boolean(), reason: z.string().trim().max(300).optional() })), async (c) => {
     const me = c.get('user');
     const id = c.req.param('id');
     if (id === me.id) return c.json({ error: 'self' }, 400);
-    const { suspended } = c.req.valid('json');
+    const { suspended, reason } = c.req.valid('json');
     const [u] = await db.update(schema.users).set({ suspendedAt: suspended ? new Date() : null }).where(eq(schema.users.id, id)).returning({ username: schema.users.username, role: schema.users.role });
     if (!u) return c.json({ error: 'not_found' }, 404);
     if (suspended) await db.delete(schema.sessions).where(eq(schema.sessions.userId, id));
-    await audit(me.id, suspended ? 'user.suspend' : 'user.unsuspend', 'user', id, { username: u.username });
+    await audit(me.id, suspended ? 'user.suspend' : 'user.unsuspend', 'user', id, { username: u.username, reason: reason || null });
     if (!suspended) await notifyAccount(id, me.id, 'unsuspended');
     return c.json({ ok: true });
   })
@@ -163,21 +266,43 @@ export const adminRoutes = new Hono<AuthEnv>()
   /* ---------- Journal ---------- */
   .get('/audit', async (c) => {
     const offset = Math.max(0, Number(c.req.query('offset') ?? 0) || 0);
+    // Accounts (players' own and admins' actions on them), collections, Pokédex corrections, or the rest of the admin work.
+    const a = schema.auditLog.action;
+    const kind = c.req.query('kind');
+    const where =
+      kind === 'accounts' ? sql`(${a} like 'account.%' or ${a} like 'user.%')`
+      : kind === 'lists' ? sql`${a} like 'list.%'`
+      : kind === 'data' ? sql`(${a} like 'override.%' or ${a} like 'report.%')`
+      : kind === 'admin' ? sql`not (${a} like 'account.%' or ${a} like 'user.%' or ${a} like 'list.%' or ${a} like 'override.%' or ${a} like 'report.%')`
+      : undefined;
     const rows = await db
       .select({ a: schema.auditLog, actor: schema.users.username })
       .from(schema.auditLog)
       .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
+      .where(where)
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(50)
       .offset(offset);
     return c.json({
-      entries: rows.map(({ a, actor }) => ({ id: a.id, actor, action: a.action, targetType: a.targetType, targetId: a.targetId, data: a.data, createdAt: a.createdAt.toISOString(), undoneAt: iso(a.undoneAt), undoable: a.action.startsWith('override.') && !a.undoneAt })),
+      entries: rows.map(({ a, actor }) => ({
+        id: a.id, actor, action: a.action, targetType: a.targetType, targetId: a.targetId, data: a.data, createdAt: a.createdAt.toISOString(), undoneAt: iso(a.undoneAt),
+        // A deleted collection, while still in the trash.
+        undoable: !a.undoneAt && (a.action.startsWith('override.') || (a.action === 'list.delete' && a.createdAt.getTime() > Date.now() - TRASH_DAYS * 86400_000)),
+      })),
       offset,
     });
   })
   /** Puts a variant correction back as it was before this entry. */
   .post('/audit/:id/undo', async (c) => {
     const [e] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.id, c.req.param('id'))).limit(1);
+    if (e?.action === 'list.delete' && !e.undoneAt && e.targetId) {
+      const back = await restoreList(e.targetId);
+      if (!back) return c.json({ error: 'not_undoable' }, 400);
+      await markListDeleteUndone(e.targetId);
+      await audit(c.get('user').id, 'list.restore', 'list', e.targetId, { username: (e.data as { username?: string }).username, name: back.name });
+      if (back.ownerId !== c.get('user').id) await notifyAccount(back.ownerId, c.get('user').id, 'list_restored', { value: back.name });
+      return c.json({ ok: true });
+    }
     if (!e || !e.action.startsWith('override.') || e.undoneAt || !e.targetId) return c.json({ error: 'not_undoable' }, 400);
     const key = e.targetId;
     const before = e.data.before as ReturnType<typeof overrideState> | null;

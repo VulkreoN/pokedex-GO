@@ -35,7 +35,7 @@ export function NotificationsPage() {
     if (n.type === 'friend_request') return t.notif_friend_request(who);
     if (n.type === 'friend_accepted') return t.notif_friend_accepted(who);
     if (n.type === 'raid') return t.notif_raid(raidNames(n));
-    if (n.type === 'account') return t.notif_account(String(n.data.change), String(n.data.role ?? ''));
+    if (n.type === 'account') return t.notif_account(String(n.data.change), String(n.data.role ?? n.data.value ?? ''));
     if (n.type === 'offer_caught') return t.notif_offer_caught(who, Number(n.data.count ?? 1), n.list?.name ?? '');
     return t.notif_offer(who, Number(n.data.count ?? 1), n.list?.name ?? '');
   };

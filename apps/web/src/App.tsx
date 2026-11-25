@@ -32,6 +32,7 @@ const pageLoaders = {
   NotificationsPage: () => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })),
   LoginPage: () => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })),
   ReviewPage: () => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })),
+  AboutPage: () => import('./pages/AboutPage.js').then((m) => ({ default: m.AboutPage })),
 };
 const GamePage = lazy(pageLoaders.GamePage);
 const PvpPage = lazy(pageLoaders.PvpPage);
@@ -42,6 +43,7 @@ const WelcomePage = lazy(pageLoaders.WelcomePage);
 const NotificationsPage = lazy(pageLoaders.NotificationsPage);
 const LoginPage = lazy(pageLoaders.LoginPage);
 const ReviewPage = lazy(pageLoaders.ReviewPage);
+const AboutPage = lazy(pageLoaders.AboutPage);
 
 function prefetchPages() {
   const run = () => Object.values(pageLoaders).forEach((load) => void load().catch(() => {}));
@@ -152,6 +154,7 @@ export function App() {
               <Route path="/friends" element={<RequireAuth><FriendsPage /></RequireAuth>} />
               <Route path="/friends/:id" element={<RequireAuth><FriendListsPage /></RequireAuth>} />
               <Route path="/me" element={<MePage />} />
+              <Route path="/about" element={<AboutPage />} />
               <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
               <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
               <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />

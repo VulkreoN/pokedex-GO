@@ -585,6 +585,93 @@ describe('admin panel', () => {
     expect((await admin.get(`/admin/users/${u.user.id}`)).status).toBe(404);
   });
 
+  it('admins rename accounts and collections, change or regenerate friend codes; the player is told, the journal keeps it', async () => {
+    const u = await register(name('ren'));
+    const listId = (await u.post('/lists', { name: 'Gros mot' })).body.list?.id ?? (await u.get('/lists')).body.lists[0].id;
+    expect((await alice.patch(`/admin/users/${u.user.id}`, { username: name('x') })).status).toBe(403);
+    expect((await admin.patch(`/admin/users/${u.user.id}`, { username: alice.user.username.toUpperCase() })).status).toBe(409);
+    const renamed = name('renamed');
+    expect((await admin.patch(`/admin/users/${u.user.id}`, { username: renamed })).status).toBe(200);
+    expect((await u.get('/auth/me')).body.user.username).toBe(renamed);
+    expect((await admin.patch(`/admin/users/${u.user.id}`, { friendCode: alice.user.friendCode })).status).toBe(409);
+    expect((await admin.patch(`/admin/users/${u.user.id}`, { friendCode: '12' })).status).toBe(400);
+    const before = (await u.get('/auth/me')).body.user.friendCode;
+    expect((await admin.patch(`/admin/users/${u.user.id}`, { friendCode: 'random' })).status).toBe(200);
+    const after = (await u.get('/auth/me')).body.user.friendCode;
+    expect(after).toMatch(/^\d{12}$/);
+    expect(after).not.toBe(before);
+
+    expect((await admin.get(`/admin/users/${u.user.id}/lists`)).body.lists.map((l: any) => l.name)).toContain('Gros mot');
+    expect((await admin.patch(`/admin/lists/${listId}`, { name: 'Ma collection' })).status).toBe(200);
+    expect((await u.get(`/lists/${listId}`)).body.list.name).toBe('Ma collection');
+    expect((await admin.del(`/admin/lists/${listId}`)).status).toBe(200);
+    expect((await u.get(`/lists/${listId}`)).status).toBe(404);
+
+    const changes = (await u.get('/notifications')).body.items.filter((n: any) => n.type === 'account').map((n: any) => n.data.change);
+    expect(changes).toEqual(expect.arrayContaining(['renamed', 'friend_code', 'list_renamed', 'list_deleted']));
+    const log = (await admin.get('/admin/audit?kind=accounts')).body.entries;
+    expect(log.find((e: any) => e.action === 'user.rename' && e.targetId === u.user.id).data).toMatchObject({ before: u.user.username, after: renamed });
+    expect(log.find((e: any) => e.action === 'user.friend_code' && e.targetId === u.user.id).data).toMatchObject({ before, after, random: true });
+    const listLog = (await admin.get('/admin/audit?kind=lists')).body.entries.map((e: any) => e.action);
+    expect(listLog).toEqual(expect.arrayContaining(['list.rename', 'list.delete']));
+    expect(listLog).not.toContain('user.rename');
+  });
+
+  it('a deleted collection stays 30 days in the trash: an admin restores it whole, from the account or the journal', async () => {
+    const u = await register(name('trash'));
+    const id = (await u.post('/lists', { name: 'Oups' })).body.list.id;
+    await u.put(`/lists/${id}/entries`, { entries: [{ variantKey: '1', gender: 'm', shiny: false, done: true }, { variantKey: '4', gender: 'm', shiny: true }] });
+    expect((await u.del(`/lists/${id}`)).status).toBe(200);
+    expect((await u.get(`/lists/${id}`)).status).toBe(404);
+
+    expect((await alice.get(`/admin/users/${u.user.id}/trash`)).status).toBe(403);
+    const trash = (await admin.get(`/admin/users/${u.user.id}/trash`)).body.lists;
+    expect(trash).toHaveLength(1);
+    expect(trash[0]).toMatchObject({ id, name: 'Oups', entries: 2, by: u.user.username });
+    expect((await admin.post(`/admin/trash/${id}/restore`)).status).toBe(200);
+    expect((await admin.post(`/admin/trash/${id}/restore`)).status).toBe(404); // once
+    const back = (await u.get(`/lists/${id}`)).body.list;
+    expect(back.name).toBe('Oups');
+    expect(back.entries.map((e: any) => [e.variantKey, e.shiny, e.done]).sort()).toEqual([['1', false, true], ['4', true, false]]);
+    expect((await u.get(`/lists/${id}/history`)).body.events.length).toBeGreaterThan(0);
+    expect((await admin.get(`/admin/users/${u.user.id}/trash`)).body.lists).toHaveLength(0);
+
+    // Deleted again, by an admin this time: "Undo" in the journal brings it back too.
+    expect((await admin.del(`/admin/lists/${id}`)).status).toBe(200);
+    const entry = (await admin.get('/admin/audit?kind=lists')).body.entries.find((e: any) => e.action === 'list.delete' && e.targetId === id && !e.undoneAt);
+    expect(entry.undoable).toBe(true);
+    expect((await admin.post(`/admin/audit/${entry.id}/undo`)).status).toBe(200);
+    expect((await u.get(`/lists/${id}`)).status).toBe(200);
+    const log = (await admin.get('/admin/audit?kind=lists')).body.entries.filter((e: any) => e.targetId === id);
+    expect(log.filter((e: any) => e.action === 'list.restore')).toHaveLength(2);
+    expect(log.filter((e: any) => e.action === 'list.delete').every((e: any) => e.undoneAt)).toBe(true);
+    expect((await u.get('/notifications')).body.items.filter((n: any) => n.type === 'account').map((n: any) => n.data.change)).toEqual(expect.arrayContaining(['list_deleted', 'list_restored']));
+  });
+
+  it('a suspension keeps its reason; the journal shows sign-ups, password changes and who gave a reset code', async () => {
+    const u = await register(name('sus'));
+    expect((await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: true, reason: 'Pseudo offensant' })).status).toBe(200);
+    expect((await admin.get(`/admin/users/${u.user.id}`)).body.user).toMatchObject({ suspendReason: 'Pseudo offensant', suspendedBy: admin.user.username });
+    expect((await new Client().post('/auth/login', { username: u.user.username, password: PASSWORD })).status).toBe(403);
+    expect((await new Client().post('/auth/login', { username: u.user.username, password: PASSWORD })).status).toBe(403);
+    await admin.post(`/admin/users/${u.user.id}/suspend`, { suspended: false });
+
+    const code = (await admin.post(`/users/${u.user.id}/reset-code`)).body.code;
+    const c = new Client();
+    expect((await c.post('/auth/reset', { username: u.user.username, code, password: 'brand-new-pass' })).status).toBe(200);
+    expect((await c.post('/auth/password', { current: 'brand-new-pass', password: 'newer-pass-22' })).status).toBe(200);
+
+    const mine = (await admin.get('/admin/audit?kind=accounts')).body.entries.filter((e: any) => e.targetId === u.user.id);
+    const by = (a: string) => mine.filter((e: any) => e.action === a);
+    expect(by('account.create')).toHaveLength(1);
+    expect(by('user.suspend')[0].data.reason).toBe('Pseudo offensant');
+    expect(by('account.login_suspended')).toHaveLength(1); // twice refused, once in the journal
+    expect(by('account.password_reset')[0].data.codeBy).toBe(admin.user.username);
+    expect(by('account.password')).toHaveLength(1);
+    // Never a password, in any form.
+    expect(JSON.stringify(mine)).not.toMatch(/brand-new-pass|newer-pass-22|password":/);
+  });
+
   it("tells a player when an admin changes their account, even with every notification switched off", async () => {
     const u = await register(name('acct'));
     await u.put('/notifications/prefs', { friend_request: false, friend_accepted: false, offer: false, offer_caught: false, raid: false, announcement: false });

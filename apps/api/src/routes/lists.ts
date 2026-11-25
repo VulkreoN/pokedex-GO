@@ -10,6 +10,8 @@ import { hub } from '../notify/hub.js';
 import { notify } from '../notify/service.js';
 import { GenderError, normalizeEntries } from '../lists/genders.js';
 import { dataService } from '../data/service.js';
+import { audit } from '../lib/audit.js';
+import { trashList } from '../lib/trash.js';
 import { listHistory, recordListEvent } from '../lists/history.js';
 
 export async function friendIdsOf(userId: string): Promise<string[]> {
@@ -249,7 +251,9 @@ export const listRoutes = new Hono<AuthEnv>()
     const me = c.get('user');
     const list = await getList(c.req.param('id'));
     if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
-    await db.delete(schema.lists).where(eq(schema.lists.id, list.id));
+    // Kept 30 days in the trash, for an admin to bring back if it was a mistake.
+    const gone = await trashList(list.id, me.id);
+    await audit(me.id, 'list.delete', 'list', list.id, { username: me.username, name: list.name, entries: gone?.entries ?? 0 });
     void broadcastList(list, true);
     return c.json({ ok: true });
   })

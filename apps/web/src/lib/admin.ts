@@ -81,7 +81,7 @@ export function relativeTime(iso: string | null, lang: string): string {
 export interface AdminStats { users: number; active7: number; active30: number; lists: number; entries: number; friendships: number; pushDevices: number; raidAlerts7: number; errorsToday: number; openReports: number; signupsByWeek: { week: string; n: number }[] }
 export interface SourceHealth { okAt: string | null; errorAt: string | null; error: string | null }
 export interface AdminHealth { version: string; startedAt: string; dataset: DataStatus; sources: Partial<Record<'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'feed', SourceHealth>> }
-export interface AdminUserDetail { user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
+export interface AdminUserDetail { user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null; suspendedBy: string | null; suspendReason: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
 export interface SignupSettings { mode: 'open' | 'invite' | 'closed'; dailyCap: number | null }
 export interface Invite { id: string; note: string | null; maxUses: number; uses: number; expiresAt: string | null; createdAt: string }
 export interface AuditEntry { id: string; actor: string | null; action: string; targetType: string; targetId: string | null; data: Record<string, unknown>; createdAt: string; undoneAt: string | null; undoable: boolean }
@@ -91,8 +91,13 @@ export interface Announcement { id: string; message: string; level: 'info' | 'wa
 export const useAdminStats = () => useQuery({ queryKey: ['admin', 'stats'], queryFn: () => api<AdminStats>('/admin/stats') });
 export const useAdminHealth = () => useQuery({ queryKey: ['admin', 'health'], queryFn: () => api<AdminHealth>('/admin/health'), refetchInterval: (q) => (q.state.data?.dataset.running ? 5000 : false) });
 export const useAdminUser = (id: string | null) => useQuery({ queryKey: ['admin', 'user', id], queryFn: () => api<AdminUserDetail>(`/admin/users/${id}`), enabled: !!id });
+export interface AdminList { id: string; name: string; visibility: string; entries: number }
+export const useAdminUserLists = (id: string | null) => useQuery({ queryKey: ['admin', 'user-lists', id], queryFn: () => api<{ lists: AdminList[] }>(`/admin/users/${id}/lists`).then((r) => r.lists), enabled: !!id });
+export interface TrashedList { id: string; name: string; entries: number; deletedAt: string; purgeAt: string; by: string | null }
+export const useAdminUserTrash = (id: string | null) => useQuery({ queryKey: ['admin', 'user-trash', id], queryFn: () => api<{ lists: TrashedList[] }>(`/admin/users/${id}/trash`).then((r) => r.lists), enabled: !!id });
 export const useSignups = () => useQuery({ queryKey: ['admin', 'signups'], queryFn: () => api<{ settings: SignupSettings; invites: Invite[] }>('/admin/signups') });
-export const useAudit = (offset: number) => useQuery({ queryKey: ['admin', 'audit', offset], queryFn: () => api<{ entries: AuditEntry[]; offset: number }>(`/admin/audit?offset=${offset}`), placeholderData: (p) => p });
+export type AuditKind = 'all' | 'accounts' | 'lists' | 'data' | 'admin';
+export const useAudit = (offset: number, kind: AuditKind = 'all') => useQuery({ queryKey: ['admin', 'audit', kind, offset], queryFn: () => api<{ entries: AuditEntry[]; offset: number }>(`/admin/audit?offset=${offset}${kind === 'all' ? '' : `&kind=${kind}`}`), placeholderData: (p) => p });
 export const useReports = (status: 'open' | 'handled', enabled = true) => useQuery({ queryKey: ['reports', status], queryFn: () => api<{ reports: Report[] }>(`/reports?status=${status}`).then((r) => r.reports), enabled });
 export const useAdminAnnouncements = () => useQuery({ queryKey: ['admin', 'announcements'], queryFn: () => api<{ announcements: Announcement[]; pushAccounts: number }>('/admin/announcements') });
 

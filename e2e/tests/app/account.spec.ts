@@ -170,6 +170,29 @@ test('an admin issues a reset code that lets a player choose a new password', as
   await player.getByRole('button', { name: 'Changer le mot de passe' }).click();
   await expect(player).toHaveURL(/\/dex$/);
 
+  // The journal says who gave the code, never the password.
+  await admin.goto('/admin?tab=audit');
+  await admin.getByRole('button', { name: 'Comptes', exact: true }).click();
+  await expect(admin.getByText(new RegExp(`^${target.username} a réinitialisé son mot de passe avec le code donné par `))).toBeVisible();
+  await expect(admin.getByText(`${target.username} a créé son compte`, { exact: true })).toBeVisible();
+
+  // Suspended with a reason: on the account and in the journal; renamed from the same sheet.
+  await admin.goto('/admin?tab=users');
+  await admin.getByPlaceholder('Chercher un pseudo').fill(target.username);
+  await admin.getByRole('button', { name: new RegExp(target.username) }).click();
+  await sheet.getByRole('button', { name: 'Suspendre', exact: true }).click();
+  await sheet.getByLabel('Motif (noté dans le journal)').fill('Spam de demandes');
+  await sheet.getByRole('button', { name: 'Suspendre le compte' }).click();
+  await expect(sheet.getByText('« Spam de demandes »')).toBeVisible();
+  const renamed = uniq('renamed');
+  await sheet.getByLabel('Pseudo').fill(renamed);
+  await sheet.getByRole('button', { name: 'Renommer', exact: true }).click();
+  await expect(admin.getByText('Renommé', { exact: true })).toBeVisible();
+  await admin.keyboard.press('Escape');
+  await admin.goto('/admin?tab=audit');
+  await expect(admin.getByText('Motif : « Spam de demandes »')).toBeVisible();
+  await expect(admin.getByText(new RegExp(`a renommé le compte ${target.username} en ${renamed}`))).toBeVisible();
+
   await adminCtx.close();
   await playerCtx.close();
 });
