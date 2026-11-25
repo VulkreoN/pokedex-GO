@@ -35,7 +35,8 @@ export function monsFr(text: string, species: SpeciesNames | undefined): string 
 }
 
 const EVENT_FR: [RegExp, (m: RegExpExecArray, mons: (s: string) => string) => string][] = [
-  [/^(.+) Spotlight Hour$/, (m, f) => `Heure de mise en lumière : ${f(m[1]!)}`],
+  // The game's own names (its French texts): « Heure du Pokémon vedette », « Journée Combat Dynamax »…
+  [/^(.+) Spotlight Hour$/, (m, f) => `Heure du Pokémon vedette : ${f(m[1]!)}`],
   [/^Unannounced Raid Hour$/, () => 'Heure de Raids : à annoncer'],
   [/^(.+) Raid Hour$/, (m, f) => `Heure de Raids : ${f(m[1]!)}`],
   [/^Unannounced Pokémon in (\d)-star Raid Battles$/, (m) => `Pokémon à annoncer dans les Raids ${m[1]} étoiles`],
@@ -47,12 +48,13 @@ const EVENT_FR: [RegExp, (m: RegExpExecArray, mons: (s: string) => string) => st
   [/^(.+) Super Mega Raid Day$/, (m, f) => `Super Journée de Méga-Raids : ${f(m[1]!)}`],
   [/^Raid Day$/, () => 'Journée de Raids'],
   [/^(.+) Raid Day$/, (m, f) => `Journée de Raids : ${f(m[1]!)}`],
-  [/^(\w+) Community Day( Classic)?( \d{4})?$/, (m) => `Journée Communauté${m[2] ? ' Classique' : ''} de ${MONTHS_FR[m[1]!] ?? m[1]}${m[3] ?? ''}`],
-  [/^Max Battle Day$/, () => 'Journée Combats Max'],
+  [/^(\w+) Community Day Classic( \d{4})?$/, (m) => `Classiques de la Journée Communauté de ${MONTHS_FR[m[1]!] ?? m[1]}${m[2] ?? ''}`],
+  [/^(\w+) Community Day( \d{4})?$/, (m) => `Journée Communauté de ${MONTHS_FR[m[1]!] ?? m[1]}${m[2] ?? ''}`],
+  [/^Max Battle Day$/, () => 'Journée Combat Dynamax'],
   [/^GO Pass: (\w+)$/, (m) => `GO Pass : ${MONTHS_FR[m[1]!] ?? m[1]}`],
   [/^Choose Your Path: (.+) \((\w+) (\d+), (\d{4})\)$/, (m) => `Choisis ta voie : ${m[1]} (${m[3]} ${MONTHS_FR[m[2]!] ?? m[2]} ${m[4]})`],
   [/^Minior Showers: (.+)$/, (m) => `Pluie de Météno : ${m[1]}`],
-  [/^Hatch Day$/, () => 'Journée Éclosions'],
+  [/^Hatch Day$/, () => 'Journée Éclosion'],
   [/^New Year's (\d{4})$/, (m) => `Nouvel An ${m[1]}`],
   [/^Winter Holiday (\d{4})$/, (m) => `Fêtes de fin d’année ${m[1]}`],
   [/^Unannounced Event$/, () => 'Événement à annoncer'],
