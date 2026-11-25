@@ -441,6 +441,13 @@
     "774.fMETEOR_VIOLET": "774.fVIOLET",
     "774.fMETEOR": "774.fBLUE"
   },
+  "homeIds": {
+    "_note": "PokeAPI ids of forms whose shiny picture comes from Pokémon HOME (no shiny in the game files yet); plain forms use their dex number.",
+    "720.fCONFINED": 720,
+    "720.fUNBOUND": 10086,
+    "892.fSINGLE_STRIKE": 892,
+    "892.fRAPID_STRIKE": 10191
+  },
   "upcoming": {
     "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax. artwork: PokeAPI official artwork ids of each form (normal and shiny; noShinyArtwork: no official shiny artwork, the shiny HOME render is used).",
     "megas": [

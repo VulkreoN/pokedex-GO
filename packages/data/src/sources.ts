@@ -87,3 +87,29 @@ export async function fetchPictureList(opts: FetchOptions): Promise<string[]> {
     throw e;
   }
 }
+
+/**
+ * Which of these picture URLs exist, asked once per URL (HEAD) and remembered in the cache: an answer does not
+ * change. Offline, only what the cache knows.
+ */
+export async function existingUrls(name: string, urls: string[], opts: FetchOptions): Promise<Set<string>> {
+  const file = path.join(opts.cacheDir, `${name}.json`);
+  const known: Record<string, boolean> = JSON.parse(await readFile(file, 'utf8').catch(() => '{}'));
+  const ask = opts.offline ? [] : urls.filter((u) => !(u in known));
+  for (let i = 0; i < ask.length; i += 8) {
+    await Promise.all(
+      ask.slice(i, i + 8).map(async (u) => {
+        try {
+          const res = await fetch(u, { method: 'HEAD', headers: { 'user-agent': 'mydexpogo-data-pipeline' }, signal: AbortSignal.timeout(10_000) });
+          // A server error says nothing about the file: asked again next time.
+          if (res.ok || res.status === 404) known[u] = res.ok;
+        } catch {}
+      }),
+    );
+  }
+  if (ask.length) {
+    await mkdir(opts.cacheDir, { recursive: true });
+    await writeFile(file, JSON.stringify(known));
+  }
+  return new Set(urls.filter((u) => known[u]));
+}

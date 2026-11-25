@@ -23,7 +23,7 @@ import {
   type Variant,
   type VariantKind,
 } from '@mydexpogo/shared';
-import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, POKEAPI_HOME, SOURCES, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
+import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, POKEAPI_HOME, SOURCES, existingUrls, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
 import { extractPvp } from './pvp.js';
@@ -425,6 +425,24 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   }
   // The shiny list only knows species: when a species' shiny is not out, none of its versions' is.
   for (const v of variants) if (speciesByDex.get(v.dex)?.shinyReleased === false && v.hasShiny) v.shinyReleased = false;
+  // The game only ships a shiny picture once that shiny is coming: for the others (Pokémon not in GO yet, shinies
+  // not out), the shiny HOME render (PokeAPI) of the plain form, or of the few forms mapped in overrides.json.
+  // Those shinies are not out in GO, and are marked so.
+  const homeIds = (overridesFile as { homeIds?: Record<string, number> }).homeIds ?? {};
+  const homeFor = (v: Variant) => {
+    if (v.hasShiny || !v.img || v.kind === 'costume') return null;
+    const id = homeIds[v.key.replace(/\.g2$/, '')] ?? (v.kind === 'base' && !v.form ? v.dex : null);
+    return id ? `${POKEAPI_HOME}shiny/${v.gender === 'f' ? 'female/' : ''}${id}.png` : null;
+  };
+  const wanted = variants.map(homeFor);
+  const found = await existingUrls('home-shiny', wanted.filter((u): u is string => !!u), fetchOpts);
+  variants.forEach((v, i) => {
+    const url = wanted[i];
+    if (!url || !found.has(url)) return;
+    v.hasShiny = true;
+    v.shinyImg = url;
+    v.shinyReleased = false;
+  });
   // Species release: PokeMiners ship pictures long before a Pokémon is in the game (Arceus...), so
   // "has a picture" is only the fallback. Baseline = pogoapi released list, plus species seen live
   // on Leek Duck (raids, eggs, research, events), plus file / manager overrides on the base key.
