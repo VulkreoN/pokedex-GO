@@ -87,15 +87,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
             <code className="block max-h-40 overflow-y-auto break-all rounded-lg bg-paper-2 p-2 text-[13px] leading-snug">{s.text}</code>
             {s.skippedExclusions && <p className="mt-1 text-xs text-ink-2">{t.exclude_skipped(s.skippedExclusions.map((d) => t[`exclude_${d === '4*' ? 'hundo' : d}` as 'exclude_traded']).join(', '))}</p>}
             {s.unsupported && <p className="mt-1 text-xs text-ink-2">{t.game_lang_missing(s.unsupported.map(name).join(', '))}</p>}
-            {s.looser && (
-              <p className="mt-1 text-xs text-ink-2">
-                {t.search_also(
-                  s.looser
-                    .flatMap((x) => x.dex.map((d) => t.search_also_item(localized(idx.speciesByDex.get(d)?.name, lang) || `#${d}`, x.dim, names[x.dim] ?? x.dim)))
-                    .join(', '),
-                )}
-              </p>
-            )}
+            {s.looser && <LooserNote items={s.looser.flatMap((x) => x.dex.map((d) => t.search_also_item(localized(idx.speciesByDex.get(d)?.name, lang) || `#${d}`, x.dim, names[x.dim] ?? x.dim)))} />}
             <CopyButton tone="primary" className="mt-2 w-full" text={s.text} />
           </li>
         ))}
@@ -129,5 +121,20 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
         </div>
       </section>
     </div>
+  );
+}
+
+/** What the search shows beyond the collection: the first few, the rest on demand. */
+function LooserNote({ items }: { items: string[] }) {
+  const t = useT();
+  const [all, setAll] = useState(false);
+  const shown = all ? items : items.slice(0, 4);
+  return (
+    <p className="mt-1 text-xs text-ink-2">
+      {t.search_also(shown.join(', ') + (items.length > shown.length ? '…' : ''))}
+      {items.length > 4 && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="ml-1 font-semibold text-sky">{all ? t.show_less : t.show_more(items.length - 4)}</button>
+      )}
+    </p>
   );
 }

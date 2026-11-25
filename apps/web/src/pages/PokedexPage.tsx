@@ -169,6 +169,8 @@ export function PokedexPage() {
             placeholder={t.search_placeholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            // Opened from the app icon's "Search a Pokémon" shortcut: ready to type.
+            autoFocus={new URLSearchParams(location.search).get('focus') === 'search'}
             className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
             aria-label={t.search_placeholder}
           />

@@ -14,7 +14,7 @@ import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
 import { AnnouncementBanner } from './components/AnnouncementBanner.js';
 import { useRealtime } from './lib/social.js';
 import { reportError } from './lib/errorReport.js';
-import { ListPage, SharedListPage } from './pages/ListPage.js';
+import { LastListRedirect, ListPage, SharedListPage } from './pages/ListPage.js';
 import { ListsPage } from './pages/ListsPage.js';
 import { MePage } from './pages/MePage.js';
 import { PokedexPage } from './pages/PokedexPage.js';
@@ -144,6 +144,7 @@ export function App() {
               <Route path="/dex" element={<PokedexPage />} />
               <Route path="/dex/:dex" element={<SpeciesPage />} />
               <Route path="/lists" element={<RequireAuth><ListsPage /></RequireAuth>} />
+              <Route path="/lists/last" element={<RequireAuth><LastListRedirect /></RequireAuth>} />
               <Route path="/lists/:id" element={<RequireAuth><ListPage /></RequireAuth>} />
               <Route path="/s/:token" element={<SharedListPage />} />
               <Route path="/game" element={<GamePage />} />

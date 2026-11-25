@@ -99,6 +99,10 @@ test('a friend request lights the bell live', async ({ browser }) => {
   await expect(pa.getByRole('link', { name: 'Notifications (1)' })).toBeVisible({ timeout: 10_000 });
   await pa.goto('/notifications');
   await expect(pa.getByText(`${ub.username} veut être ton ami`)).toBeVisible();
+  // Answered from the notification itself.
+  await pa.getByRole('button', { name: 'Accepter' }).click();
+  await expect(pa.getByRole('button', { name: 'Accepter' })).toHaveCount(0);
+  expect((await (await pa.request.get('/api/friends')).json()).friends.map((f: { id: string }) => f.id)).toContain(ub.id);
   await a.close();
   await b.close();
 });

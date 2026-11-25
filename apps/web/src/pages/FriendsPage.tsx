@@ -109,7 +109,8 @@ export function FriendsPage() {
   const pinFriend = usePinFriend();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [showQr, setShowQr] = useState(false);
+  // Opened from the app icon's "My friend code" shortcut: the QR at once.
+  const [showQr, setShowQr] = useState(() => new URLSearchParams(location.search).has('qr'));
   const [scanning, setScanning] = useState(false);
   const [editingCode, setEditingCode] = useState(false);
 
@@ -241,7 +242,7 @@ export function FriendListsPage() {
                 {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
                 <div className="mt-2 flex items-center gap-3">
                   <Progress done={l.doneCount} total={l.entryCount} />
-                  <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{t.progress(l.doneCount, l.entryCount)}</span>
+                  <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{l.entryCount ? t.progress(l.doneCount, l.entryCount) : t.list_empty_short}</span>
                 </div>
               </Link>
               {l.following !== undefined && <FollowButton listId={l.id} following={l.following} />}

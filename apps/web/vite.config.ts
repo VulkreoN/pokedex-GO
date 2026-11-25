@@ -22,6 +22,13 @@ export default defineConfig({
         background_color: '#f1f5f2',
         display: 'standalone',
         start_url: '/',
+        // A long press on the app's icon (Android, Chrome and Edge on computers; iOS has none).
+        shortcuts: [
+          { name: 'Ma dernière collection', short_name: 'Collection', url: '/lists/last', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Chercher un Pokémon', short_name: 'Chercher', url: '/dex?focus=search', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Raids du moment', short_name: 'Raids', url: '/game', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Mon code ami', short_name: 'Code ami', url: '/friends?qr=1', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+        ],
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

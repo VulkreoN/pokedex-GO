@@ -5,6 +5,8 @@ import { Button, Empty, IconButton, Spinner, TopBar } from '../components/ui.js'
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useDataset } from '../lib/dataset.js';
 import { useDeleteNotification, useMarkRead, useNotifications } from '../lib/social.js';
+import { useMe } from '../lib/auth.js';
+import { useFriendRequests, useRespondFriendRequest } from '../lib/lists.js';
 
 function target(n: AppNotification): string {
   if (n.type === 'raid') return '/game';
@@ -19,6 +21,11 @@ export function NotificationsPage() {
   const t = useT();
   const { lang } = useLang();
   const q = useNotifications();
+  const me = useMe();
+  const requests = useFriendRequests();
+  const respond = useRespondFriendRequest();
+  /** Requests still pending, by who sent them. */
+  const pendingFrom = new Map((requests.data ?? []).filter((r) => r.to.id === me.data?.id).map((r) => [r.from.id, r.id]));
   const dataset = useDataset();
   const read = useMarkRead();
   const clear = useDeleteNotification();
@@ -61,10 +68,10 @@ export function NotificationsPage() {
         {q.isPending && <Spinner />}
         {q.data?.items.length === 0 && <Empty>{t.notifications_empty}</Empty>}
         {!!q.data?.items.length && (
-          <div className="mb-2 flex gap-2">
-            {unread > 0 && <Button tone="ghost" className="flex-1" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
+          <div className="mb-2 flex justify-end gap-2">
+            {unread > 0 && <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
             {q.data.items.some((n) => n.type !== 'account') && (
-              <Button tone="ghost" className="flex-1" onClick={() => { if (confirm(t.notifications_clear_confirm)) clear.mutate(undefined); }}>{t.notifications_clear}</Button>
+              <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => { if (confirm(t.notifications_clear_confirm)) clear.mutate(undefined); }}>{t.notifications_clear}</Button>
             )}
           </div>
         )}
@@ -78,6 +85,13 @@ export function NotificationsPage() {
                   <span className="tnum block text-xs text-ink-3">{when.format(new Date(n.createdAt))}</span>
                 </span>
               </Link>
+              {/* A friend request still waiting: answered from here. */}
+              {n.type === 'friend_request' && n.actor && pendingFrom.get(n.actor.id) && (
+                <div className="mt-1.5 flex gap-2 pl-8">
+                  <Button tone="primary" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'accept' })}>{t.accept}</Button>
+                  <Button tone="ghost" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'decline' })}>{t.decline}</Button>
+                </div>
+              )}
               {n.type !== 'account' && (
                 <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>

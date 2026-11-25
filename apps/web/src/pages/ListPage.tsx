@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
@@ -23,9 +23,24 @@ import { selection } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
 import { useProgressive } from '../lib/progressive.js';
 
+/** The collection opened last on this device, for the app icon's shortcut. */
+export function LastListRedirect() {
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem('lastList');
+  } catch {}
+  return <Navigate to={last ? `/lists/${last}` : '/lists'} replace />;
+}
+
 export function ListPage() {
   const { id } = useParams<{ id: string }>();
   const q = useList(id!);
+  useEffect(() => {
+    if (!q.data) return;
+    try {
+      localStorage.setItem('lastList', id!);
+    } catch {}
+  }, [id, q.data]);
   return <ListView query={q} id={id!} />;
 }
 
@@ -288,7 +303,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
               </IconButton>
             ) : friend && following !== undefined ? (
-              <Button tone="ghost" className="min-h-9 shrink-0 px-3 text-sm" disabled={follow.isPending} onClick={() => follow.mutate(!following)}>
+              <Button tone="ghost" className="min-h-9 shrink-0 bg-white/20 px-3 text-sm text-white hover:bg-white/30" disabled={follow.isPending} onClick={() => follow.mutate(!following)}>
                 {following ? t.unfollow : t.follow}
               </Button>
             ) : null}
@@ -412,7 +427,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                     className={`flex w-full flex-col items-center transition ${picking || owner || (friend && cardMissing(c)) ? 'active:scale-[0.97]' : 'cursor-default'}`}
                   >
                     <div className="relative">
-                      <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone} size={72} />
+                      {/* Pale only next to caught ones ("All"): a page of missing ones stays bright. */}
+                      <Sprite idx={idx} variant={v} shiny={c.shiny} dim={!allDone && view === 'all'} size={72} />
                       {c.shiny && <Sparkle key={String(allDone)} className={`absolute -right-1 top-0 ${allDone ? 'flare text-shiny' : 'text-ink-3'}`} />}
                       {allDone && (
                         <span className="pop absolute -left-1 bottom-0 flex h-5 w-5 items-center justify-center rounded-full bg-go text-white">

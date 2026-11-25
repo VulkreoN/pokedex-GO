@@ -161,7 +161,7 @@ function Raids() {
     </li>
   );
   if (raids.isPending) return <Spinner />;
-  if (raids.isError) return <Empty>{t.live_error}</Empty>;
+  if (raids.isError) return <LiveError retry={() => void raids.refetch()} />;
   return (
     <>
       {now.length > 0 && (
@@ -345,7 +345,7 @@ function Research() {
   const dataset = useDataset();
   const [items, setItems] = useState(true);
   if (q.isPending) return <Spinner />;
-  if (q.isError) return <Empty>{t.live_error}</Empty>;
+  if (q.isError) return <LiveError retry={() => void q.refetch()} />;
   const idx = dataset.data;
   const speciesName = (dex: number | undefined, fallback: string) => (dex && idx ? localized(idx.speciesByDex.get(dex)?.name, lang) || fallback : fallback);
   /** French names for items, candy and Mega Energy; Leek Duck writes English. */
@@ -409,7 +409,7 @@ function Eggs() {
   const t = useT();
   const q = useEggs();
   if (q.isPending) return <Spinner />;
-  if (q.isError) return <Empty>{t.live_error}</Empty>;
+  if (q.isError) return <LiveError retry={() => void q.refetch()} />;
   const groups = new Map<string, NonNullable<typeof q.data>>();
   for (const e of q.data) {
     const k = e.eggType + (e.isAdventureSync ? ` · ${t.adventure_sync}` : '') + (e.isGiftExchange ? ` · ${t.gift_egg}` : '');
@@ -423,5 +423,17 @@ function Eggs() {
         </Section>
       ))}
     </>
+  );
+}
+
+/** Live data that did not come: say so, and let the player try again. */
+function LiveError({ retry }: { retry: () => void }) {
+  const t = useT();
+  return (
+    <Empty>
+      {t.live_error}
+      <br />
+      <Button tone="ghost" className="mt-3" onClick={retry}>{t.retry}</Button>
+    </Empty>
   );
 }

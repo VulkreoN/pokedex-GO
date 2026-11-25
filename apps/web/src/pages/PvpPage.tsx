@@ -101,7 +101,8 @@ function PvpSearch() {
           <input
             type="search"
             inputMode="search"
-            autoFocus
+            // Ready to type on a computer; on a phone the keyboard would cover the page at once.
+            autoFocus={matchMedia('(pointer: fine)').matches}
             placeholder={t.pvp_search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}

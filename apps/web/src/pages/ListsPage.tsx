@@ -213,7 +213,7 @@ function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSumma
         {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
         <div className="mt-2 flex items-center gap-3">
           <Progress done={l.doneCount} total={l.entryCount} />
-          <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{t.progress(l.doneCount, l.entryCount)}</span>
+          <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{l.entryCount ? t.progress(l.doneCount, l.entryCount) : t.list_empty_short}</span>
         </div>
       </Link>
       {pinnable && <PinButton on={!!l.favorite} label={l.favorite ? t.unpin : t.pin} onClick={() => pin.mutate({ id: l.id, on: !l.favorite })} className="absolute right-1.5 top-1.5" />}
