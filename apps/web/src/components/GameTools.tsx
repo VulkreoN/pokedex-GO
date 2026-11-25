@@ -8,7 +8,7 @@ import { Badge, Chip, Empty, Sheet, Spinner } from './ui.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { typeName, useLang, useT } from '../lib/i18n.js';
 import { eventStatus, useEvents, useRaids } from '../lib/live.js';
-import { keyFromImage, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
+import { liveKey, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
 
 /** The tools need both the Pokédex (pictures) and their own data. */
 function useToolData(): { idx: DatasetIndex; tools: ToolsData } | 'loading' | 'error' {
@@ -67,10 +67,21 @@ function PokemonPicker({ tools, onPick, releasedOnly = false }: { tools: ToolsDa
 /** The Pokémon a Leek Duck picture shows, in the tools data ("…/pm354.fMEGA.icon.png" -> Mega Banette). */
 export function useFromImage(tools: ToolsData | undefined) {
   const byKey = useMemo(() => new Map((tools?.pokemon ?? []).map((p) => [p.key, p])), [tools]);
-  return (image: string) => {
-    const key = keyFromImage(image);
+  const known = useKnownPokemon();
+  return (image: string, name = '') => {
+    const key = liveKey(image, name, known);
     return key ? byKey.get(key) ?? byKey.get(key.split('.')[0]!) : undefined;
   };
+}
+
+/** What the Pokédex knows, to read Leek Duck's pictures and names (forms, English names). */
+export function useKnownPokemon() {
+  const idx = useDataset().data;
+  return useMemo(() => {
+    if (!idx) return undefined;
+    const byName = new Map(idx.ds.species.map((s) => [s.name.en.toLowerCase(), s.dex]));
+    return { has: (k: string) => idx.variantByKey.has(k), dexOf: (n: string) => byName.get(n.toLowerCase()) };
+  }, [idx]);
 }
 
 /** Counters in a sheet over the page: seen at once, wherever the Pokémon was picked. */
@@ -122,7 +133,7 @@ export function RocketTab() {
           <div key={i} className="flex items-center gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
             <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
             {slot.map((m) => {
-              const p = fromImage(m.image);
+              const p = fromImage(m.image, m.name);
               return (
                 <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''}`}>
                   <img src={m.image} alt="" width={38} height={38} className="object-contain" />

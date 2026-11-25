@@ -12,8 +12,8 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
-import { keyFromImage, useTools } from '../lib/tools.js';
+import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage, useKnownPokemon } from '../components/GameTools.js';
+import { liveKey, useTools } from '../lib/tools.js';
 import { cpmAt, cpOf, type ToolPokemon } from '@mydexpogo/shared';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { RAID_TIERS, currentRaidBosses, raidSchedule, type CurrentBoss, dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
@@ -134,6 +134,7 @@ function Raids() {
   // A boss opens its best counters.
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
+  const known = useKnownPokemon();
   const [target, setTarget] = useState<ToolPokemon | null>(null);
   const raids = useRaids();
   const events = useEvents();
@@ -146,13 +147,13 @@ function Raids() {
   if (raids.isError && !bosses.length) return <LiveError retry={() => void raids.refetch()} />;
   const name = (n: string, image: string) => liveName(n, image, idx?.speciesByDex, lang);
   /** Types of a boss only an announcement names, from the Pokédex. */
-  const typesOf = (image: string) => {
-    const key = keyFromImage(image);
+  const typesOf = (image: string, n: string) => {
+    const key = liveKey(image, n, known);
     const v = key ? idx?.variantByKey.get(key.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '')) ?? idx?.variantByKey.get(key) : undefined;
     return v ? v.types ?? idx?.speciesByDex.get(v.dex)?.types ?? [] : [];
   };
-  const cpLine = (b: { image: string; combatPower?: CurrentBoss['combatPower'] }) => {
-    const cp = b.combatPower ? { normal: [b.combatPower.normal.min, b.combatPower.normal.max], boosted: [b.combatPower.boosted.min, b.combatPower.boosted.max] } : idx ? raidCatchCp(idx, b.image) : null;
+  const cpLine = (b: { image: string; name: string; combatPower?: CurrentBoss['combatPower'] }) => {
+    const cp = b.combatPower ? { normal: [b.combatPower.normal.min, b.combatPower.normal.max], boosted: [b.combatPower.boosted.min, b.combatPower.boosted.max] } : idx ? raidCatchCp(idx, liveKey(b.image, b.name, known)) : null;
     return cp ? (
       <div className="tnum text-xs text-ink-2">
         PC {cp.normal[0]}–{cp.normal[1]}
@@ -171,7 +172,7 @@ function Raids() {
             <ul className="space-y-2">
               {list.map((b) => (
                 <li key={b.image + b.tier}>
-                  <button type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} aria-label={t.counters_title(name(b.name, b.image))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
+                  <button type="button" onClick={() => setTarget(fromImage(b.image, b.name) ?? null)} aria-label={t.counters_title(name(b.name, b.image))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
                     <img src={b.image} alt="" width={56} height={56} loading="lazy" className="shrink-0 object-contain" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 font-semibold">
@@ -182,7 +183,7 @@ function Raids() {
                       {b.end && <div className="text-xs font-medium text-grass">{formatUntil(b.end, lang)}</div>}
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                      {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />) : typesOf(b.image).map((ty) => <TypeBadge key={ty} type={ty} small />)}
+                      {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />) : typesOf(b.image, b.name).map((ty) => <TypeBadge key={ty} type={ty} small />)}
                       {b.boostedWeather?.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
                     </div>
                   </button>
@@ -220,10 +221,10 @@ function Raids() {
               {!!e.extraData?.raidbattles?.bosses?.length && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {e.extraData.raidbattles.bosses.map((b, i) => (
-                    <button key={`${b.name}-${i}`} type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
+                    <button key={`${b.name}-${i}`} type="button" onClick={() => setTarget(fromImage(b.image, b.name) ?? null)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
                       <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
                       <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{name(b.name, b.image)}</span>
-                      {cpLine({ image: b.image })}
+                      {cpLine({ image: b.image, name: b.name })}
                     </button>
                   ))}
                 </div>
@@ -528,8 +529,8 @@ function EventSpawnsTab() {
  * The CP range of a raid catch, as the game gives it: level 20 (25 when weather boosted), IVs 10 to 15 each.
  * A Mega or Primal boss is caught in its normal form.
  */
-function raidCatchCp(idx: DatasetIndex, image: string): { normal: [number, number]; boosted: [number, number] } | null {
-  const key = keyFromImage(image)?.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '');
+function raidCatchCp(idx: DatasetIndex, liveKeyOf: string | null): { normal: [number, number]; boosted: [number, number] } | null {
+  const key = liveKeyOf?.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '');
   const p = key ? idx.pvpByKey.get(key) ?? idx.pvpByKey.get(key.split('.')[0]!) : undefined;
   const cpm = idx.ds.pvp?.cpm;
   if (!p || !cpm) return null;

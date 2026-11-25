@@ -32,10 +32,42 @@ export const useRockets = () =>
     retry: 1,
   });
 
-/** Variant key from a Leek Duck picture ("…/pm354.fMEGA.icon.png" -> "354.fMEGA"). */
+const REGION_FORM: Record<string, string> = { Alolan: 'ALOLA', Galarian: 'GALARIAN', Hisuian: 'HISUIAN', Paldean: 'PALDEA' };
+type Known = { has: (key: string) => boolean; dexOf?: (englishName: string) => number | undefined };
+
+/**
+ * Our variant key for a Pokémon Leek Duck shows, from its picture and name. Their pictures come three ways:
+ * "pm376.fMEGA.icon.png" (our own naming), "pokemon_icon_386_13.png" (a number for the form: the name tells which,
+ * "Deoxys (Defense)"), or just "Mega Skarmory.png". The name gives the form, the region, Mega / Primal; a key the
+ * Pokédex does not know falls back to the plain species.
+ */
+export function liveKey(image: string, name: string, known?: Known): string | null {
+  const pm = /\/pm(\d+)((?:\.[fc][A-Z0-9_]+)?)\.(?:s\.)?icon\.png/.exec(image);
+  const plainName = name.replace(/^Shadow /i, '');
+  let dex: number | undefined;
+  if (pm) {
+    dex = Number(pm[1]);
+    const full = `${dex}${pm[2]}`;
+    if (!known || known.has(full) || /\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/.test(full)) return full;
+  } else {
+    const old = /pokemon_icon_(\d{3,4})_/.exec(image);
+    dex = old ? Number(old[1]) : known?.dexOf?.(plainName.replace(/^(Mega|Primal) /, '').replace(/^(Alolan|Galarian|Hisuian|Paldean) /, '').replace(/ [XY]$/, '').replace(/\s*\(.*\)$/, '').trim());
+  }
+  if (!dex) return null;
+  const mega = /^Mega (.+?)( [XY])?$/.exec(plainName);
+  if (mega) return `${dex}.fMEGA${mega[2] ? `_${mega[2].trim()}` : ''}`;
+  if (/^Primal /.test(plainName)) return `${dex}.fPRIMAL`;
+  const region = REGION_FORM[plainName.split(' ')[0]!];
+  // "Deoxys (Defense)", "Tornadus (Incarnate Forme)": the form's first word.
+  const word = /\(([A-Za-z]+)/.exec(plainName)?.[1]?.toUpperCase();
+  const form = region ?? (word && word !== 'NORMAL' ? word : null);
+  const key = form ? `${dex}.f${form}` : String(dex);
+  return !known || known.has(key) ? key : String(dex);
+}
+
+/** Variant key from a Leek Duck picture alone ("…/pm354.fMEGA.icon.png" -> "354.fMEGA"). */
 export function keyFromImage(url: string): string | null {
-  const m = /\/pm(\d+)((?:\.[fc][A-Z0-9_]+)?)\.(?:s\.)?icon\.png/.exec(url);
-  return m ? `${Number(m[1])}${m[2] ?? ''}` : null;
+  return liveKey(url, '');
 }
 
 export const local = (t: LocalizedText | undefined, lang: string, fallback = '') => (t ? (lang === 'fr' ? (t.fr ?? t.en) : t.en) : fallback);
