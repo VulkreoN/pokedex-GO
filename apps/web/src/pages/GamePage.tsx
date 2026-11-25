@@ -15,7 +15,8 @@ import { localized, useLang, useT } from '../lib/i18n.js';
 import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
 import { keyFromImage, useTools } from '../lib/tools.js';
 import { cpmAt, cpOf, type ToolPokemon } from '@mydexpogo/shared';
-import { dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
+import { TypeBadge } from '../components/TypeBadge.js';
+import { RAID_TIERS, currentRaidBosses, raidSchedule, type CurrentBoss, dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
 
@@ -137,94 +138,99 @@ function Raids() {
   const raids = useRaids();
   const events = useEvents();
   const dataset = useDataset();
-  const tiers = useMemo(() => {
-    const m = new Map<string, NonNullable<typeof raids.data>>();
-    for (const b of raids.data ?? []) (m.get(b.tier) ?? m.set(b.tier, []).get(b.tier)!).push(b);
-    return [...m.entries()].sort((a, b) => tierRank(a[0]) - tierRank(b[0]));
-  }, [raids.data]);
-  // Each current boss gets the end date of the event announcing it; those events then need no card of their own.
-  const { endOf, now, upcoming } = useMemo(() => {
-    const all = events.data ?? [];
-    const endOf = new Map<string, string>();
-    const used = new Set<string>();
-    for (const b of raids.data ?? []) {
-      const e = raidEventFor(b.name, all);
-      if (e) {
-        endOf.set(b.name, e.end!);
-        used.add(e.eventID);
-      }
-    }
-    const raidEvents = all
-      .filter((e) => /raid/.test(e.eventType) && !isMaxEvent(e) && !used.has(e.eventID))
-      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-    return {
-      endOf,
-      now: raidEvents.filter((e) => eventStatus(e) === 'current'),
-      upcoming: raidEvents.filter((e) => eventStatus(e) === 'upcoming'),
-    };
-  }, [raids.data, events.data]);
-  const eventCard = (e: GameEvent) => (
-    <li key={e.eventID} className="card p-3">
-      <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
-      <div className="mt-1 font-semibold">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</div>
-      {e.extraData?.raidbattles?.bosses && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {/* Not in Leek Duck's boss list yet: the catch CP worked out here, and a tap for the counters. */}
-          {e.extraData.raidbattles.bosses.map((b, i) => {
-            const cp = dataset.data ? raidCatchCp(dataset.data, b.image) : null;
-            return (
-              <button key={`${b.name}-${i}`} type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
-                <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
-                <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{liveName(b.name, b.image, dataset.data?.speciesByDex, lang)}</span>
-                {cp && <span className="tnum text-[10px] text-ink-2">PC {cp.normal[0]}–{cp.normal[1]}<br /><span className="text-ink-3">{t.boosted} {cp.boosted[0]}–{cp.boosted[1]}</span></span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </li>
-  );
+  const idx = dataset.data;
+  // This week's bosses by level (the announcements win over Leek Duck's lagging list), then Raid Hours, then what comes.
+  const bosses = useMemo(() => currentRaidBosses(raids.data ?? [], events.data ?? []), [raids.data, events.data]);
+  const { moments, next } = useMemo(() => raidSchedule(events.data ?? []), [events.data]);
   if (raids.isPending) return <Spinner />;
-  if (raids.isError) return <LiveError retry={() => void raids.refetch()} />;
+  if (raids.isError && !bosses.length) return <LiveError retry={() => void raids.refetch()} />;
+  const name = (n: string, image: string) => liveName(n, image, idx?.speciesByDex, lang);
+  /** Types of a boss only an announcement names, from the Pokédex. */
+  const typesOf = (image: string) => {
+    const key = keyFromImage(image);
+    const v = key ? idx?.variantByKey.get(key.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '')) ?? idx?.variantByKey.get(key) : undefined;
+    return v ? v.types ?? idx?.speciesByDex.get(v.dex)?.types ?? [] : [];
+  };
+  const cpLine = (b: { image: string; combatPower?: CurrentBoss['combatPower'] }) => {
+    const cp = b.combatPower ? { normal: [b.combatPower.normal.min, b.combatPower.normal.max], boosted: [b.combatPower.boosted.min, b.combatPower.boosted.max] } : idx ? raidCatchCp(idx, b.image) : null;
+    return cp ? (
+      <div className="tnum text-xs text-ink-2">
+        PC {cp.normal[0]}–{cp.normal[1]}
+        <span className="text-ink-3"> · {t.boosted} {cp.boosted[0]}–{cp.boosted[1]}</span>
+      </div>
+    ) : null;
+  };
+  const tiers = RAID_TIERS.filter((tier) => bosses.some((b) => b.tier === tier));
   return (
     <>
       <p className="mb-3 text-sm text-ink-2">{t.raids_tap_hint}</p>
-      {now.length > 0 && (
-        <Section title={t.raids_now} count={now.length}>
-          <ul className="space-y-2">{now.map(eventCard)}</ul>
-        </Section>
-      )}
-      {tiers.map(([tier, bosses]) => (
-        <Section key={tier} title={tierLabel(tier, lang)} count={bosses.length}>
+      {tiers.map((tier) => {
+        const list = bosses.filter((b) => b.tier === tier);
+        return (
+          <Section key={tier} title={t.raid_tier[tier]} count={list.length}>
+            <ul className="space-y-2">
+              {list.map((b) => (
+                <li key={b.image + b.tier}>
+                  <button type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} aria-label={t.counters_title(name(b.name, b.image))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
+                    <img src={b.image} alt="" width={56} height={56} loading="lazy" className="shrink-0 object-contain" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        <span className="truncate">{name(b.name, b.image)}</span>
+                        {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
+                      </div>
+                      {cpLine(b)}
+                      {b.end && <div className="text-xs font-medium text-grass">{formatUntil(b.end, lang)}</div>}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />) : typesOf(b.image).map((ty) => <TypeBadge key={ty} type={ty} small />)}
+                      {b.boostedWeather?.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        );
+      })}
+
+      {moments.length > 0 && (
+        <Section title={t.raid_moments} count={moments.length}>
           <ul className="space-y-2">
-            {bosses.map((b) => (
-              <li key={b.name}>
-                <button type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} aria-label={t.counters_title(liveName(b.name, b.image, dataset.data?.speciesByDex, lang))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
-                <img src={b.image} alt="" width={56} height={56} loading="lazy" className="shrink-0 object-contain" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <span className="truncate">{liveName(b.name, b.image, dataset.data?.speciesByDex, lang)}</span>
-                    {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
-                  </div>
-                  <div className="tnum text-xs text-ink-2">
-                    PC {b.combatPower.normal.min}–{b.combatPower.normal.max}
-                    <span className="text-ink-3"> · {t.boosted} {b.combatPower.boosted.min}–{b.combatPower.boosted.max}</span>
-                  </div>
-                  {endOf.has(b.name) && <div className="text-xs font-medium text-grass">{formatUntil(endOf.get(b.name)!, lang)}</div>}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />)}
-                  {b.boostedWeather.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
-                </div>
-                </button>
+            {moments.map((e) => (
+              <li key={e.eventID} className="card flex items-center gap-3 p-3">
+                <span className="text-xl" aria-hidden="true">{e.eventType === 'raid-hour' ? '⏰' : '📅'}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{eventTitle(e.name, idx?.speciesByDex, lang)}</span>
+                  <span className="block text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</span>
+                </span>
+                {eventStatus(e) === 'current' && <Badge tone="grass">{t.raid_moment_now}</Badge>}
               </li>
             ))}
           </ul>
         </Section>
-      ))}
-      <Section title={t.raids_upcoming} count={upcoming.length}>
-        {upcoming.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-        <ul className="space-y-2">{upcoming.map(eventCard)}</ul>
+      )}
+
+      <Section title={t.raids_upcoming} count={next.length}>
+        {next.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
+        <ul className="space-y-2">
+          {next.map((e) => (
+            <li key={e.eventID} className="card p-3">
+              <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
+              <div className="mt-1 font-semibold">{eventTitle(e.name, idx?.speciesByDex, lang)}</div>
+              {!!e.extraData?.raidbattles?.bosses?.length && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {e.extraData.raidbattles.bosses.map((b, i) => (
+                    <button key={`${b.name}-${i}`} type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
+                      <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
+                      <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{name(b.name, b.image)}</span>
+                      {cpLine({ image: b.image })}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       </Section>
       <CountersSheet target={target} onClose={() => setTarget(null)} />
     </>

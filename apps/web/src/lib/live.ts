@@ -239,3 +239,86 @@ export function linkify(text: string): { text: string; url?: string }[] {
 }
 
 export { eventTitle, monsFr } from '@mydexpogo/shared';
+
+/** Raid levels in the order a player reads them; shadows apart from their level. */
+export const RAID_TIERS = ['5', 'shadow5', 'mega', '3', 'shadow3', '1', 'shadow1'] as const;
+export type RaidTier = (typeof RAID_TIERS)[number];
+
+export interface CurrentBoss {
+  tier: RaidTier;
+  name: string;
+  image: string;
+  canBeShiny: boolean;
+  /** From Leek Duck's boss list; worked out by the page when only an announcement names the boss. */
+  combatPower?: RaidBoss['combatPower'];
+  types?: RaidBoss['types'];
+  boostedWeather?: RaidBoss['boostedWeather'];
+  /** When its week ends, from the announcement. */
+  end?: string;
+}
+
+const pictureKey = (image: string) => /\/pm(\d+(?:\.[fc][A-Z0-9_]+)?)\.(?:s\.)?icon\.png/.exec(image)?.[1] ?? image;
+
+/** "5-Star Raids" + "Shadow Darkrai" -> shadow5; "Mega Raids" -> mega. */
+function bossTier(tier: string, name: string): RaidTier | null {
+  if (/mega/i.test(tier)) return 'mega';
+  const n = /(\d)-Star/i.exec(tier)?.[1];
+  if (!n || !['1', '3', '5'].includes(n)) return null;
+  return (/^shadow /i.test(name) ? `shadow${n}` : n) as RaidTier;
+}
+
+/** "Deoxys … in 5-star Raid Battles" -> 5; "… in Shadow Raids" -> shadow5; "… in Mega Raids" -> mega. */
+function eventTier(e: GameEvent): RaidTier | null {
+  if (/in Mega Raids$/i.test(e.name)) return 'mega';
+  if (/in Shadow Raids$/i.test(e.name)) return 'shadow5';
+  const n = /in (\d)-star Raid Battles$/i.exec(e.name)?.[1];
+  return n === '5' || n === '3' || n === '1' ? (n as RaidTier) : null;
+}
+
+/** A raid-battle announcement with its dates, under way now. Leek Duck clears the dates of the ones that are over. */
+const runningNow = (e: GameEvent, now: number) => e.eventType === 'raid-battles' && !!e.start && !!e.end && eventStatus(e, now) === 'current';
+
+/**
+ * The bosses in raids right now, by level. Leek Duck's boss list lags behind on change days, its announcements do
+ * not: where a level has a dated announcement under way, its bosses are the ones (left-overs of last week go), with
+ * the list's CP and types when it has them. Levels without announcements (1 and 3 stars) follow the list.
+ */
+export function currentRaidBosses(raids: RaidBoss[], events: GameEvent[], now = Date.now()): CurrentBoss[] {
+  const running = events.filter((e) => runningNow(e, now) && eventTier(e));
+  const announced = new Set(running.map((e) => eventTier(e)!));
+  const listed = new Map(raids.map((b) => [pictureKey(b.image), b]));
+  const out: CurrentBoss[] = [];
+  const seen = new Set<string>();
+  for (const e of running) {
+    const tier = eventTier(e)!;
+    for (const b of e.extraData?.raidbattles?.bosses ?? []) {
+      const key = `${tier}|${pictureKey(b.image)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const fromList = listed.get(pictureKey(b.image));
+      const name = tier === 'shadow5' && !/^shadow /i.test(b.name) ? `Shadow ${b.name}` : b.name;
+      out.push({ tier, name, image: b.image, canBeShiny: !!(b.canBeShiny ?? fromList?.canBeShiny), combatPower: fromList?.combatPower, types: fromList?.types, boostedWeather: fromList?.boostedWeather, end: e.end! });
+    }
+  }
+  for (const b of raids) {
+    const tier = bossTier(b.tier, b.name);
+    if (!tier) continue;
+    const key = `${tier}|${pictureKey(b.image)}`;
+    if (seen.has(key)) continue;
+    // Its level has this week's announcement and it is not in it: last week's boss, gone from the game.
+    if (announced.has(tier)) continue;
+    seen.add(key);
+    out.push({ tier, name: b.name, image: b.image, canBeShiny: !!b.canBeShiny, combatPower: b.combatPower, types: b.types, boostedWeather: b.boostedWeather });
+  }
+  return out.sort((a, b) => RAID_TIERS.indexOf(a.tier) - RAID_TIERS.indexOf(b.tier));
+}
+
+/** Raid Hours and Raid Days now or within two weeks; raid-battle announcements still to come. */
+export function raidSchedule(events: GameEvent[], now = Date.now()) {
+  const soon = now + 14 * 86_400_000;
+  const dated = events.filter((e) => e.start && e.end && eventStatus(e, now) !== 'past').sort((a, b) => a.start!.localeCompare(b.start!));
+  return {
+    moments: dated.filter((e) => (e.eventType === 'raid-hour' || e.eventType === 'raid-day') && new Date(e.start!).getTime() <= soon),
+    next: dated.filter((e) => e.eventType === 'raid-battles' && eventStatus(e, now) === 'upcoming'),
+  };
+}
