@@ -6,7 +6,7 @@ import { ListHistory } from '../components/ListHistory.js';
 import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, TextField, TopBar, useRolling } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -86,6 +86,20 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const [imageLayout, setImageLayout] = useState<ImageLayout>('preview');
   const [sharing, setSharing] = useState(false);
   const [exportMissing, setExportMissing] = useState(true);
+  // The game search and its QR code at the end of the picture / PDF: on unless the player turned it off (kept).
+  const [withSearch, setWithSearchState] = useState(() => {
+    try {
+      return localStorage.getItem('exportWithSearch') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const setWithSearch = (on: boolean) => {
+    setWithSearchState(on);
+    try {
+      localStorage.setItem('exportWithSearch', on ? '1' : '0');
+    } catch {}
+  };
   const [view, setView] = useState<View>('missing');
   const [query, setQuery] = useState('');
   const [strings, setStrings] = useState(false);
@@ -262,9 +276,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const exportAs = async (kind: 'save' | 'copy' | 'share' | 'pdf') => {
     setExporting(kind);
     try {
-      if (kind === 'pdf') await exportListPdf(idx, list, lang, t, { onlyMissing: exportMissing, search });
+      if (kind === 'pdf') await exportListPdf(idx, list, lang, t, { onlyMissing: exportMissing, search: withSearch ? search : null });
       else {
-        const blobs = await renderListImages(idx, list, lang, t, { onlyMissing: exportMissing, search, layout: imageLayout });
+        const blobs = await renderListImages(idx, list, lang, t, { onlyMissing: exportMissing, search: withSearch ? search : null, layout: imageLayout });
         const names = blobs.map((_, i) => `${fileSlug(list.name)}${blobs.length > 1 ? `-${i + 1}` : ''}.png`);
         if (kind === 'save') {
           blobs.forEach((b, i) => downloadBlob(b, names[i]!));
@@ -590,7 +604,15 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
               <span className="block text-xs text-ink-3">{t.export_pdf_hint}</span>
             </span>
           </button>
-          {search && <p className="text-xs text-ink-3">{t.export_with_search}</p>}
+          {search && (
+            <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
+                <span className="block text-xs text-ink-3">{t.export_with_search}</span>
+              </span>
+              <SwitchThumb on={withSearch} />
+            </button>
+          )}
         </div>
       </Sheet>
 

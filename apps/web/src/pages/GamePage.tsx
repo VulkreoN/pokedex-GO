@@ -5,7 +5,7 @@ import { BottleCaps } from '../components/BottleCaps.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
-import { useDataset } from '../lib/dataset.js';
+import { useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { useTheme } from '../lib/theme.js';
 import { Button, CopyButton, TextField } from '../components/ui.js';
 import { Link, useSearchParams } from 'react-router';
@@ -13,8 +13,8 @@ import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
-import { useTools } from '../lib/tools.js';
-import type { ToolPokemon } from '@mydexpogo/shared';
+import { keyFromImage, useTools } from '../lib/tools.js';
+import { cpmAt, cpOf, type ToolPokemon } from '@mydexpogo/shared';
 import { dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
@@ -169,7 +169,17 @@ function Raids() {
       <div className="mt-1 font-semibold">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</div>
       {e.extraData?.raidbattles?.bosses && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {e.extraData.raidbattles.bosses.map((b, i) => <Mon key={`${b.name}-${i}`} p={b} />)}
+          {/* Not in Leek Duck's boss list yet: the catch CP worked out here, and a tap for the counters. */}
+          {e.extraData.raidbattles.bosses.map((b, i) => {
+            const cp = dataset.data ? raidCatchCp(dataset.data, b.image) : null;
+            return (
+              <button key={`${b.name}-${i}`} type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
+                <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
+                <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{liveName(b.name, b.image, dataset.data?.speciesByDex, lang)}</span>
+                {cp && <span className="tnum text-[10px] text-ink-2">PC {cp.normal[0]}–{cp.normal[1]}<br /><span className="text-ink-3">{t.boosted} {cp.boosted[0]}–{cp.boosted[1]}</span></span>}
+              </button>
+            );
+          })}
         </div>
       )}
     </li>
@@ -506,4 +516,17 @@ function EventSpawnsTab() {
       )}
     </>
   );
+}
+
+/**
+ * The CP range of a raid catch, as the game gives it: level 20 (25 when weather boosted), IVs 10 to 15 each.
+ * A Mega or Primal boss is caught in its normal form.
+ */
+function raidCatchCp(idx: DatasetIndex, image: string): { normal: [number, number]; boosted: [number, number] } | null {
+  const key = keyFromImage(image)?.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '');
+  const p = key ? idx.pvpByKey.get(key) ?? idx.pvpByKey.get(key.split('.')[0]!) : undefined;
+  const cpm = idx.ds.pvp?.cpm;
+  if (!p || !cpm) return null;
+  const at = (level: number, iv: number) => cpOf(p, { atk: iv, def: iv, sta: iv }, cpmAt(cpm, level));
+  return { normal: [at(20, 10), at(20, 15)], boosted: [at(25, 10), at(25, 15)] };
 }
