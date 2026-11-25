@@ -355,3 +355,23 @@ test('the welcome tour: game language, a first list, friends, notifications; not
   await page.getByRole('link', { name: /Revoir la visite guidée/ }).click();
   await expect(page).toHaveURL(/\/welcome$/);
 });
+
+test('a message from the admins can be deleted from the notifications like any other', async ({ browser }) => {
+  const adminCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.3.1' } });
+  const playerCtx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.8.3.2' } });
+  const admin = await adminCtx.newPage();
+  const player = await playerCtx.newPage();
+  await adminLogin(admin.request);
+  const target = await apiRegister(player.request, uniq('reader'));
+  const text = `Bonjour ${uniq('m')}`;
+  expect((await admin.request.post(`/api/admin/users/${target.id}/message`, { data: { message: text } })).ok()).toBe(true);
+  await player.goto('/notifications');
+  const item = player.locator('li', { hasText: text });
+  await expect(item).toBeVisible();
+  await item.getByRole('button', { name: 'Effacer cette notification' }).click();
+  await expect(item).toHaveCount(0);
+  await player.reload();
+  await expect(player.getByText(text)).toHaveCount(0);
+  await adminCtx.close();
+  await playerCtx.close();
+});

@@ -79,15 +79,13 @@ export function NotificationsPage() {
         {!!q.data?.items.length && (
           <div className="mb-2 flex justify-end gap-2">
             {unread > 0 && <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
-            {q.data.items.some((n) => n.type !== 'account') && (
-              <HoldButton small ms={800} className="whitespace-nowrap" onConfirm={() => clear.mutate(undefined)}>{t.notifications_clear}</HoldButton>
-            )}
+            <HoldButton small ms={800} className="whitespace-nowrap" onConfirm={() => clear.mutate(undefined)}>{t.notifications_clear}</HoldButton>
           </div>
         )}
         <ul className="space-y-2">
           {q.data?.items.map((n) => (
             <li key={n.id} className="relative">
-              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 ${n.type !== 'account' ? 'pr-12' : ''} ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
+              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 pr-12 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold">{text(n)}</span>
@@ -101,11 +99,9 @@ export function NotificationsPage() {
                   <Button tone="ghost" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'decline' })}>{t.decline}</Button>
                 </div>
               )}
-              {n.type !== 'account' && (
-                <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                </IconButton>
-              )}
+              <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </IconButton>
             </li>
           ))}
         </ul>

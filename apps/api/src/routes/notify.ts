@@ -42,15 +42,15 @@ export const notificationRoutes = new Hono<AuthEnv>()
     return c.json({ items, unread: unread?.n ?? 0 });
   })
   /**
-   * Deletes one notification, or all of them without an id. Changes made to the account by an admin (role,
-   * suspension...) stay: the player keeps a record of them.
+   * Deletes one notification, or all of them without an id; what admins did to the account included (the admin
+   * journal keeps it).
    */
   .delete('/:id?', async (c) => {
     const me = c.get('user');
     const id = c.req.param('id');
     await db
       .delete(schema.notifications)
-      .where(and(eq(schema.notifications.userId, me.id), sql`${schema.notifications.type} <> 'account'`, id ? eq(schema.notifications.id, id) : sql`true`));
+      .where(and(eq(schema.notifications.userId, me.id), id ? eq(schema.notifications.id, id) : sql`true`));
     hub.emit([me.id], { type: 'notification' });
     return c.json({ ok: true });
   })

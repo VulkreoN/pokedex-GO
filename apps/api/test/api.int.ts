@@ -790,7 +790,7 @@ describe('admin panel', () => {
     expect(items[0].actor.username).toBe(admin.user.username);
   });
 
-  it('clears notifications one by one or all at once, but keeps the ones about the account', async () => {
+  it('clears notifications one by one or all at once, the ones about the account too', async () => {
     const u = await register(name('clear'));
     const f = await register(name('clearf'));
     await f.post('/friends/requests', { friendCode: u.user.friendCode });
@@ -800,12 +800,15 @@ describe('admin panel', () => {
     expect(request).toBeTruthy();
     expect((await u.del(`/notifications/${request.id}`)).status).toBe(200);
     expect((await u.get('/notifications')).body.items.map((n: any) => n.id)).not.toContain(request.id);
-    // Someone else's notification cannot be deleted.
+    // Someone else's notification cannot be deleted; one's own about the account can.
     const account = before.find((n: any) => n.type === 'account');
     await f.del(`/notifications/${account.id}`);
+    expect((await u.get('/notifications')).body.items.map((n: any) => n.id)).toContain(account.id);
     await u.del(`/notifications/${account.id}`);
+    expect((await u.get('/notifications')).body.items.map((n: any) => n.id)).not.toContain(account.id);
+    await admin.patch(`/users/${u.user.id}/role`, { role: 'user' });
     expect((await u.del('/notifications')).status).toBe(200);
-    expect((await u.get('/notifications')).body.items.map((n: any) => n.type)).toEqual(['account']);
+    expect((await u.get('/notifications')).body.items).toEqual([]);
   });
 
   it('closes sign-ups, opens them by invitation, caps them per day', async () => {
