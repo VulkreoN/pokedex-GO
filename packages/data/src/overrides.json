@@ -442,7 +442,7 @@
     "774.fMETEOR": "774.fBLUE"
   },
   "upcoming": {
-    "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax. artwork: PokeAPI official artwork ids of each form (normal, and shiny unless listed in noShinyArtwork).",
+    "_note": "Megas and Gigantamax of the main games not in Pokémon GO yet: added as not released when the game master does not have them. Legends Z-A (2025) and its Mega Dimension DLC; Sword / Shield Gigantamax. artwork: PokeAPI official artwork ids of each form (normal and shiny; noShinyArtwork: no official shiny artwork, the shiny HOME render is used).",
     "megas": [
       "36.fMEGA",
       "154.fMEGA",

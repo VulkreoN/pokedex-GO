@@ -23,7 +23,7 @@ import {
   type Variant,
   type VariantKind,
 } from '@mydexpogo/shared';
-import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, SOURCES, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
+import { ASSET_BASE, BACKGROUND_IMAGE_BASE, MEGA_BASE, POKEAPI_ARTWORK, POKEAPI_HOME, SOURCES, fetchJson, fetchPictureList, type FetchOptions } from './sources.js';
 import { gameFormLabel, humanizeToken, localizeHumanized, looksLikeCostume } from './labels.js';
 import { updateEventArchive } from './events.js';
 import { extractPvp } from './pvp.js';
@@ -414,7 +414,8 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (!m || !sp || variants.some((v) => v.key === key)) continue;
     const art = upcoming?.artwork?.[key];
     const g: AssetGroup = { dex: sp.dex, form: m[2]!, costume: null, female: false, normal: `${POKEAPI_ARTWORK}${art ?? sp.dex}.png` };
-    if (art && !upcoming?.noShinyArtwork?.includes(key)) g.shiny = `${POKEAPI_ARTWORK}shiny/${art}.png`;
+    // A few forms have no official shiny artwork yet: their shiny HOME render instead.
+    if (art) g.shiny = upcoming?.noShinyArtwork?.includes(key) ? `${POKEAPI_HOME}shiny/${art}.png` : `${POKEAPI_ARTWORK}shiny/${art}.png`;
     push(sp, g, m[2]!, null, null);
     variants[variants.length - 1]!.datamined = true;
   }

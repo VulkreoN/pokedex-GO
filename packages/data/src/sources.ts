@@ -18,6 +18,8 @@ export const ASSET_BASE = 'https://trade.pokemongopro.com/assets/pokemons/';
 export const MEGA_BASE = 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Images/Pokemon%20-%20256x256/Addressable%20Assets/';
 export const BACKGROUND_IMAGE_BASE = 'https://trade.pokemongopro.com/assets/backgrounds/';
 export const POKEAPI_ARTWORK = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+/** PokeAPI's Pokémon HOME renders, for the few forms whose official shiny artwork is missing. */
+export const POKEAPI_HOME = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/';
 
 export interface FetchOptions {
   cacheDir: string;

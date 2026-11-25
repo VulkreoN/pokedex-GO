@@ -45,4 +45,4 @@ export function Sparkle({ className = '' }: { className?: string }) {
 }
 
 /** A main-series artwork rather than a game picture (no transparent margin around the Pokémon). */
-export const isArtwork = (url: string) => url.includes('/official-artwork/');
+export const isArtwork = (url: string) => url.includes('/official-artwork/') || url.includes('/other/home/');
