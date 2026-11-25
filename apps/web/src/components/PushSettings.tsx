@@ -7,7 +7,7 @@ import { Button } from './ui.js';
 import { useToast } from './toast.js';
 
 /** Account changes are not here: they always reach the player. Staff alerts only for managers and admins. */
-const KINDS: Exclude<NotificationType, 'account'>[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'admin'];
+const KINDS: Exclude<NotificationType, 'account'>[] = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'spawn', 'quest', 'announcement', 'admin'];
 
 export function PushSettings() {
   const t = useT();

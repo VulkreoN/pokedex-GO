@@ -9,6 +9,7 @@ import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
 import { notify } from './service.js';
 import { tracked } from '../lib/health.js';
+import { runHuntAlerts } from './huntAlerts.js';
 
 const RAIDS_URL = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/raids.json';
 const EVERY_MS = 3 * 3600_000;
@@ -94,9 +95,11 @@ async function alertOnce(): Promise<number> {
     .select()
     .from(schema.raidAlerts)
     .where(and(inArray(schema.raidAlerts.userId, users), gt(schema.raidAlerts.alertedAt, new Date(Date.now() - SAME_BOSS_MS))));
-  const alerted = new Set(recent.map((r) => `${r.userId}|${r.bossId}`));
+  // Event and quest alerts share the table ("spawn|…", "quest|…"): they have their own daily limit.
+  const raidRows = recent.filter((r) => !/^(spawn|quest)\|/.test(r.bossId));
+  const alerted = new Set(raidRows.map((r) => `${r.userId}|${r.bossId}`));
   const lastAlert = new Map<string, number>();
-  for (const r of recent) lastAlert.set(r.userId, Math.max(lastAlert.get(r.userId) ?? 0, r.alertedAt.getTime()));
+  for (const r of raidRows) lastAlert.set(r.userId, Math.max(lastAlert.get(r.userId) ?? 0, r.alertedAt.getTime()));
 
   let sent = 0;
   for (const [userId, found] of matchAlerts(bosses, missing, alerted)) {
@@ -126,10 +129,13 @@ async function alertOnce(): Promise<number> {
 }
 
 let timer: NodeJS.Timeout | null = null;
-/** First check a few minutes after start (the dataset is loaded by then), then every three hours. */
+/** First check a few minutes after start (the dataset is loaded by then), then every three hours; events and quests too. */
 export function startRaidAlerts() {
   if (timer) return;
-  const tick = () => void runRaidAlerts().then((n) => n && console.log(`raid alerts: ${n} sent`)).catch((e) => console.error('raid alerts', e));
+  const tick = () => {
+    void runRaidAlerts().then((n) => n && console.log(`raid alerts: ${n} sent`)).catch((e) => console.error('raid alerts', e));
+    void runHuntAlerts().then((n) => n && console.log(`event / quest alerts: ${n} sent`)).catch((e) => console.error('hunt alerts', e));
+  };
   timer = setTimeout(function loop() {
     tick();
     timer = setTimeout(loop, EVERY_MS);

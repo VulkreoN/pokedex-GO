@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'announcement', 'account', 'admin'] as const;
+export const NOTIFICATION_TYPES = ['friend_request', 'friend_accepted', 'offer', 'offer_caught', 'raid', 'spawn', 'quest', 'announcement', 'account', 'admin'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const users = pgTable(

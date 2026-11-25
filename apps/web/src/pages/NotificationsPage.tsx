@@ -10,6 +10,8 @@ import { useFriendRequests, useRespondFriendRequest } from '../lib/lists.js';
 
 function target(n: AppNotification): string {
   if (n.type === 'raid') return '/game';
+  if (n.type === 'spawn') return '/game?tab=spawns';
+  if (n.type === 'quest') return '/game?tab=research';
   if (n.type === 'account') return '/me';
   if (n.type === 'admin') return n.data.kind === 'report' ? '/review' : '/admin?tab=health';
   if ((n.type === 'offer' || n.type === 'offer_caught') && n.list) return `/lists/${n.list.id}`;
@@ -43,6 +45,11 @@ export function NotificationsPage() {
     if (n.type === 'friend_request') return t.notif_friend_request(who);
     if (n.type === 'friend_accepted') return t.notif_friend_accepted(who);
     if (n.type === 'raid') return t.notif_raid(raidNames(n));
+    if (n.type === 'spawn' || n.type === 'quest') {
+      const names = (n.data.names as string[] | undefined) ?? [];
+      const first = (n.data.mons as { where: string; from: string | null }[] | undefined)?.[0];
+      return n.type === 'spawn' ? t.notif_spawn(names, first?.where ?? '', first?.from ?? null) : t.notif_quest(names, first?.where ?? '');
+    }
     if (n.type === 'admin') return n.data.kind === 'report' ? t.notif_admin_report(String(n.data.by ?? '?'), String(n.data.variant ?? '')) : t.notif_admin_data(String(n.data.error ?? ''));
     if (n.type === 'account') return t.notif_account(String(n.data.change), String(n.data.role ?? n.data.value ?? ''));
     if (n.type === 'offer_caught') return t.notif_offer_caught(who, Number(n.data.count ?? 1), n.list?.name ?? '');
