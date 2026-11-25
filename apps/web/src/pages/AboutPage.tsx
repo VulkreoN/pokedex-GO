@@ -2,6 +2,7 @@ import { Button, TopBar } from '../components/ui.js';
 import { setXEmbeds, useXEmbeds } from '../components/XEmbed.js';
 import { relativeTime, useDataStatus } from '../lib/admin.js';
 import { useDataset } from '../lib/dataset.js';
+import { Changelog } from '../components/WhatsNew.js';
 import { useLang, useT } from '../lib/i18n.js';
 
 const DISCORD = 'https://discord.gg/9P6XF7SPge';
@@ -58,6 +59,11 @@ export function AboutPage() {
               </div>
             )}
           </dl>
+        </section>
+
+        <section id="news" className="card scroll-mt-20 p-4">
+          <h2 className="mb-3 text-base font-bold">{t.whats_new_history}</h2>
+          <Changelog />
         </section>
 
         <section className="card p-4 text-sm text-ink-2">

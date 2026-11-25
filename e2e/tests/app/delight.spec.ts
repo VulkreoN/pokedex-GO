@@ -136,3 +136,17 @@ test("X's widget waits for the player's yes, kept on the device and withdrawn fr
   await page.getByRole('button', { name: 'Ne plus les charger' }).click();
   await expect(page.getByText('Les posts X ne se chargent pas tant que tu ne le demandes pas.')).toBeVisible();
 });
+
+test("what's new after an update: a banner on the Pokédex, closed for good, the whole history in About", async ({ page }) => {
+  await apiRegister(page.request);
+  await page.goto('/dex');
+  const banner = page.getByRole('complementary', { name: 'Quoi de neuf' });
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Compris' }).click();
+  await expect(banner).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole('searchbox').first()).toBeVisible();
+  await expect(banner).toBeHidden();
+  await page.goto('/about#news');
+  await expect(page.getByRole('heading', { name: 'Nouveautés' })).toBeVisible();
+});

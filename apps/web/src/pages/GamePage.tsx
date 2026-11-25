@@ -12,7 +12,7 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersSheet, CountersTool, EvolutionsTool, LeagueTool, RocketTab, useFromImage, useKnownPokemon } from '../components/GameTools.js';
+import { BuddyTool, CostsTool, CountersSheet, CountersTool, EVENT_MARK, EventLegend, EvolutionsTool, LeagueTool, RocketTab, useEventMarks, useEventSpawns, useFromImage, useKnownPokemon, type EventSpawns } from '../components/GameTools.js';
 import { liveKey, useTools } from '../lib/tools.js';
 import { cpmAt, cpOf, type ToolPokemon } from '@mydexpogo/shared';
 import { TypeBadge } from '../components/TypeBadge.js';
@@ -86,7 +86,8 @@ function Tools() {
 }
 
 /** Small Pokémon picture from Leek Duck, linked to our Pokédex entry when the file name tells us the species. */
-function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; caption?: boolean }) {
+/** A Pokémon from Leek Duck; `event` names the event that brings it, shown as a blue wash. */
+function Mon({ p, size = 56, caption = true, event }: { p: LivePokemon; size?: number; caption?: boolean; event?: string }) {
   const { lang } = useLang();
   const idx = useDataset().data;
   const dex = dexFromImage(p.image);
@@ -99,7 +100,12 @@ function Mon({ p, size = 56, caption = true }: { p: LivePokemon; size?: number; 
       {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{liveName(p.name, p.image, idx?.speciesByDex, lang)}</span>}
     </span>
   );
-  return dex ? <Link to={`/dex/${dex}`} className="rounded-lg hover:bg-paper-2">{body}</Link> : body;
+  const look = `rounded-lg ${event ? EVENT_MARK : ''}`;
+  return dex ? (
+    <Link to={`/dex/${dex}`} title={event} className={`${look} hover:bg-paper-2`}>{body}</Link>
+  ) : (
+    <span title={event} className={look}>{body}</span>
+  );
 }
 
 function Section({ title, count, children }: { title: ReactNode; count?: number; children: ReactNode }) {
@@ -135,6 +141,7 @@ function Raids() {
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
   const known = useKnownPokemon();
+  const eventOf = useEventMarks('raids');
   const [target, setTarget] = useState<ToolPokemon | null>(null);
   const raids = useRaids();
   const events = useEvents();
@@ -165,6 +172,7 @@ function Raids() {
   return (
     <>
       <p className="mb-3 text-sm text-ink-2">{t.raids_tap_hint}</p>
+      <EventLegend marks={bosses.map((b) => eventOf(b.image, b.name))} />
       {tiers.map((tier) => {
         const list = bosses.filter((b) => b.tier === tier);
         return (
@@ -172,7 +180,7 @@ function Raids() {
             <ul className="space-y-2">
               {list.map((b) => (
                 <li key={b.image + b.tier}>
-                  <button type="button" onClick={() => setTarget(fromImage(b.image, b.name) ?? null)} aria-label={t.counters_title(name(b.name, b.image))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
+                  <button type="button" onClick={() => setTarget(fromImage(b.image, b.name) ?? null)} aria-label={t.counters_title(name(b.name, b.image))} className={`card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99] ${eventOf(b.image, b.name) ? EVENT_MARK : ''}`}>
                     <img src={b.image} alt="" width={56} height={56} loading="lazy" className="shrink-0 object-contain" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 font-semibold">
@@ -181,6 +189,7 @@ function Raids() {
                       </div>
                       {cpLine(b)}
                       {b.end && <div className="text-xs font-medium text-grass">{formatUntil(b.end, lang)}</div>}
+                      {eventOf(b.image, b.name) && <div className="truncate text-xs font-semibold text-sky">{eventOf(b.image, b.name)}</div>}
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
                       {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />) : typesOf(b.image, b.name).map((ty) => <TypeBadge key={ty} type={ty} small />)}
@@ -379,6 +388,7 @@ function Research() {
   const q = useResearch();
   const dataset = useDataset();
   const [items, setItems] = useState(true);
+  const eventOf = useEventMarks('research');
   if (q.isPending) return <Spinner />;
   if (q.isError) return <LiveError retry={() => void q.refetch()} />;
   const idx = dataset.data;
@@ -401,7 +411,7 @@ function Research() {
             <div className="mt-2 flex flex-wrap items-start gap-2">
               {task.rewards.map((r, i) =>
                 r.kind === 'encounter' ? (
-                  <Mon key={`${r.name}-${i}`} p={r} size={48} />
+                  <Mon key={`${r.name}-${i}`} p={r} size={48} event={eventOf(r.image, r.name)} />
                 ) : items ? (
                   <span key={`${r.name}-${i}`} className="flex flex-col items-center text-center">
                     <span className="relative">
@@ -423,6 +433,7 @@ function Research() {
   const hasItems = q.data.some((c) => c.tasks.some((task) => task.rewards.some((r) => r.kind !== 'encounter')));
   return (
     <>
+      <EventLegend marks={q.data.flatMap((c) => c.tasks.flatMap((task) => task.rewards.map((r) => (r.kind === 'encounter' ? eventOf(r.image, r.name) : undefined))))} />
       {hasItems && (
         <div className="mb-3 flex gap-2">
           <Chip active={items} onClick={() => setItems((v) => !v)}>{t.research_items}</Chip>
@@ -443,6 +454,7 @@ function Research() {
 function Eggs() {
   const t = useT();
   const q = useEggs();
+  const eventOf = useEventMarks('eggs');
   if (q.isPending) return <Spinner />;
   if (q.isError) return <LiveError retry={() => void q.refetch()} />;
   const groups = new Map<string, NonNullable<typeof q.data>>();
@@ -452,9 +464,10 @@ function Eggs() {
   }
   return (
     <>
+      <EventLegend marks={q.data.map((m) => eventOf(m.image, m.name))} />
       {[...groups.entries()].map(([type, mons]) => (
         <Section key={type} title={type} count={mons.length}>
-          <div className="flex flex-wrap gap-2">{mons.map((m, i) => <Mon key={`${m.name}-${i}`} p={m} />)}</div>
+          <div className="flex flex-wrap gap-2">{mons.map((m, i) => <Mon key={`${m.name}-${i}`} p={m} event={eventOf(m.image, m.name)} />)}</div>
         </Section>
       ))}
     </>
@@ -473,25 +486,36 @@ function LiveError({ retry }: { retry: () => void }) {
   );
 }
 
-interface EventSpawns { eventID: string; name: string; link: string; image: string; start: string | null; end: string | null; featured: LivePokemon[]; spawns: LivePokemon[] }
-
-/** What pops in the wild during the current events, and the ones starting soon (Leek Duck's event pages). */
+/**
+ * What pops in the wild during the events (Leek Duck's event pages): all of it now in one grid, each Pokémon once
+ * with its event; or event by event, with the ones starting soon.
+ */
 function EventSpawnsTab() {
   const t = useT();
   const { lang } = useLang();
   const dataset = useDataset();
-  const q = useQuery({ queryKey: ['live', 'event-spawns'], queryFn: () => api<{ events: EventSpawns[] }>('/game/event-spawns').then((r) => r.events), staleTime: 10 * 60_000 });
+  const q = useEventSpawns();
+  const [view, setView] = useState<'all' | 'events'>('all');
   if (q.isPending) return <Spinner />;
   if (q.isError) return <LiveError retry={() => void q.refetch()} />;
+  const title = (e: EventSpawns) => eventTitle(e.name, dataset.data?.speciesByDex, lang);
   const date = (iso: string | null) => (iso ? new Date(iso).toLocaleString(lang, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
-  const now = q.data.filter((e) => eventStatus(e) === 'current');
-  const soon = q.data.filter((e) => eventStatus(e) === 'upcoming');
+  const wild = q.data.filter((e) => e.featured.length || e.spawns.length);
+  const now = wild.filter((e) => eventStatus(e) === 'current');
+  const soon = wild.filter((e) => eventStatus(e) === 'upcoming');
+  // Everything that pops now, each Pokémon once: featured first, then by Pokédex number.
+  const all = new Map<string, { m: LivePokemon; event: string; featured: boolean }>();
+  for (const e of now) {
+    for (const m of e.featured) if (!all.has(m.image)) all.set(m.image, { m, event: title(e), featured: true });
+    for (const m of e.spawns) if (!all.has(m.image)) all.set(m.image, { m, event: title(e), featured: false });
+  }
+  const grid = [...all.values()].sort((a, b) => Number(b.featured) - Number(a.featured) || (dexFromImage(a.m.image) ?? 9999) - (dexFromImage(b.m.image) ?? 9999));
   const card = (e: EventSpawns) => (
     <li key={e.eventID} className="card overflow-hidden">
       <a href={e.link} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3">
         {e.image && <img src={e.image} alt="" width={64} height={36} loading="lazy" className="h-9 w-16 shrink-0 rounded-md object-cover" />}
         <span className="min-w-0 flex-1">
-          <span className="block font-bold leading-tight">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</span>
+          <span className="block font-bold leading-tight">{title(e)}</span>
           <span className="block text-xs text-ink-3">{e.start && `${date(e.start)} → `}{date(e.end)}</span>
         </span>
       </a>
@@ -512,14 +536,34 @@ function EventSpawnsTab() {
   return (
     <>
       <p className="mb-3 text-sm text-ink-2">{t.spawns_help}</p>
-      <Section title={t.spawns_now} count={now.length}>
-        {now.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-        <ul className="space-y-3">{now.map(card)}</ul>
-      </Section>
-      {soon.length > 0 && (
-        <Section title={t.spawns_soon} count={soon.length}>
-          <ul className="space-y-3">{soon.map(card)}</ul>
+      <div className="mb-3 flex gap-2">
+        <Chip active={view === 'all'} onClick={() => setView('all')}>{t.spawns_view_all}</Chip>
+        <Chip active={view === 'events'} onClick={() => setView('events')}>{t.spawns_view_events}</Chip>
+      </div>
+      {view === 'all' ? (
+        <Section title={t.spawns_now} count={grid.length}>
+          {grid.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
+          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            {grid.map(({ m, event, featured }) => (
+              <li key={m.image} className="flex flex-col items-center">
+                <Mon p={m} />
+                <span className={`mt-0.5 line-clamp-1 w-[4.5rem] text-center text-[10px] leading-tight ${featured ? 'font-semibold text-sky' : 'text-ink-3'}`}>{featured ? `★ ${event}` : event}</span>
+              </li>
+            ))}
+          </ul>
         </Section>
+      ) : (
+        <>
+          <Section title={t.spawns_now} count={now.length}>
+            {now.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
+            <ul className="space-y-3">{now.map(card)}</ul>
+          </Section>
+          {soon.length > 0 && (
+            <Section title={t.spawns_soon} count={soon.length}>
+              <ul className="space-y-3">{soon.map(card)}</ul>
+            </Section>
+          )}
+        </>
       )}
     </>
   );

@@ -49,6 +49,7 @@ export function NotificationsPage() {
       const names = (n.data.names as string[] | undefined) ?? [];
       const first = (n.data.mons as { where: string; whereFr?: string | null; from: string | null }[] | undefined)?.[0];
       const where = (lang === 'fr' && first?.whereFr) || first?.where || '';
+      if (n.data.remind) return t.notif_remind(names, (lang === 'fr' && (n.data.eventFr as string | undefined)) || String(n.data.event ?? ''), String(n.data.start ?? ''));
       return n.type === 'spawn' ? t.notif_spawn(names, where, first?.from ?? null) : t.notif_quest(names, where);
     }
     if (n.type === 'admin') return n.data.kind === 'report' ? t.notif_admin_report(String(n.data.by ?? '?'), String(n.data.variant ?? '')) : t.notif_admin_data(String(n.data.error ?? ''));

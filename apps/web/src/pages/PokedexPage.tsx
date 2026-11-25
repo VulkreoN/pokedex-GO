@@ -14,6 +14,7 @@ import { BulkManageSheet } from '../components/BulkManageSheet.js';
 import { useMe } from '../lib/auth.js';
 import { feedback } from '../lib/feedback.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
+import { WhatsNewBanner } from '../components/WhatsNew.js';
 import { useProgressive } from '../lib/progressive.js';
 
 /** Appeared in the last 45 days. */
@@ -223,6 +224,7 @@ export function PokedexPage() {
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
         <WelcomeResume />
         <InstallBanner />
+        <WhatsNewBanner />
         {dataset.data && (
           <>
             <p className="tnum flex items-center gap-2 py-2 text-xs font-semibold text-ink-3">

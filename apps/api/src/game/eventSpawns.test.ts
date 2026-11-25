@@ -13,4 +13,10 @@ describe('event spawns from a Leek Duck page', () => {
     expect(sectionMons(html, 'featured-pokémon').map((m) => [m.name, m.canBeShiny])).toEqual([['Rockruff', true]]);
     expect(sectionMons(html, 'missing')).toEqual([]);
   });
+
+  it('reads every section whose heading matches: eggs by distance, field research', () => {
+    const page = `<h2 id="eggs" class="event-section-header eggs">Eggs</h2><h2 id="in-2-km-eggs">2 km</h2><li class="pkmn-list-item"><img src="https://cdn/pm1.icon.png" /><div class="pkmn-name">Bulbasaur</div></li><h2 id="in-5-km-eggs">5 km</h2><li class="pkmn-list-item"><img src="https://cdn/pm4.icon.png" /><div class="pkmn-name">Charmander</div></li><h2 id="sales">Sales</h2><li class="pkmn-list-item"><img src="https://cdn/pm7.icon.png" /><div class="pkmn-name">Squirtle</div></li>`;
+    expect(sectionMons(page, /egg|hatch/).map((m) => m.name)).toEqual(['Bulbasaur', 'Charmander']);
+    expect(sectionMons(html, /field-research/).map((m) => m.name)).toEqual(['Not a spawn']);
+  });
 });

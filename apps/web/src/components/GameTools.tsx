@@ -7,7 +7,9 @@ import { TypeBadge } from './TypeBadge.js';
 import { Badge, Chip, Empty, Sheet, Spinner } from './ui.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { typeName, useLang, useT } from '../lib/i18n.js';
-import { eventStatus, useEvents, useRaids } from '../lib/live.js';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api.js';
+import { eventStatus, eventTitle, useEvents, useRaids, type LivePokemon } from '../lib/live.js';
 import { liveKey, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
 
 /** The tools need both the Pokédex (pictures) and their own data. */
@@ -65,6 +67,67 @@ function PokemonPicker({ tools, onPick, releasedOnly = false }: { tools: ToolsDa
 /* ---------- Counters ---------- */
 
 /** The Pokémon a Leek Duck picture shows, in the tools data ("…/pm354.fMEGA.icon.png" -> Mega Banette). */
+export interface EventSpawns {
+  eventID: string;
+  name: string;
+  eventType: string;
+  link: string;
+  image: string;
+  start: string | null;
+  end: string | null;
+  featured: LivePokemon[];
+  spawns: LivePokemon[];
+  raids: LivePokemon[];
+  eggs: LivePokemon[];
+  research: LivePokemon[];
+  rocket: LivePokemon[];
+}
+
+/** Leek Duck's event pages, read by the server: what each event puts in the wild, raids, eggs, research, Rocket. */
+export function useEventSpawns() {
+  return useQuery({ queryKey: ['live', 'event-spawns'], queryFn: () => api<{ events: EventSpawns[] }>('/game/event-spawns').then((r) => r.events), staleTime: 10 * 60_000 });
+}
+
+/**
+ * Which event, under way now, puts this Pokémon in raids, eggs, research or Rocket's hands: its name, or nothing. The
+ * season is not an event here (its eggs are the usual ones), nor are the weekly raid bosses an event page also lists.
+ */
+export function useEventMarks(kind: 'raids' | 'eggs' | 'research' | 'rocket') {
+  const { lang } = useLang();
+  const idx = useDataset().data;
+  const known = useKnownPokemon();
+  const events = useEventSpawns().data;
+  const announced = useEvents().data;
+  return useMemo(() => {
+    const marks = new Map<string, string>();
+    const weekly = new Set<string>();
+    if (kind === 'raids')
+      for (const e of announced ?? []) if (e.eventType === 'raid-battles' && eventStatus(e) === 'current') for (const b of e.extraData?.raidbattles?.bosses ?? []) { const k = liveKey(b.image, b.name, known); if (k) weekly.add(k); }
+    for (const e of events ?? []) {
+      if (e.eventType === 'season' || eventStatus(e) !== 'current') continue;
+      for (const m of e[kind]) {
+        const k = liveKey(m.image, m.name, known);
+        if (k && !weekly.has(k) && !marks.has(k)) marks.set(k, eventTitle(e.name, idx?.speciesByDex, lang));
+      }
+    }
+    return (image: string, name: string) => {
+      const k = liveKey(image, name, known);
+      return k ? marks.get(k) : undefined;
+    };
+  }, [events, announced, kind, known, idx, lang]);
+}
+
+/** The look of a Pokémon an event brings: a blue wash, and the event's name for whoever asks. */
+export const EVENT_MARK = 'bg-sky/15 ring-2 ring-sky/60';
+
+/** "Blue background: brought by Twilight Wishes", naming the events among `marks` (nothing when none). */
+export function EventLegend({ marks, className = 'mb-3' }: { marks: (string | undefined)[]; className?: string }) {
+  const t = useT();
+  const names = [...new Set(marks.filter((m): m is string => !!m))];
+  if (!names.length) return null;
+  return <p className={`flex items-center gap-2 text-sm text-ink-2 ${className}`}><span className={`inline-block h-4 w-4 shrink-0 rounded ${EVENT_MARK}`} aria-hidden="true" />{t.event_legend(names.join(', '))}</p>;
+}
+
 export function useFromImage(tools: ToolsData | undefined) {
   const byKey = useMemo(() => new Map((tools?.pokemon ?? []).map((p) => [p.key, p])), [tools]);
   const known = useKnownPokemon();
@@ -120,6 +183,7 @@ export function RocketTab() {
   const rockets = useRockets();
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
+  const eventOf = useEventMarks('rocket');
   const [target, setTarget] = useState<ToolPokemon | null>(null);
   if (rockets.isPending) return <Spinner />;
   if (rockets.isError) return <Empty>{t.live_error}</Empty>;
@@ -135,7 +199,7 @@ export function RocketTab() {
             {slot.map((m) => {
               const p = fromImage(m.image, m.name);
               return (
-                <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''}`}>
+                <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} title={eventOf(m.image, m.name)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}${eventOf(m.image, m.name) ? ` · ${eventOf(m.image, m.name)}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''} ${eventOf(m.image, m.name) ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}>
                   <img src={m.image} alt="" width={38} height={38} className="object-contain" />
                 </button>
               );
@@ -148,6 +212,7 @@ export function RocketTab() {
   return (
     <div className="space-y-4">
       <p className="flex items-center gap-2 text-sm text-ink-2"><span className="inline-block h-4 w-4 shrink-0 rounded ring-2 ring-shiny" aria-hidden="true" />{t.rocket_legend}</p>
+      <EventLegend className="" marks={rockets.data.flatMap((r) => [r.firstPokemon, r.secondPokemon, r.thirdPokemon].flat().map((m) => eventOf(m.image, m.name)))} />
       <section>
         <h2 className="mb-2 text-base font-bold">{t.rocket_leaders}</h2>
         <ul className="space-y-2">{leaders.map(card)}</ul>

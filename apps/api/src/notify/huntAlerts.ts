@@ -2,18 +2,22 @@
  * Hunt alerts, raid alerts' siblings: a Pokémon still missing from one of a player's collections is part of an event
  * (featured or in the wild, now or within three weeks), or a field research reward right now. Same manners as raid
  * alerts: each Pokémon once per two weeks and per kind, at most one alert a day per kind, listing everything found.
+ * And a reminder the day before an event in which a Pokémon a player misses appears (wild, raids, eggs, research,
+ * Rocket), once per event.
  */
 import { and, eq, gt, inArray, like } from 'drizzle-orm';
 import { eventTitle, type LocalizedText, type Variant } from '@mydexpogo/shared';
 import { questFr } from '../lib/gameTexts.js';
 import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
-import { getEventSpawns } from '../game/eventSpawns.js';
+import { getEventSpawns, type EventSpawns } from '../game/eventSpawns.js';
 import { getResearch } from '../game/research.js';
 import { notify } from './service.js';
 
 const SAME_MON_MS = 14 * 86_400_000;
 const ONE_A_DAY_MS = 20 * 3600_000;
+/** Alerts run every three hours: a reminder comes 21 to 24 hours before the event. */
+const REMIND_BEFORE_MS = 24 * 3600_000;
 const REGIONS: Record<string, string> = { Alolan: 'ALOLA', Galarian: 'GALARIAN', Hisuian: 'HISUIAN', Paldean: 'PALDEA' };
 
 export interface Found {
@@ -130,7 +134,61 @@ async function alert(kind: 'spawn' | 'quest', found: Found[]): Promise<number> {
   return sent;
 }
 
-/** Event spawns and research rewards checked against everyone's missing Pokémon. */
+/** The day before an event: players missing one of its Pokémon, once per event. */
+export async function remindUpcoming(events: EventSpawns[], known: (k: string) => boolean, now = Date.now()): Promise<number> {
+  const names = dataService.speciesNames();
+  if (!names) return 0;
+  const variants = await dataService.variants();
+  const species = new Map([...names].map(([dex, name]) => [dex, { name }]));
+  let sent = 0;
+  for (const e of events) {
+    const start = e.start ? new Date(e.start).getTime() : NaN;
+    if (!(start > now && start - now <= REMIND_BEFORE_MS) || e.eventType === 'season') continue;
+    const found = new Map<string, Found>();
+    for (const m of [...e.featured, ...e.spawns, ...e.raids, ...e.eggs, ...e.research, ...e.rocket]) {
+      const key = keyOfPicture(m.image, m.name, known);
+      if (!key) continue;
+      const hit = found.get(key);
+      if (hit) hit.canBeShiny ||= m.canBeShiny;
+      else found.set(key, { key, canBeShiny: m.canBeShiny, where: e.name, whereFr: eventTitle(e.name, species, 'fr'), from: e.start });
+    }
+    if (!found.size) continue;
+    const missing = await db
+      .select({ userId: schema.lists.ownerId, listId: schema.lists.id, variantKey: schema.listEntries.variantKey, shiny: schema.listEntries.shiny, tag: schema.listEntries.tag })
+      .from(schema.listEntries)
+      .innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId))
+      .where(and(eq(schema.listEntries.done, false), inArray(schema.listEntries.variantKey, [...found.keys()])));
+    if (!missing.length) continue;
+    const bossId = `remind|${e.eventID}`;
+    const done = new Set((await db.select({ userId: schema.raidAlerts.userId }).from(schema.raidAlerts).where(eq(schema.raidAlerts.bossId, bossId))).map((r) => r.userId));
+    for (const [userId, hits] of matchHunt([...found.values()], missing, new Set(), 'remind')) {
+      if (done.has(userId)) continue;
+      const monNames = hits.map((h) => nameOf(h.mon.key, names, variants));
+      const listIds = [...new Set(hits.flatMap((h) => h.listIds))];
+      const title = eventTitle(e.name, species, 'fr');
+      // Leek Duck's times are local ("10:00" wherever you play), without a zone: as written.
+      const at = e.start!.slice(11, 16).replace(':', 'h');
+      await notify({
+        userId,
+        type: 'spawn',
+        actorId: null,
+        listId: listIds.length === 1 ? listIds[0]! : null,
+        data: { remind: true, event: e.name, eventFr: title, start: e.start, mons: hits.map((h) => ({ key: h.mon.key, where: e.name, whereFr: title, from: e.start })), names: monNames },
+        push: () => ({
+          title: `Demain : ${title}`,
+          body: `${monNames.length > 1 ? `${monNames.length} Pokémon de tes collections y seront : ${monNames.join(', ')}` : `${monNames[0]} y sera, il manque dans une de tes collections`}. Début à ${at}.`,
+          url: '/game?tab=spawns',
+          tag: `remind-${e.eventID}`,
+        }),
+      });
+      await db.insert(schema.raidAlerts).values({ userId, bossId }).onConflictDoUpdate({ target: [schema.raidAlerts.userId, schema.raidAlerts.bossId], set: { alertedAt: new Date() } });
+      sent++;
+    }
+  }
+  return sent;
+}
+
+/** Event spawns and research rewards checked against everyone's missing Pokémon; the day-before reminders. */
 export async function runHuntAlerts(): Promise<number> {
   const variants = await dataService.variants();
   const known = (k: string) => variants?.has(k) ?? false;
@@ -145,6 +203,7 @@ export async function runHuntAlerts(): Promise<number> {
     }),
   );
   sent += await alert('spawn', spawns);
+  sent += await remindUpcoming(events, known);
   const research = await getResearch().catch(() => []);
   const quests: Found[] = [];
   for (const c of research) {
