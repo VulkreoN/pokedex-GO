@@ -85,7 +85,7 @@ export function SpeciesPage() {
           )}
           {/* Right side: the cry, and normal / shiny as one switch. */}
           <span className="ml-auto flex items-center gap-1.5">
-            <CryButton dex={dex} name={localized(species.name, lang)} />
+            <CryButton dex={dex} name={localized(species.name, lang)} english={species.name.en} />
             <span className="inline-flex rounded-full bg-paper-2 p-0.5">
               {([false, true] as const).map((s) => (
                 <button
@@ -199,22 +199,43 @@ function ReportSheet({ open, onClose, groups }: { open: boolean; onClose: () => 
   );
 }
 
-/** Plays the Pokémon's cry (PokeAPI recordings), unless sounds are switched off in Me. */
-function CryButton({ dex, name }: { dex: number; name: string }) {
+/** One player for the whole app: a new cry stops the one playing instead of piling up. */
+let cryPlayer: HTMLAudioElement | null = null;
+
+/** Showdown's id of a species ("Mr. Mime" -> "mrmime", "Nidoran♀" -> "nidoranf", "Flabébé" -> "flabebe"). */
+export const showdownId = (english: string) =>
+  english.replace('♀', 'f').replace('♂', 'm').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Plays the Pokémon's cry, unless sounds are switched off in Me. MP3 from Showdown, which every iPhone plays (the
+ * PokeAPI recordings are Ogg, which Safari does not reliably), the Ogg one if that fails.
+ */
+function CryButton({ dex, name, english }: { dex: number; name: string; english: string }) {
   const t = useT();
   const sounds = useFeedbackPref('sounds');
   const [playing, setPlaying] = useState(false);
   if (!sounds) return null;
   const play = () => {
-    const audio = new Audio(`https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/${dex}.ogg`);
+    // Started from the tap itself, as iPhone wants; the one playing stops first.
+    cryPlayer?.pause();
+    const audio = new Audio(`https://play.pokemonshowdown.com/audio/cries/${showdownId(english)}.mp3`);
+    cryPlayer = audio;
     audio.volume = 0.5;
     setPlaying(true);
-    audio.onended = audio.onerror = () => setPlaying(false);
-    void audio.play().catch(() => setPlaying(false));
+    const done = () => { if (cryPlayer === audio) setPlaying(false); };
+    audio.onended = audio.onpause = done;
+    let triedOgg = false;
+    audio.onerror = () => {
+      if (triedOgg || cryPlayer !== audio) return done();
+      triedOgg = true;
+      audio.src = `https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/${dex}.ogg`;
+      void audio.play().catch(done);
+    };
+    void audio.play().catch(() => {});
   };
   return (
-    <button type="button" onClick={play} aria-label={t.cry(name)} title={t.cry(name)} className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-2 transition hover:bg-paper-2 active:scale-[0.92] ${playing ? 'bg-sky/15 text-sky' : ''}`}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={playing ? 'pop' : ''}><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>
+    <button type="button" onClick={play} aria-label={t.cry(name)} title={t.cry(name)} className={`inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-ink-2 transition hover:bg-paper-2 active:scale-[0.92] ${playing ? 'bg-sky/15 text-sky' : ''}`}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`pointer-events-none ${playing ? 'pop' : ''}`}><path d="M11 5 6 9H3v6h3l5 4Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></svg>
     </button>
   );
 }
