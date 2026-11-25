@@ -3,7 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router';
 import type { Role } from '@mydexpogo/shared';
 import { ClientErrors } from '../components/ClientErrors.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, Chip, CopyButton, Empty, HoldButton, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, CopyButton, Empty, HoldButton, Odometer, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import {
@@ -68,7 +68,7 @@ export function AdminPage() {
 function Tile({ label, value, sub, to }: { label: string; value: number | string; sub?: string; to?: string }) {
   const body = (
     <>
-      <div className="tnum text-2xl font-extrabold leading-none">{value}</div>
+      <div className="tnum text-2xl font-extrabold leading-none">{typeof value === 'number' ? <Odometer value={value} /> : value}</div>
       <div className="mt-1 text-xs text-ink-2">{label}</div>
       {sub && <div className="tnum text-[11px] text-ink-3">{sub}</div>}
     </>
@@ -88,12 +88,12 @@ function Dashboard() {
   return (
     <>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Tile label={t.admin_stat_users} value={n(s.users)} sub={t.admin_stat_active(s.active7, s.active30)} to="/admin?tab=users" />
-        <Tile label={t.admin_stat_lists} value={n(s.lists)} sub={t.admin_stat_entries(n(s.entries))} />
-        <Tile label={t.admin_stat_friendships} value={n(s.friendships)} />
-        <Tile label={t.admin_stat_push} value={n(s.pushDevices)} sub={t.admin_stat_raids(s.raidAlerts7)} />
-        <Tile label={t.admin_stat_reports} value={n(s.openReports)} to="/admin?tab=reports" />
-        <Tile label={t.admin_stat_errors} value={n(s.errorsToday)} to="/admin?tab=errors" />
+        <Tile label={t.admin_stat_users} value={s.users} sub={t.admin_stat_active(s.active7, s.active30)} to="/admin?tab=users" />
+        <Tile label={t.admin_stat_lists} value={s.lists} sub={t.admin_stat_entries(n(s.entries))} />
+        <Tile label={t.admin_stat_friendships} value={s.friendships} />
+        <Tile label={t.admin_stat_push} value={s.pushDevices} sub={t.admin_stat_raids(s.raidAlerts7)} />
+        <Tile label={t.admin_stat_reports} value={s.openReports} to="/admin?tab=reports" />
+        <Tile label={t.admin_stat_errors} value={s.errorsToday} to="/admin?tab=errors" />
       </div>
       <section className="card p-3">
         <h2 className="text-sm font-bold">{t.admin_signups_chart}</h2>

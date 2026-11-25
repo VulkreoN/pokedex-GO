@@ -49,7 +49,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
           type="button"
           aria-pressed={value === o.v}
           onClick={() => set(o.v)}
-          className={`min-h-8 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${value === o.v ? 'bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+          className={`min-h-8 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${value === o.v ? 'jelly-on bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
         >
           {o.label}
         </button>

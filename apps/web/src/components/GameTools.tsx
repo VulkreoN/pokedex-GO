@@ -64,10 +64,8 @@ function PokemonPicker({ tools, onPick, releasedOnly = false }: { tools: ToolsDa
 
 /* ---------- Counters ---------- */
 
-type Target = { pokemon: ToolPokemon; label: string };
-
 /** The Pokémon a Leek Duck picture shows, in the tools data ("…/pm354.fMEGA.icon.png" -> Mega Banette). */
-function useFromImage(tools: ToolsData | undefined) {
+export function useFromImage(tools: ToolsData | undefined) {
   const byKey = useMemo(() => new Map((tools?.pokemon ?? []).map((p) => [p.key, p])), [tools]);
   return (image: string) => {
     const key = keyFromImage(image);
@@ -85,49 +83,21 @@ export function CountersSheet({ target, onClose }: { target: ToolPokemon | null;
   return (
     <Sheet open={!!target} onClose={onClose} title={target ? t.counters_title(local(target.name, lang)) : ''}>
       {target && (typeof data === 'string' ? <Loading state={data} /> : <CounterList idx={data.idx} tools={data.tools} target={target} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} />)}
+      {target && <Link to={`/dex/${target.dex}`} className="mt-1 block pb-2 text-center text-sm font-semibold text-sky">{t.counters_dex_link}</Link>}
     </Sheet>
   );
 }
 
 export function CountersTool() {
   const t = useT();
-  const { lang } = useLang();
   const data = useToolData();
-  const raids = useRaids();
-  const fromImage = useFromImage(typeof data === 'string' ? undefined : data.tools);
-  const [source, setSource] = useState<'raids' | 'any'>('raids');
-  const [target, setTarget] = useState<Target | null>(null);
+  const [target, setTarget] = useState<ToolPokemon | null>(null);
   if (typeof data === 'string') return <Loading state={data} />;
-  const { tools } = data;
-  const pick = (p: ToolPokemon | undefined, label: string) => p && setTarget({ pokemon: p, label });
-
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-2">{t.counters_help}</p>
-      <div className="flex flex-wrap gap-2">
-        {(['raids', 'any'] as const).map((s) => <Chip key={s} active={source === s} onClick={() => setSource(s)}>{t.counters_source[s]}</Chip>)}
-      </div>
-
-      {source === 'raids' && (
-        raids.isPending ? <Spinner /> : raids.isError ? <Empty>{t.live_error}</Empty> : (
-          <ul className="flex flex-wrap gap-2">
-            {raids.data.map((b) => {
-              const p = fromImage(b.image);
-              return (
-                <li key={b.name + b.tier}>
-                  <button type="button" disabled={!p} onClick={() => pick(p, b.name)} className="card flex w-20 flex-col items-center p-1.5 text-center disabled:opacity-40">
-                    <img src={b.image} alt="" width={44} height={44} className="object-contain" />
-                    <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{p ? local(p.name, lang) : b.name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )
-      )}
-
-      {source === 'any' && <PokemonPicker tools={tools} onPick={(p) => pick(p, local(p.name, lang))} />}
-      <CountersSheet target={target?.pokemon ?? null} onClose={() => setTarget(null)} />
+      <PokemonPicker tools={data.tools} onPick={setTarget} />
+      <CountersSheet target={target} onClose={() => setTarget(null)} />
     </div>
   );
 }

@@ -505,11 +505,11 @@ test('long grids build more cards as they scroll in', async ({ page }) => {
 test('game tools: counters for any Pokémon, power-up and trade costs, buddy distances', async ({ page }) => {
   await page.goto('/game?tab=tools');
   // Counters against Mewtwo, picked by name.
-  await page.getByRole('button', { name: 'Autre Pokémon' }).click();
   await page.getByRole('searchbox', { name: 'Choisir un Pokémon' }).fill('mewtwo');
   await page.getByRole('button', { name: /^#150 Mewtwo/ }).click();
   const counters = page.getByRole('region', { name: 'Contres de Mewtwo' });
   await expect(counters.getByRole('listitem')).toHaveCount(12);
+  await expect(page.getByRole('link', { name: 'Voir sa fiche dans le Pokédex' })).toHaveAttribute('href', '/dex/150');
   await expect(counters.getByText('Faible contre')).toBeVisible();
   // They open over the page; closed to go on.
   await page.keyboard.press('Escape');

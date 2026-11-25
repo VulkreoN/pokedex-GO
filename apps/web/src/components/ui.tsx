@@ -374,3 +374,29 @@ export function useRolling(value: number): number {
   }, [value]);
   return shown;
 }
+
+/** A number on an odometer: each digit rolls through its column to the new value (stats, counts). */
+export function Odometer({ value, className = '' }: { value: number; className?: string }) {
+  const text = value.toLocaleString();
+  // Shown at zero for one frame, so the digits roll up when the number first appears too.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <span className={`tnum ${className}`} aria-label={text}>
+      <span aria-hidden="true" className="odo">
+        {[...text].map((ch, i) =>
+          /\d/.test(ch) ? (
+            <span key={`${text.length - i}`} className="odo-col" style={{ transform: `translateY(-${ready ? Number(ch) : 0}em)` }}>
+              {'0123456789'.split('').map((d) => <span key={d}>{d}</span>)}
+            </span>
+          ) : (
+            <span key={`${text.length - i}`}>{ch}</span>
+          ),
+        )}
+      </span>
+    </span>
+  );
+}

@@ -12,7 +12,9 @@ import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersTool, LeagueTool, RocketTab } from '../components/GameTools.js';
+import { BuddyTool, CostsTool, CountersSheet, CountersTool, LeagueTool, RocketTab, useFromImage } from '../components/GameTools.js';
+import { useTools } from '../lib/tools.js';
+import type { ToolPokemon } from '@mydexpogo/shared';
 import { dexFromImage, eventStatus, liveName, formatRange, formatUntil, isMaxEvent, raidEventFor, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
 const X_HANDLE = 'g47ix';
@@ -126,6 +128,10 @@ const tierRank = (tier: string) => {
 function Raids() {
   const t = useT();
   const { lang } = useLang();
+  // A boss opens its best counters.
+  const tools = useTools();
+  const fromImage = useFromImage(tools.data);
+  const [target, setTarget] = useState<ToolPokemon | null>(null);
   const raids = useRaids();
   const events = useEvents();
   const dataset = useDataset();
@@ -170,6 +176,7 @@ function Raids() {
   if (raids.isError) return <LiveError retry={() => void raids.refetch()} />;
   return (
     <>
+      <p className="mb-3 text-sm text-ink-2">{t.raids_tap_hint}</p>
       {now.length > 0 && (
         <Section title={t.raids_now} count={now.length}>
           <ul className="space-y-2">{now.map(eventCard)}</ul>
@@ -179,8 +186,9 @@ function Raids() {
         <Section key={tier} title={tierLabel(tier, lang)} count={bosses.length}>
           <ul className="space-y-2">
             {bosses.map((b) => (
-              <li key={b.name} className="card flex items-center gap-3 p-2">
-                <Mon p={b} size={56} caption={false} />
+              <li key={b.name}>
+                <button type="button" onClick={() => setTarget(fromImage(b.image) ?? null)} aria-label={t.counters_title(liveName(b.name, b.image, dataset.data?.speciesByDex, lang))} className="card flex w-full items-center gap-3 p-2 text-left transition active:scale-[0.99]">
+                <img src={b.image} alt="" width={56} height={56} loading="lazy" className="shrink-0 object-contain" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 font-semibold">
                     <span className="truncate">{liveName(b.name, b.image, dataset.data?.speciesByDex, lang)}</span>
@@ -196,6 +204,7 @@ function Raids() {
                   {b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />)}
                   {b.boostedWeather.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
                 </div>
+                </button>
               </li>
             ))}
           </ul>
@@ -205,6 +214,7 @@ function Raids() {
         {upcoming.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
         <ul className="space-y-2">{upcoming.map(eventCard)}</ul>
       </Section>
+      <CountersSheet target={target} onClose={() => setTarget(null)} />
     </>
   );
 }

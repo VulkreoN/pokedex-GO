@@ -92,7 +92,7 @@ export function SpeciesPage() {
                   type="button"
                   aria-pressed={shiny === s}
                   onClick={() => setShiny(s)}
-                  className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${shiny === s ? 'bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+                  className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${shiny === s ? 'jelly-on bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
                 >
                   {s && <Sparkle className={shiny ? 'text-shiny' : ''} />}
                   {s ? t.shiny : t.normal}

@@ -120,7 +120,8 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   await expect(pa.getByText(ub.username)).toBeVisible();
 
   await pb.reload();
-  await pb.getByText(ua.username).click();
+  // The friend's row (a link), not the request shown from the device's copy before the fresh data comes.
+  await pb.getByRole('link', { name: new RegExp(ua.username) }).click();
   await pb.getByText('Ma collection Kanto').click();
   await expect(pb.getByText('0 / 3 attrapés')).toBeVisible();
   await expect(pb.getByRole('button', { name: 'Copier cette collection chez moi' })).toBeVisible();
