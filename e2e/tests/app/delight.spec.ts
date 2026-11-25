@@ -105,3 +105,13 @@ test('the app opens from what this device kept, even when the server does not an
   }));
   expect(kept).not.toContain('Gardée');
 });
+
+test('Me leads to an About page: who made the app, the Discord, the version', async ({ page }) => {
+  await page.goto('/me');
+  await page.getByRole('link', { name: /À propos/ }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(page.getByText('Hakim', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Rejoindre le Discord/ })).toHaveAttribute('href', 'https://discord.gg/9P6XF7SPge');
+  await expect(page.getByText('Version de l’appli')).toBeVisible();
+  await expect(page.getByText(/^\d+ Pokémon · \d+ variantes/)).toBeVisible();
+});

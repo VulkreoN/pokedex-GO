@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// When this build was made, for the About page.
+process.env.VITE_BUILD_DATE ??= new Date().toISOString();
+
 export default defineConfig({
   plugins: [
     react(),

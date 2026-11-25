@@ -116,26 +116,14 @@ export function MePage() {
           </div>
         </section>
 
-        <section className="card p-4 text-sm text-ink-2">
-          <h2 className="mb-2 text-base font-bold text-ink">{t.data_status}</h2>
-          {status.data && (
-            <dl className="space-y-1">
-              <div className="flex justify-between gap-3"><dt>{t.data_generated_at}</dt><dd className="tnum text-right font-semibold text-ink">{relativeTime(status.data.generatedAt, lang)}{ds && <span className="block text-xs font-normal text-ink-3">v{ds.version} · {ds.species.length} Pokémon · {ds.variants.length} variantes</span>}</dd></div>
-              <div className="flex justify-between gap-3"><dt>{t.data_next}</dt><dd className="tnum font-semibold text-ink">{status.data.running ? t.data_running : relativeTime(status.data.nextRunAt, lang)}</dd></div>
-              {status.data.lastError && <div className="rounded-lg bg-berry/10 p-2 text-xs text-berry">{t.data_error} : {status.data.lastError}</div>}
-            </dl>
-          )}
-          {status.data?.sources.length ? (
-            <>
-              <h3 className="mb-1 mt-3 text-xs font-semibold text-ink-3">{t.data_sources_title}</h3>
-              <ul className="space-y-1">
-                {status.data.sources.map((s) => (
-                  <li key={s.name} className="flex justify-between gap-3"><a href={s.url} target="_blank" rel="noreferrer" className="truncate">{s.label}</a><span className="tnum shrink-0 font-semibold text-ink">{relativeTime(s.updatedAt, lang)}</span></li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-        </section>
+        <Link to="/about" className="card flex items-center gap-3 p-3 transition hover:brightness-[0.98] active:scale-[0.99]">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper-2 text-lg" aria-hidden="true">ℹ️</span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">{t.about_title}</span>
+            <span className="block text-sm text-ink-2">{t.about_link_hint}</span>
+          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+        </Link>
 
       </main>
       <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>
