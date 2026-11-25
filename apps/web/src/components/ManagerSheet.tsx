@@ -4,6 +4,10 @@ import type { VariantGroup } from './AddToList.js';
 import { useOverrides, useSetOverride } from '../lib/admin.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useToast } from './toast.js';
+import type { VariantKind } from '@mydexpogo/shared';
+
+/** The categories of the Pokédex, in its order. */
+export const VARIANT_KINDS: VariantKind[] = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'];
 import { Button, Chip, Sheet, TextField } from './ui.js';
 
 /** Manager tools for one form/costume: force released / not released / automatic, rename it. Applies to every gender picture of the group. */
@@ -20,6 +24,8 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
   const [shinyOut, setShinyOut] = useState<boolean | null>(null);
   const [noEvolve, setNoEvolve] = useState<boolean | null>(null);
   const [noMega, setNoMega] = useState<boolean | null>(null);
+  /** null = the category the game master gives. */
+  const [kind, setKind] = useState<VariantKind | null>(null);
   const [en, setEn] = useState('');
   const [fr, setFr] = useState('');
   useEffect(() => {
@@ -35,6 +41,7 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
     setShinyOut(o?.shinyReleased ?? null);
     setNoEvolve(o?.noEvolve ?? null);
     setNoMega(o?.noMega ?? null);
+    setKind(o?.kind ?? null);
   }, [group, overrides.data]);
 
   const save = async (mode: boolean | null) => {
@@ -44,7 +51,7 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
     const previous = overrides.data?.find((x) => x.variantKey === group.variants[0]!.key)?.label ?? null;
     const label = changed ? (en.trim() ? { en: en.trim(), ...(fr.trim() ? { fr: fr.trim() } : {}) } : null) : previous;
     const g: Gender[] | null = { auto: null, mf: ['m', 'f'] as Gender[], m: ['m'] as Gender[], f: ['f'] as Gender[], none: [] as Gender[] }[genders];
-    await Promise.all(group.variants.map((v) => set.mutateAsync({ variantKey: v.key, released: mode, label, genders: g, shinyReleased: shinyOut, noEvolve, noMega })));
+    await Promise.all(group.variants.map((v) => set.mutateAsync({ variantKey: v.key, released: mode, label, genders: g, shinyReleased: shinyOut, noEvolve, noMega, kind })));
     toast(t.saved);
     onClose();
   };
@@ -95,6 +102,13 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
               <Chip active={noMega === false} onClick={() => setNoMega(false)}>{t.mega_yes}</Chip>
               <Chip active={noMega === true} onClick={() => setNoMega(true)}>{t.no_mega}</Chip>
               <Chip active={noMega === null} onClick={() => setNoMega(null)}>{t.mark_auto}</Chip>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.kind_status}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {VARIANT_KINDS.map((k) => <Chip key={k} active={kind === k} onClick={() => setKind(k)}>{t.kinds[k]}</Chip>)}
+              <Chip active={kind === null} onClick={() => setKind(null)}>{t.mark_auto}</Chip>
             </div>
           </div>
           <TextField label={`${t.label_name} (EN)`} value={en} onChange={(e) => setEn(e.target.value)} maxLength={60} />

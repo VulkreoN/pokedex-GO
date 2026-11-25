@@ -125,6 +125,8 @@ export const variantOverrides = pgTable('variant_overrides', {
   noEvolve: boolean('no_evolve'),
   /** true = this costume cannot Mega Evolve, false = it can, null = from the game master */
   noMega: boolean('no_mega'),
+  /** A manager's category for it (a 'costume' the game master calls a form, or the reverse); null = automatic. */
+  kind: text('kind'),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

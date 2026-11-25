@@ -4,6 +4,8 @@ import { useBulkOverride } from '../lib/admin.js';
 import { useT } from '../lib/i18n.js';
 import { useToast } from './toast.js';
 import { Button, Chip, Sheet } from './ui.js';
+import { VARIANT_KINDS } from './ManagerSheet.js';
+import type { VariantKind } from '@mydexpogo/shared';
 
 /** 'keep' leaves the field as each variant has it; null puts it back on automatic. */
 type Choice = 'keep' | true | false | null;
@@ -17,8 +19,9 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
   const [shiny, setShiny] = useState<Choice>('keep');
   const [noEvolve, setNoEvolve] = useState<Choice>('keep');
   const [noMega, setNoMega] = useState<Choice>('keep');
+  const [kind, setKind] = useState<VariantKind | null | 'keep'>('keep');
   const keys = groups.flatMap((g) => g.variants.map((v) => v.key));
-  const nothing = released === 'keep' && shiny === 'keep' && noEvolve === 'keep' && noMega === 'keep';
+  const nothing = released === 'keep' && shiny === 'keep' && noEvolve === 'keep' && noMega === 'keep' && kind === 'keep';
 
   const row = (title: string, value: Choice, set: (c: Choice) => void, labels: [string, string]) => (
     <div>
@@ -35,12 +38,13 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
   const save = async () => {
     // Left out of the request (undefined) = not touched.
     const field = (c: Choice) => (c === 'keep' ? undefined : c);
-    await bulk.mutateAsync({ keys, released: field(released), shinyReleased: field(shiny), noEvolve: field(noEvolve), noMega: field(noMega) });
+    await bulk.mutateAsync({ keys, released: field(released), shinyReleased: field(shiny), noEvolve: field(noEvolve), noMega: field(noMega), kind: kind === 'keep' ? undefined : kind });
     toast(t.bulk_managed(groups.length));
     setReleased('keep');
     setShiny('keep');
     setNoEvolve('keep');
     setNoMega('keep');
+    setKind('keep');
     onDone();
     onClose();
   };
@@ -53,6 +57,14 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
         {/* "Can't evolve" is the true side here. */}
         {row(t.evolve_status, noEvolve, setNoEvolve, [t.no_evolve, t.evolve_yes])}
         {row(t.mega_status, noMega, setNoMega, [t.no_mega, t.mega_yes])}
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-ink-3">{t.kind_status}</p>
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={kind === 'keep'} onClick={() => setKind('keep')}>{t.bulk_keep}</Chip>
+            {VARIANT_KINDS.map((k) => <Chip key={k} active={kind === k} onClick={() => setKind(k)}>{t.kinds[k]}</Chip>)}
+            <Chip active={kind === null} onClick={() => setKind(null)}>{t.mark_auto}</Chip>
+          </div>
+        </div>
         <Button tone="primary" className="w-full" disabled={nothing || bulk.isPending} onClick={save}>{t.save}</Button>
         <p className="text-xs text-ink-3">{t.bulk_manage_hint}</p>
       </div>

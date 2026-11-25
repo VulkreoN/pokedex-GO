@@ -141,6 +141,13 @@
       "when": 1795570522092,
       "tag": "0019_admin_tools",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795628861760,
+      "tag": "0020_variant_kind",
+      "breakpoints": true
     }
   ]
 }

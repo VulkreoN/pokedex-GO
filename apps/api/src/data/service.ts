@@ -6,7 +6,7 @@ import { recordSource } from '../lib/health.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
-import type { Dataset, Gender, LocalizedText, Variant } from '@mydexpogo/shared';
+import type { Dataset, Gender, LocalizedText, Variant, VariantKind } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { lastSlot, nextSlot } from '../lib/slots.js';
 import { env } from '../env.js';
@@ -100,9 +100,9 @@ class DataService {
 
   private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;
   /** What players see for a variant right now (corrections included), for the admin journal's before / after. */
-  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean } | null> {
+  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean; kind: VariantKind } | null> {
     const v = (await this.variants())?.get(key);
-    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve, noMega: !!v.noMega } : null;
+    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve, noMega: !!v.noMega, kind: v.kind } : null;
   }
 
   /** "Pikachu · Casquette d'Ash" for messages; the key when the dataset does not know it. */
@@ -339,6 +339,7 @@ class DataService {
         shinyReleased: r.shinyReleased,
         noEvolve: r.noEvolve,
         noMega: r.noMega,
+        kind: r.kind as VariantKind | null,
       };
     }
     this.overridesCache = manual;

@@ -456,6 +456,7 @@ const fr = {
   show_title: 'Afficher',
   /** Kinds of variants, as chips and inside sentences. */
   kinds: { base: 'Normaux', costume: 'Costumes', form: 'Formes', regional: 'Régionales', mega: 'Méga', gmax: 'Gigamax' } as Record<string, string>,
+  kind_status: 'Catégorie',
   kinds_lc: { base: 'normaux', costume: 'costumes', form: 'formes', regional: 'régionales', mega: 'Méga', gmax: 'Gigamax' } as Record<string, string>,
   kinds_only: (s: string) => `${s} seulement`,
   kinds_without: (s: string) => `Sans ${s}`,
@@ -1451,6 +1452,7 @@ const en: Dict = {
   filter_hide: 'Hide',
   show_title: 'Show',
   kinds: { base: 'Regular', costume: 'Costumes', form: 'Forms', regional: 'Regional', mega: 'Mega', gmax: 'Gigantamax' },
+  kind_status: 'Category',
   kinds_lc: { base: 'regular', costume: 'costumes', form: 'forms', regional: 'regional', mega: 'Mega', gmax: 'Gigantamax' },
   kinds_only: (s) => `${s} only`,
   kinds_without: (s) => `No ${s}`,

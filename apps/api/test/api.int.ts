@@ -239,6 +239,24 @@ describe('roles', () => {
     expect(restored.datamined).toBe(true);
   });
 
+  it('lets managers put a variant in another category, one by one or many at once', async () => {
+    const costumes = ds.variants.filter((v) => v.kind === 'costume').slice(0, 2);
+    const [one, two] = costumes;
+    expect((await manager.put(`/overrides/${encodeURIComponent(one!.key)}`, { kind: 'tutu' })).status).toBe(400);
+    expect((await manager.put(`/overrides/${encodeURIComponent(one!.key)}`, { kind: 'form' })).status).toBe(200);
+    const kindOf = async (key: string) => ((await anon.get('/data/pokedex.json')).body as Dataset).variants.find((x) => x.key === key)!.kind;
+    expect(await kindOf(one!.key)).toBe('form');
+    // Many at once, the others' fields untouched.
+    expect((await manager.patch('/overrides', { keys: [one!.key, two!.key], kind: 'regional' })).status).toBe(200);
+    expect(await kindOf(two!.key)).toBe('regional');
+    const log = (await admin.get('/admin/audit?kind=data')).body.entries.find((e: any) => e.action === 'override.set' && e.targetId === one!.key);
+    expect(log.data.now.kind).toBe('regional');
+    // Back to automatic: the game master's category again.
+    expect((await manager.patch('/overrides', { keys: [one!.key, two!.key], kind: null })).status).toBe(200);
+    expect(await kindOf(one!.key)).toBe('costume');
+    expect(await kindOf(two!.key)).toBe('costume');
+  });
+
   it('opens the review queue to managers only', async () => {
     expect((await alice.get('/feed')).status).toBe(403);
     expect((await manager.get('/feed')).status).toBe(200);

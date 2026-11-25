@@ -14,7 +14,10 @@ import { audit } from '../lib/audit.js';
 import { notifyAccount } from '../notify/service.js';
 
 /** An override as the journal keeps it, to show it and to put it back. */
-export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega });
+/** The categories a manager can put a variant in. */
+const VARIANT_KINDS = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'] as const;
+
+export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind });
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
 export const dataRoutes = new Hono<AuthEnv>()
@@ -58,6 +61,7 @@ const overrideBody = z.object({
   noEvolve: z.boolean().nullable().optional(),
   /** The "no Mega" mark, by hand. */
   noMega: z.boolean().nullable().optional(),
+  kind: z.enum(VARIANT_KINDS).nullable().optional(),
 });
 
 /** Managers: force a variant released / not released, or rename it. */
@@ -69,7 +73,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
       .leftJoin(schema.users, eq(schema.users.id, schema.variantOverrides.updatedBy))
       .orderBy(sql`${schema.variantOverrides.updatedAt} desc`);
     return c.json({
-      overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
+      overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
     });
   })
   /**
@@ -79,7 +83,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
   .patch(
     '/',
     requireRole('manager'),
-    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional(), noMega: z.boolean().nullable().optional() })),
+    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional(), noMega: z.boolean().nullable().optional(), kind: z.enum(VARIANT_KINDS).nullable().optional() })),
     async (c) => {
       const { keys, ...patch } = c.req.valid('json');
       if (!keys.every(isValidVariantKey)) return c.json({ error: 'invalid_variant_key' }, 400);
@@ -98,10 +102,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
           shinyReleased: patch.shinyReleased !== undefined ? patch.shinyReleased : (before?.shinyReleased ?? null),
           noEvolve: patch.noEvolve !== undefined ? patch.noEvolve : (before?.noEvolve ?? null),
           noMega: patch.noMega !== undefined ? patch.noMega : (before?.noMega ?? null),
+          kind: patch.kind !== undefined ? patch.kind : (before?.kind ?? null),
           updatedBy: me,
           updatedAt: new Date(),
         };
-        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null) {
+        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null) {
           await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k));
         } else {
           await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
@@ -130,10 +135,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
       shinyReleased: body.shinyReleased ?? null,
       noEvolve: body.noEvolve ?? null,
       noMega: body.noMega ?? null,
+      kind: body.kind ?? null,
       updatedBy: c.get('user').id,
       updatedAt: new Date(),
     };
-    if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null) {
+    if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null) {
       await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     } else {
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
@@ -142,7 +148,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
     // was / now: what players saw before and see after, so the journal can say what changed.
     await audit(c.get('user').id, 'override.set', 'variant', key, {
       before: before ? overrideState(before) : null,
-      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders, shinyReleased: values.shinyReleased, noEvolve: values.noEvolve, noMega: values.noMega },
+      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders, shinyReleased: values.shinyReleased, noEvolve: values.noEvolve, noMega: values.noMega, kind: values.kind },
       was,
       now: await dataService.shownState(key),
     });

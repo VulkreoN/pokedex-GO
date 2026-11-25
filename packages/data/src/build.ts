@@ -44,7 +44,7 @@ export interface BuildOptions {
 }
 
 /** What a manager can change from the web app, keyed by variant key. */
-export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null }>;
+export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null }>;
 
 export interface BuildResult {
   dataset: Dataset;
@@ -752,6 +752,8 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
       else if (m.noEvolve === false) delete out.noEvolve;
       if (m.noMega === true) out.noMega = true;
       else if (m.noMega === false) delete out.noMega;
+      // A manager's category wins over the game master's (Armored Mewtwo, numbered costumes…).
+      if (m.kind) out.kind = m.kind;
       return out;
     }),
   };
