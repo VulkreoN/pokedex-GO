@@ -338,7 +338,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         </div>
       </TopBar>
 
-      <main className={`mx-auto max-w-3xl px-3 ${picking ? 'pb-72' : 'pb-28'}`}>
+      <main className={`mx-auto max-w-3xl px-3 ${picking ? 'pb-72' : 'pb-44'}`}>
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}

@@ -166,3 +166,6 @@ h1, h2, h3 { font-variation-settings: 'opsz' 96, 'wdth' 96; letter-spacing: -0.0
 .dark[data-team='mystic'] { --sky-top: #1f4e8c; --sky-bottom: #1a2f66; }
 .dark[data-team='instinct'] { --sky-top: #8a6a16; --sky-bottom: #6b4314; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Every page breathes under its header, whatever its own top spacing (outside the layers, so it wins). */
+header.topbar ~ main { padding-top: 1rem; }

@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { requireAuth, type AuthEnv } from '../auth.js';
@@ -36,7 +36,13 @@ export const friendRoutes = new Hono<AuthEnv>()
       .where(eq(schema.friendships.userId, me.id))
       // Pinned friends first.
       .orderBy(desc(schema.friendships.favorite), schema.users.username);
-    return c.json({ friends: rows.map((r) => ({ ...pub(r.user), since: r.since.toISOString(), favorite: r.favorite })) });
+    // How many of their collections I can see.
+    const ids = rows.map((r) => r.user.id);
+    const counts = ids.length
+      ? await db.select({ owner: schema.lists.ownerId, n: sql<number>`count(*)`.mapWith(Number) }).from(schema.lists).where(and(inArray(schema.lists.ownerId, ids), ne(schema.lists.visibility, 'private'))).groupBy(schema.lists.ownerId)
+      : [];
+    const listCount = new Map(counts.map((r) => [r.owner, r.n]));
+    return c.json({ friends: rows.map((r) => ({ ...pub(r.user), since: r.since.toISOString(), favorite: r.favorite, lists: listCount.get(r.user.id) ?? 0 })) });
   })
   /** Pin a friend to the top of my friends (and of their collections), or unpin them. */
   .put('/:id/favorite', zValidator('json', z.object({ on: z.boolean() })), async (c) => {

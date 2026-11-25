@@ -99,7 +99,7 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
   const navigate = useNavigate();
   const t = useT();
   return (
-    <header className="sky-header pt-safe sticky top-0 z-20">
+    <header className="topbar sky-header pt-safe sticky top-0 z-20">
       <div className="mx-auto flex min-h-14 max-w-3xl items-center gap-1 px-3">
         {back && (
           <IconButton label={t.close} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/dex'))}>

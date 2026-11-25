@@ -53,7 +53,6 @@ export function MePage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
               <Button tone="ghost" onClick={() => setChanging(true)}>{t.change_password}</Button>
-              <Button tone="danger" onClick={() => setDeleting(true)}>{t.delete_account}</Button>
             </div>
           </section>
         ) : null}
@@ -124,6 +123,12 @@ export function MePage() {
           </span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
         </Link>
+        {/* Out of the way, at the very end of the page. */}
+        {me.data && (
+          <div className="pt-4 text-center">
+            <button type="button" onClick={() => setDeleting(true)} className="text-sm font-semibold text-berry hover:underline">{t.delete_account}</button>
+          </div>
+        )}
 
       </main>
       <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>

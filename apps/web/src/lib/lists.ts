@@ -6,7 +6,7 @@ export type EntryInput = Omit<ListEntry, 'note' | 'gender'> & { gender?: EntryGe
 import { api } from './api.js';
 
 export type ListAccess = 'owner' | 'friend' | 'link';
-export type Friend = PublicUser & { since: string; favorite?: boolean };
+export type Friend = PublicUser & { since: string; favorite?: boolean; lists?: number };
 
 export const useLists = () => useQuery({ queryKey: ['lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists').then((r) => r.lists) });
 

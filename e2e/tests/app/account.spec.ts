@@ -125,7 +125,11 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   await expect(pb.getByRole('button', { name: 'Copier cette collection chez moi' })).toBeVisible();
 
   await pb.goto('/friends');
-  await pb.getByRole('button', { name: 'Retirer' }).click();
+  await expect(pb.getByText(/^1 collection · ami depuis /)).toBeVisible();
+  // Removing a friend: from the friend's menu, asked twice.
+  await pb.getByRole('button', { name: `Options pour ${ua.username}` }).click();
+  await pb.locator('dialog[open]').getByRole('button', { name: 'Retirer' }).click();
+  await pb.locator('dialog[open]').getByRole('button', { name: `Confirmer : retirer ${ua.username}` }).click();
   await expect(pb.getByText("Pas encore d'amis. Échange ton code pour voir leurs collections.")).toBeVisible();
   await a.close();
   await b.close();
