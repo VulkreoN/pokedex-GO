@@ -127,7 +127,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const fetchOpts = options.fetch;
   const log = options.log ?? console.log;
   const manual = options.manual ?? {};
-  const [gm, pictures, textsEn, textsFr, costumeEnum, shinyList, releasedList, backgroundMap] = await Promise.all([
+  const [gm, pictures, textsEn, textsFr, costumeEnum, shinyList, releasedList, backgroundMap, shinyForms] = await Promise.all([
     fetchJson<GmTemplate[]>('gameMaster', fetchOpts),
     fetchPictureList(fetchOpts),
     fetchJson<Texts>('textsEn', fetchOpts),
@@ -143,6 +143,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     }),
     fetchJson<Record<string, string[]>>('backgrounds', fetchOpts).catch((e) => {
       log(`backgrounds unavailable (${e.message})`);
+      return null;
+    }),
+    fetchJson<{ dex: number; aa_fn: string; released_date?: string }[]>('shinyLeekDuck', fetchOpts).catch((e) => {
+      log(`Leek Duck shiny list unavailable (${e.message}); falling back to pogoapi`);
       return null;
     }),
   ]);
@@ -419,12 +423,26 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     push(sp, g, m[2]!, null, null);
     variants[variants.length - 1]!.datamined = true;
   }
-  for (const sp of speciesByDex.values()) {
-    const s = shinyList?.[String(sp.dex)];
-    sp.shinyReleased = s ? Object.values(s).some((x) => x === true) : null;
+  // Which shinies are out. Leek Duck's checklist knows each form and costume and when it came out (dated ones not
+  // reached yet are announced, not out); pogoapi (species only, no longer updated) when Leek Duck cannot be read.
+  const shinyOut = new Map<string, boolean>();
+  if (shinyForms?.length) {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+    for (const f of shinyForms) {
+      const key = f.aa_fn.replace(/^pm/, '');
+      shinyOut.set(key, shinyOut.get(key) || !f.released_date || f.released_date <= today);
+    }
+    log(`shiny forms out (Leek Duck): ${[...shinyOut.values()].filter(Boolean).length}`);
+    for (const sp of speciesByDex.values()) sp.shinyReleased = variants.some((v) => v.dex === sp.dex && shinyOut.get(v.key.replace(/\.g2$/, '')));
+    for (const v of variants) if (v.hasShiny && !shinyOut.get(v.key.replace(/\.g2$/, ''))) v.shinyReleased = false;
+  } else {
+    for (const sp of speciesByDex.values()) {
+      const s = shinyList?.[String(sp.dex)];
+      sp.shinyReleased = s ? Object.values(s).some((x) => x === true) : null;
+    }
+    // The shiny list only knows species: when a species' shiny is not out, none of its versions' is.
+    for (const v of variants) if (speciesByDex.get(v.dex)?.shinyReleased === false && v.hasShiny) v.shinyReleased = false;
   }
-  // The shiny list only knows species: when a species' shiny is not out, none of its versions' is.
-  for (const v of variants) if (speciesByDex.get(v.dex)?.shinyReleased === false && v.hasShiny) v.shinyReleased = false;
   // The game only ships a shiny picture once that shiny is coming: for the others (Pokémon not in GO yet, shinies
   // not out), the shiny HOME render (PokeAPI) of the plain form, or of the few forms mapped in overrides.json.
   // Those shinies are not out in GO, and are marked so.

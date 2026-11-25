@@ -42,6 +42,9 @@ const SOURCE_REPOS: { name: string; label: string; repo: string; branch?: string
   { name: 'assets', label: 'Textes & images Méga (PokeMiners)', repo: 'PokeMiners/pogo_assets' },
   { name: 'costumes', label: 'Noms de costumes (WatWowMap)', repo: 'WatWowMap/pogo-data-api' },
   { name: 'leekduck', label: 'Raids, événements, études (Leek Duck via ScrapedDuck)', repo: 'bigfoott/ScrapedDuck', branch: 'data' },
+  { name: 'pokeapi', label: 'Images des formes pas encore dans GO, shinies HOME (PokeAPI)', repo: 'PokeAPI/sprites' },
+  { name: 'cries', label: 'Cris des Pokémon (PokeAPI)', repo: 'PokeAPI/cries' },
+  { name: 'pvpoke', label: 'Classements PvP (PvPoke)', repo: 'pvpoke/pvpoke' },
 ];
 
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
@@ -267,10 +270,17 @@ class DataService {
       .then((r) => r.headers.get('last-modified'))
       .catch(() => null);
     out.push({ name: 'pictures', label: 'Images (pokemongopro, miroir PokeMiners)', updatedAt: pictures ? new Date(pictures).toISOString() : null, url: 'https://trade.pokemongopro.com' });
-    const shiny = await fetch('https://pogoapi.net/api/v1/shiny_pokemon.json', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
+    // Leek Duck's checklist has no date of its own: the latest shiny it lists as out.
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+    const lastShiny = await fetch('https://leekduck.com/shiny/pms.json', { headers: { 'user-agent': 'mydexpogo' } })
+      .then((r) => (r.ok ? (r.json() as Promise<{ released_date?: string }[]>) : []))
+      .then((list) => list.map((x) => x.released_date ?? '').filter((d) => d && d <= today).sort().pop() ?? null)
+      .catch(() => null);
+    out.push({ name: 'shiny', label: 'Shinies sortis (Leek Duck, dernier ajouté)', updatedAt: lastShiny ? new Date(lastShiny.replace(/\//g, '-')).toISOString() : null, url: 'https://leekduck.com/shiny/' });
+    const released = await fetch('https://pogoapi.net/api/v1/released_pokemon.json', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
       .then((r) => r.headers.get('last-modified'))
       .catch(() => null);
-    out.push({ name: 'shiny', label: 'Shinies sortis (pogoapi.net)', updatedAt: shiny ? new Date(shiny).toISOString() : null, url: 'https://pogoapi.net' });
+    out.push({ name: 'released', label: 'Pokémon sortis (pogoapi.net, complété par Leek Duck)', updatedAt: released ? new Date(released).toISOString() : null, url: 'https://pogoapi.net' });
     return out;
   }
 

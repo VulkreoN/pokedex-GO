@@ -8,6 +8,8 @@ export const SOURCES = {
   textsFr: 'https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Texts/Latest%20APK/JSON/i18n_french.json',
   costumes: 'https://raw.githubusercontent.com/WatWowMap/pogo-data-api/main/data/v1/costumes.json',
   shiny: 'https://pogoapi.net/api/v1/shiny_pokemon.json',
+  /** Leek Duck's shiny checklist: every shiny form and costume out in GO, with its release date (same names as the game's pictures). */
+  shinyLeekDuck: 'https://leekduck.com/shiny/pms.json',
   released: 'https://pogoapi.net/api/v1/released_pokemon.json',
   backgrounds: 'https://trade.pokemongopro.com/assets/background.json',
 } as const;

@@ -74,7 +74,7 @@ export function AboutPage() {
               <h3 className="mb-1 mt-3 text-xs font-semibold text-ink-3">{t.data_sources_title}</h3>
               <ul className="space-y-1">
                 {status.data.sources.map((s) => (
-                  <li key={s.name} className="flex justify-between gap-3"><a href={s.url} target="_blank" rel="noreferrer" className="truncate">{s.label}</a><span className="tnum shrink-0 font-semibold text-ink">{relativeTime(s.updatedAt, lang)}</span></li>
+                  <li key={s.name} className="flex justify-between gap-3"><a href={s.url} target="_blank" rel="noreferrer" className="truncate">{s.label}</a><span className="tnum shrink-0 font-semibold text-ink">{s.updatedAt ? relativeTime(s.updatedAt, lang) : t.source_undated}</span></li>
                 ))}
               </ul>
             </>
