@@ -16,6 +16,7 @@ import { reportError } from './lib/errorReport.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
 import { applyTeam } from './lib/team.js';
+import { getStartPage } from './lib/startPage.js';
 
 /** Secondary tabs and routes load on demand; core tabs prefetch once the app is idle. */
 const coreLoaders = {
@@ -74,11 +75,11 @@ function ScrollToTop() {
   return null;
 }
 
-/** Logged-in users land on the Pokédex, others on the login page (the Pokédex stays reachable at /dex). */
+/** Logged-in users land on their chosen startup page (Pokédex by default), others on login. */
 function Home() {
   const me = useMe();
   if (me.isPending) return <Spinner />;
-  return <Navigate to={me.data ? '/dex' : '/login'} replace />;
+  return <Navigate to={me.data ? getStartPage() : '/login'} replace />;
 }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {

@@ -12,6 +12,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-26-hunts-startup',
+    date: '2026-11-26',
+    fr: [
+      'Page au démarrage au choix dans Moi : ouvre directement l’appli sur le Pokédex, tes Collections, ta Dernière collection, Jeu, PvP ou Amis.',
+      'Mes chasses & alertes corrigées : correspondance exacte par forme, costume, Méga, Gigamax et Obscur (fini Ronflex sauvage pour un Gigamax ou Miaouss de Galar pour un Miaouss classique).',
+      'Option par collection « Pré-évolutions dans Mes chasses et alertes » : active-la sur une liste pour être prévenu dès qu’une pré-évolution sûre apparaît (jamais pour les Gigamax, Méga ou costumes qui n’évoluent pas).',
+    ],
+    en: [
+      'Choose your startup page in Me: open the app straight on Pokédex, Collections, Last collection, Game, PvP or Friends.',
+      'Fixed My hunts & alerts: strict matching by form, costume, Mega, Gigantamax and Shadow (no more wild Snorlax matching Gigantamax or Galarian Meowth matching base Meowth).',
+      'Per-collection “Pre-evolutions in My hunts & alerts” toggle: enable it on any list to highlight & notify safe pre-evolutions (never for Gigantamax, Megas or non-evolving costumes).',
+    ],
+  },
+  {
     id: '2026-11-26-ux',
     date: '2026-11-26',
     fr: [

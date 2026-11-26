@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Dataset, ListEntry, Species, Variant } from '@mydexpogo/shared';
 import { buildIndex } from './dataset.js';
-import { exportSearch, formBlind, listSearch } from './searchString.js';
+import { exportSearch, formBlind, listSearch, preEvolutions } from './searchString.js';
 
 const sp = (dex: number, en: string, fr = en): Species => ({
   dex,
@@ -165,5 +165,22 @@ describe('formBlind and listSearch warnings', () => {
     });
     expect(res.text).toContain('931');
     expect(res.blind.map((v) => v.key)).toEqual(['931.fBLUE']);
+  });
+
+  it('preEvolutions excludes Gigantamax and Mega forms safely', () => {
+    const withParents = buildIndex({
+      ...ds,
+      species: [
+        ...ds.species.filter((s) => s.dex !== 6),
+        { ...sp(6, 'Charizard', 'Dracaufeu'), parent: 4 },
+      ],
+      variants: [
+        ...ds.variants,
+        variant({ key: '6.fGIGANTAMAX', dex: 6, kind: 'gmax', form: 'GIGANTAMAX', label: { en: 'Gigantamax', fr: 'Gigamax' } }),
+      ],
+    });
+    expect(preEvolutions(withParents, withParents.variantByKey.get('6')!).map((v) => v.key)).toEqual(['4']);
+    expect(preEvolutions(withParents, withParents.variantByKey.get('6.fGIGANTAMAX')!)).toEqual([]);
+    expect(preEvolutions(withParents, withParents.variantByKey.get('6.fMEGA_X')!)).toEqual([]);
   });
 });

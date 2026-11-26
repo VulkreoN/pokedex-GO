@@ -42,7 +42,7 @@ export async function restoreList(id: string): Promise<{ ownerId: string; name: 
     if (!row) return null;
     const s = row.snapshot as unknown as Snapshot;
     const [top] = await tx.select({ min: sql<number>`coalesce(min(${schema.lists.position}), 0)`.mapWith(Number) }).from(schema.lists).where(eq(schema.lists.ownerId, row.ownerId));
-    await tx.insert(schema.lists).values({ ...s.list, position: (top?.min ?? 0) - 1, createdAt: date(s.list.createdAt), updatedAt: new Date() });
+    await tx.insert(schema.lists).values({ ...s.list, alertPreEvolutions: s.list.alertPreEvolutions ?? false, position: (top?.min ?? 0) - 1, createdAt: date(s.list.createdAt), updatedAt: new Date() });
     if (s.entries.length) await tx.insert(schema.listEntries).values(s.entries.map((e) => ({ ...e, updatedAt: date(e.updatedAt) })));
     // History rows get new ids; their dates stay.
     if (s.events.length) await tx.insert(schema.listEvents).values(s.events.map(({ id: _id, ...e }) => ({ ...e, createdAt: date(e.createdAt) })));

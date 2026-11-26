@@ -148,6 +148,13 @@
       "when": 1795628861760,
       "tag": "0020_variant_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795685000000,
+      "tag": "0021_list_alert_pre_evolutions",
+      "breakpoints": true
     }
   ]
 }

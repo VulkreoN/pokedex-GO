@@ -1,7 +1,7 @@
 /** The Game tab's tools: best counters (raids, Team GO Rocket, any Pokémon), costs, buddy distances, the GO Battle League. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { nextFullMoons, powerUpCost, rankCounters, weaknesses, type PokemonType, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
+import { buildHuntMatcher, nextFullMoons, powerUpCost, rankCounters, weaknesses, type HuntMatcher, type PokemonType, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
 import { TYPE_COLORS, TypeBadge } from './TypeBadge.js';
 import { Badge, Button, Chip, Empty, Sheet, Spinner } from './ui.js';
@@ -11,33 +11,15 @@ import { typeName, useLang, useT } from '../lib/i18n.js';
 import { useMembership } from '../lib/lists.js';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
-import { dexFromImage, eventStatus, eventTitle, useEvents, useRaids, type LivePokemon } from '../lib/live.js';
+import { eventStatus, eventTitle, useEvents, type LivePokemon } from '../lib/live.js';
 import { liveKey, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
 
-/** Tells whether a live Pokémon (raid, egg, spawn, research, Rocket) is missing in one of the signed-in player's collections. */
-export function useMissingHunts() {
+/** Tells whether a live Pokémon (raid, egg, spawn, research, Rocket, Max) is missing in one of the signed-in player's collections. */
+export function useMissingHunts(): HuntMatcher {
   const me = useMe();
   const membership = useMembership(!!me.data);
-  return useMemo(() => {
-    const normalMissing = new Set<number>();
-    const shinyMissing = new Set<number>();
-    for (const e of membership.data ?? []) {
-      if (e.done) continue;
-      const dex = Number(e.variantKey.split('.')[0]);
-      if (!Number.isFinite(dex) || dex <= 0) continue;
-      if (e.shiny) shinyMissing.add(dex);
-      else normalMissing.add(dex);
-    }
-    const hasMissing = normalMissing.size > 0 || shinyMissing.size > 0;
-    const isWanted = (image: string, canBeShiny?: boolean): boolean => {
-      const dex = dexFromImage(image);
-      if (!dex) return false;
-      if (normalMissing.has(dex)) return true;
-      // If only hunting shiny, highlight when it can be shiny (or shiny status unknown).
-      return shinyMissing.has(dex) && canBeShiny !== false;
-    };
-    return { hasMissing, isWanted };
-  }, [membership.data]);
+  const dataset = useDataset();
+  return useMemo(() => buildHuntMatcher(dataset.data?.hunt ?? null, membership.data ?? []), [dataset.data?.hunt, membership.data]);
 }
 
 /** The tools need both the Pokédex (pictures) and their own data. */
@@ -231,7 +213,7 @@ export function RocketTab() {
     return low in TYPE_COLORS ? (low as PokemonType) : null;
   };
   const hasWantedEncounter = (r: (typeof rockets.data)[number]) =>
-    [r.firstPokemon, r.secondPokemon, r.thirdPokemon].flat().some((m) => m.isEncounter && isWanted(m.image, m.canBeShiny));
+    [r.firstPokemon, r.secondPokemon, r.thirdPokemon].flat().some((m) => m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny));
 
   const filtered = rockets.data.filter((r) => {
     if (onlyHunts && !hasWantedEncounter(r)) return false;
@@ -273,7 +255,7 @@ export function RocketTab() {
               <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
               {slot.map((m) => {
                 const p = fromImage(m.image, m.name);
-                const monWanted = m.isEncounter && isWanted(m.image, m.canBeShiny);
+                const monWanted = m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny);
                 return (
                   <button
                     key={`${m.image}-${m.name}`}

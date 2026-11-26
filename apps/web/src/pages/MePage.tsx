@@ -15,6 +15,7 @@ import { fmtCode } from '../lib/errors.js';
 import { useAdminStats, useDataStatus } from '../lib/admin.js';
 import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
 import { TEAMS, TEAM_META, setTeam, useTeam } from '../lib/team.js';
+import { START_PAGES, setStartPage, useStartPage, type StartPage } from '../lib/startPage.js';
 
 export function MePage() {
   const t = useT();
@@ -41,6 +42,15 @@ export function MePage() {
   const pick = (th: Theme) => { setTheme(th); applyTheme(th); };
   const { dark } = useTheme();
   const team = useTeam();
+  const startPage = useStartPage();
+  const startPageLabels: Record<StartPage, string> = {
+    '/dex': t.nav_dex,
+    '/lists': t.nav_lists,
+    '/lists/last': t.start_page_last_list,
+    '/game': t.nav_game,
+    '/pvp': t.nav_pvp,
+    '/friends': t.nav_friends,
+  };
   const totalEntries = (lists.data ?? []).reduce((n, l) => n + l.entryCount, 0);
   const totalDone = (lists.data ?? []).reduce((n, l) => n + l.doneCount, 0);
 
@@ -106,6 +116,18 @@ export function MePage() {
             {(status.data?.feed?.pending ?? 0) > 0 && <span className="tnum rounded-full bg-berry px-2 py-0.5 text-xs font-bold text-white">{status.data?.feed?.pending}</span>}
             <span className="text-ink-3">›</span>
           </Link>
+        )}
+
+        {me.data && (
+          <section>
+            <h2 className="mb-1 text-base font-bold">{t.start_page}</h2>
+            <p className="mb-2 text-xs text-ink-3">{t.start_page_hint}</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.start_page}>
+              {START_PAGES.map((p) => (
+                <Chip key={p} active={startPage === p} onClick={() => setStartPage(p)}>{startPageLabels[p]}</Chip>
+              ))}
+            </div>
+          </section>
         )}
 
         <section>

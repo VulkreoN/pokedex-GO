@@ -31,14 +31,14 @@ function useListMutation<TVars, TRes>(fn: (vars: TVars) => Promise<TRes>, keys: 
 
 export const useCreateList = () =>
   useListMutation(
-    (body: { name: string; description?: string | null; visibility?: ListVisibility }) => api<{ list: ListDetail }>('/lists', { body }),
+    (body: { name: string; description?: string | null; visibility?: ListVisibility; alertPreEvolutions?: boolean }) => api<{ list: ListDetail }>('/lists', { body }),
     () => [['lists'], ['lists-membership']],
   );
 
 export const useUpdateList = (id: string) =>
   useListMutation(
-    (body: { name?: string; description?: string | null; visibility?: ListVisibility }) => api<{ list: ListDetail }>(`/lists/${id}`, { method: 'PATCH', body }),
-    () => [['lists'], ['list', id]],
+    (body: { name?: string; description?: string | null; visibility?: ListVisibility; alertPreEvolutions?: boolean }) => api<{ list: ListDetail }>(`/lists/${id}`, { method: 'PATCH', body }),
+    () => [['lists'], ['list', id], ['lists-membership']],
   );
 
 export const useDeleteList = () =>

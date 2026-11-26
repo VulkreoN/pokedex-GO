@@ -60,6 +60,8 @@ export const lists = pgTable(
     shareToken: text('share_token'),
     /** The owner's order, which friends see too (smallest first). */
     position: integer('position').notNull().default(0),
+    /** Include guaranteed pre-evolutions in "My hunts" and hunt/raid alerts for this collection. */
+    alertPreEvolutions: boolean('alert_pre_evolutions').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,5 +1,5 @@
 /** The in-game search for a list, with the player's saved settings: shared by the sheet, the PDF and the image. */
-import { buildSearchStrings, plainTargets, regionOfForm, speciesSearchInfo, targetFromVariant, type EntryGender, type GameLang, type ListEntry, type Variant } from '@mydexpogo/shared';
+import { buildSearchStrings, plainTargets, regionOfForm, safePreEvolutions, speciesSearchInfo, targetFromVariant, type EntryGender, type GameLang, type ListEntry, type Variant } from '@mydexpogo/shared';
 import type { DatasetIndex } from './dataset.js';
 
 /** Left out of the whole search, each one a choice. Unticking shiny or costume keeps those entries in the search. */
@@ -77,25 +77,14 @@ export function savePreEvolutions(on: boolean) {
 }
 
 /**
- * The versions that evolve into this one: a Scatterbug or a Spewpa becomes the wanted Vivillon, keeping its gender,
- * shine and luck. A regional form only comes from the same region's pre-evolution, a costume from the same costume
- * (when that one may evolve); a pattern or a Mega comes from the plain pre-evolution.
+ * The versions that safely evolve into this one: a Scatterbug or Spewpa becomes the wanted Vivillon, a Galarian
+ * Meowth becomes Perrserker (never Kanto Meowth), an evolvable costume only matches the same costume, and
+ * Gigantamax / Mega / raid-only regional evolutions return nothing.
  */
 export function preEvolutions(idx: DatasetIndex, v: Variant): Variant[] {
-  const out: Variant[] = [];
-  const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
-  let dex = idx.speciesByDex.get(v.dex)?.parent;
-  for (let guard = 0; dex && guard < 4; guard++) {
-    const vs = (idx.variantsByDex.get(dex) ?? []).filter((x) => !x.key.endsWith('.g2'));
-    const next =
-      v.kind === 'costume' ? vs.find((x) => x.kind === 'costume' && ((v.costume && x.costume === v.costume) || (v.form && x.form === v.form)))
-      : region ? vs.find((x) => x.kind === 'regional' && regionOfForm(x.form) === region)
-      : vs.find((x) => x.kind === 'base');
-    if (!next || next.noEvolve) break;
-    out.push(next);
-    dex = idx.speciesByDex.get(dex)?.parent;
-  }
-  return out;
+  return safePreEvolutions(idx.hunt, v.key)
+    .map((k) => idx.variantByKey.get(k))
+    .filter((x): x is Variant => !!x);
 }
 
 export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions?: boolean; maxLength?: number }) {

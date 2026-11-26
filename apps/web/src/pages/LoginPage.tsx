@@ -6,6 +6,7 @@ import { api } from '../lib/api.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useT } from '../lib/i18n.js';
 import { errorMessage } from '../lib/errors.js';
+import { getStartPage } from '../lib/startPage.js';
 
 export function LoginPage() {
   const t = useT();
@@ -43,7 +44,7 @@ export function LoginPage() {
         qc.invalidateQueries();
       } else await auth.mutateAsync({ username: username.trim(), password, ...(mode === 'register' && invite.trim() ? { invite: invite.trim() } : {}) });
       // A new account starts with the welcome tour.
-      navigate(mode === 'register' ? '/welcome' : ((location.state as { from?: string } | null)?.from ?? '/dex'), { replace: true });
+      navigate(mode === 'register' ? '/welcome' : ((location.state as { from?: string } | null)?.from ?? getStartPage()), { replace: true });
     } catch (err) {
       setError(mode === 'reset' ? t.err_invalid_code_reset : errorMessage(t, err));
     }
@@ -51,7 +52,7 @@ export function LoginPage() {
 
   // Already logged in (another tab, or an old page): no form to fill, straight on. Not while this form signs in,
   // which goes where it should itself (the welcome tour after signing up).
-  if (me.data && !submitted) return <Navigate to={(location.state as { from?: string } | null)?.from ?? '/dex'} replace />;
+  if (me.data && !submitted) return <Navigate to={(location.state as { from?: string } | null)?.from ?? getStartPage()} replace />;
 
   return (
     <>

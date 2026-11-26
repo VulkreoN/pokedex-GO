@@ -33,6 +33,7 @@ const listBody = z.object({
   name: z.string().trim().min(1).max(60),
   description: z.string().trim().max(500).nullable().optional(),
   visibility: visibility.optional(),
+  alertPreEvolutions: z.boolean().optional(),
 });
 const entryBody = z.object({
   variantKey: z.string().refine(isValidVariantKey, 'invalid variant key'),
@@ -73,6 +74,7 @@ function toSummary(l: typeof schema.lists.$inferSelect, ownerName: string, entry
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
     shareToken: l.shareToken,
+    alertPreEvolutions: l.alertPreEvolutions,
   };
 }
 
@@ -140,7 +142,7 @@ async function topPosition(ownerId: string): Promise<number> {
 async function copyList(source: typeof schema.lists.$inferSelect, owner: AuthUser) {
   const id = newId();
   await db.transaction(async (tx) => {
-    await tx.insert(schema.lists).values({ id, ownerId: owner.id, name: source.name.slice(0, 60), description: source.description, visibility: 'friends', position: await topPosition(owner.id) });
+    await tx.insert(schema.lists).values({ id, ownerId: owner.id, name: source.name.slice(0, 60), description: source.description, visibility: 'friends', alertPreEvolutions: source.ownerId === owner.id ? source.alertPreEvolutions : false, position: await topPosition(owner.id) });
     const entries = await tx.select().from(schema.listEntries).where(eq(schema.listEntries.listId, source.id));
     if (entries.length) {
       await tx.insert(schema.listEntries).values(entries.map((e) => ({ listId: id, variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag, done: false, note: null, position: e.position })));
@@ -164,6 +166,7 @@ export const listRoutes = new Hono<AuthEnv>()
         shiny: schema.listEntries.shiny,
         tag: schema.listEntries.tag,
         done: schema.listEntries.done,
+        alertPreEvolutions: schema.lists.alertPreEvolutions,
       })
       .from(schema.listEntries)
       .innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId))
@@ -208,7 +211,7 @@ export const listRoutes = new Hono<AuthEnv>()
     const me = c.get('user');
     const body = c.req.valid('json');
     const id = newId();
-    await db.insert(schema.lists).values({ id, ownerId: me.id, name: body.name, description: body.description ?? null, visibility: body.visibility ?? 'friends', position: await topPosition(me.id) });
+    await db.insert(schema.lists).values({ id, ownerId: me.id, name: body.name, description: body.description ?? null, visibility: body.visibility ?? 'friends', alertPreEvolutions: body.alertPreEvolutions ?? false, position: await topPosition(me.id) });
     await recordListEvent(id, me.id, 'created');
     return c.json({ list: await listDetail(id, true, me.id) }, 201);
   })
@@ -248,6 +251,7 @@ export const listRoutes = new Hono<AuthEnv>()
         ...(body.description !== undefined ? { description: body.description } : {}),
         // Going private revokes the share link too: "private" means nobody but the owner.
         ...(body.visibility !== undefined ? { visibility: body.visibility, ...(body.visibility === 'private' ? { shareToken: null } : {}) } : {}),
+        ...(body.alertPreEvolutions !== undefined ? { alertPreEvolutions: body.alertPreEvolutions } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.lists.id, list.id));

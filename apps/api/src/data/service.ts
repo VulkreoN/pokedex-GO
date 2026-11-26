@@ -6,7 +6,7 @@ import { recordSource } from '../lib/health.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
-import type { Dataset, Gender, LocalizedText, Variant, VariantKind } from '@mydexpogo/shared';
+import { buildHuntIndex, type Dataset, type Gender, type HuntIndex, type LocalizedText, type Variant, type VariantKind } from '@mydexpogo/shared';
 import { db, schema } from '../db/index.js';
 import { lastSlot, nextSlot } from '../lib/slots.js';
 import { env } from '../env.js';
@@ -98,7 +98,7 @@ class DataService {
     return this.raw ? new Map(this.raw.species.map((s) => [s.dex, s.name])) : null;
   }
 
-  private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant> } | null = null;
+  private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant>; hunt: HuntIndex } | null = null;
   /** What players see for a variant right now (corrections included), for the admin journal's before / after. */
   async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean; kind: VariantKind } | null> {
     const v = (await this.variants())?.get(key);
@@ -114,15 +114,31 @@ class DataService {
     return [sp.name.fr ?? sp.name.en, label].filter(Boolean).join(' · ');
   }
 
+  private async ensureVariantIndex() {
+    if (!this.raw) return null;
+    const manual = await this.loadOverrides();
+    if (this.variantIndex?.version !== this.raw.version || this.variantIndex.manual !== manual) {
+      const merged = applyManualOverrides(this.raw, manual);
+      this.variantIndex = {
+        version: this.raw.version,
+        manual,
+        byKey: new Map(merged.variants.map((v) => [v.key, v])),
+        hunt: buildHuntIndex(merged),
+      };
+    }
+    return this.variantIndex;
+  }
+
   /** Variants of the current dataset by key, managers' corrections included (null until a dataset is loaded). */
   async variants(): Promise<Map<string, Variant> | null> {
     // Datasets built before pipeline v8 have no genders: treat them as unknown rather than "every gender".
     if (!this.raw || !this.raw.variants.some((v) => v.genders)) return null;
-    const manual = await this.loadOverrides();
-    if (this.variantIndex?.version !== this.raw.version || this.variantIndex.manual !== manual) {
-      this.variantIndex = { version: this.raw.version, manual, byKey: new Map(applyManualOverrides(this.raw, manual).variants.map((v) => [v.key, v])) };
-    }
-    return this.variantIndex.byKey;
+    return (await this.ensureVariantIndex())?.byKey ?? null;
+  }
+
+  /** Strict hunt & evolution index (managers' overrides applied), for raid/spawn/quest alerts. */
+  async huntIndex(): Promise<HuntIndex | null> {
+    return (await this.ensureVariantIndex())?.hunt ?? null;
   }
 
   async start() {

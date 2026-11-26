@@ -255,6 +255,8 @@ export interface ListSummary {
   createdAt: string;
   updatedAt: string;
   shareToken: string | null;
+  /** Include guaranteed pre-evolutions in "My hunts" and hunt/raid alerts for this collection. */
+  alertPreEvolutions?: boolean;
   /** Friend's list only: shown in my "Friends' lists" (followed by default). */
   following?: boolean;
   /** Friends' collections: I pinned this one / its owner. */
@@ -306,6 +308,7 @@ export interface MembershipEntry {
   shiny: boolean;
   tag: EntryTag;
   done: boolean;
+  alertPreEvolutions?: boolean;
 }
 
 /** A trade match between the player and a friend: one caught (or explicitly offered) what the other is missing. */

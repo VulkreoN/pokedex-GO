@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { neutralKey, variantImageUrl, type Dataset, type EntryGender, type PvpPokemon, type Species, type Variant } from '@mydexpogo/shared';
+import { buildHuntIndex, neutralKey, variantImageUrl, type Dataset, type EntryGender, type HuntIndex, type PvpPokemon, type Species, type Variant } from '@mydexpogo/shared';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export interface DatasetIndex {
@@ -12,6 +12,8 @@ export interface DatasetIndex {
   searchText: Map<number, string>;
   /** PvP forms by key (base stats, rank 1 IVs). */
   pvpByKey: Map<string, PvpPokemon>;
+  /** Strict hunt & evolution index for "My hunts" and safe pre-evolutions. */
+  hunt: HuntIndex;
 }
 
 export function buildIndex(ds: Dataset): DatasetIndex {
@@ -30,7 +32,8 @@ export function buildIndex(ds: Dataset): DatasetIndex {
   }
   const searchText = new Map(ds.species.map((s) => [s.dex, normalize(`${s.dex} ${s.name.en} ${s.name.fr ?? ''}`)]));
   const pvpByKey = new Map((ds.pvp?.pokemon ?? []).map((p) => [p.key, p]));
-  return { ds, speciesByDex, variantsByDex, variantByKey, coverOf, searchText, pvpByKey };
+  const hunt = buildHuntIndex(ds);
+  return { ds, speciesByDex, variantsByDex, variantByKey, coverOf, searchText, pvpByKey, hunt };
 }
 
 export function normalize(s: string): string {

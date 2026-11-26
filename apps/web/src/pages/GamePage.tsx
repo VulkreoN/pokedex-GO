@@ -14,7 +14,7 @@ import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { BuddyTool, CostsTool, CountersSheet, CountersTool, EVENT_MARK, EventLegend, EvolutionsTool, LeagueTool, RocketTab, useEventMarks, useEventSpawns, useFromImage, useKnownPokemon, useMissingHunts, type EventSpawns } from '../components/GameTools.js';
 import { liveKey, useTools } from '../lib/tools.js';
-import { cpmAt, cpOf, type ToolPokemon } from '@mydexpogo/shared';
+import { cpmAt, cpOf, type HuntSource, type ToolPokemon } from '@mydexpogo/shared';
 import { TYPE_COLORS, TypeBadge } from '../components/TypeBadge.js';
 import { RAID_TIERS, currentRaidBosses, raidSchedule, type CurrentBoss, type RaidTier, dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
@@ -199,9 +199,12 @@ function Raids() {
       </div>
     ) : null;
   };
+  const raidSource = (b: { tier: RaidTier }): HuntSource => (b.tier === 'mega' ? 'megaRaid' : b.tier.startsWith('shadow') ? 'shadowRaid' : 'raid');
+  const upcomingSource = (eventName: string, bossName: string): HuntSource =>
+    /shadow/i.test(eventName) || /^shadow /i.test(bossName) ? 'shadowRaid' : /\bmega\b|primal/i.test(`${eventName} ${bossName}`) ? 'megaRaid' : 'raid';
   const allTiers = RAID_TIERS.filter((tier) => bosses.some((b) => b.tier === tier));
-  const anyWanted = hasMissing && bosses.some((b) => isWanted(b.image, b.canBeShiny));
-  const visibleBosses = bosses.filter((b) => (tierFilter === 'all' || b.tier === tierFilter) && (!onlyHunts || isWanted(b.image, b.canBeShiny)));
+  const anyWanted = hasMissing && bosses.some((b) => isWanted(b.image, b.name, raidSource(b), b.canBeShiny));
+  const visibleBosses = bosses.filter((b) => (tierFilter === 'all' || b.tier === tierFilter) && (!onlyHunts || isWanted(b.image, b.name, raidSource(b), b.canBeShiny)));
   const tiers = allTiers.filter((tier) => visibleBosses.some((b) => b.tier === tier));
 
   return (
@@ -234,7 +237,7 @@ function Raids() {
           <Section key={tier} title={t.raid_tier[tier]} count={list.length}>
             <ul className="space-y-2">
               {list.map((b) => {
-                const wanted = isWanted(b.image, b.canBeShiny);
+                const wanted = isWanted(b.image, b.name, raidSource(b), b.canBeShiny);
                 return (
                   <li key={b.image + b.tier}>
                     <button
@@ -293,13 +296,26 @@ function Raids() {
               <div className="mt-1 font-semibold">{eventTitle(e.name, idx?.speciesByDex, lang)}</div>
               {!!e.extraData?.raidbattles?.bosses?.length && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {e.extraData.raidbattles.bosses.map((b, i) => (
-                    <button key={`${b.name}-${i}`} type="button" onClick={() => pickTarget(b.image, b.name)} className="flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2">
-                      <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
-                      <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{name(b.name, b.image)}</span>
-                      {cpLine({ image: b.image, name: b.name }, true)}
-                    </button>
-                  ))}
+                  {e.extraData.raidbattles.bosses.map((b, i) => {
+                    const wanted = isWanted(b.image, b.name, upcomingSource(e.name, b.name), b.canBeShiny);
+                    return (
+                      <button
+                        key={`${b.name}-${i}`}
+                        type="button"
+                        onClick={() => pickTarget(b.image, b.name)}
+                        title={wanted ? t.game_wanted_badge : undefined}
+                        className={`flex w-24 flex-col items-center rounded-lg p-1 text-center hover:bg-paper-2 ${wanted ? 'bg-go-soft/50 ring-2 ring-go/70' : ''}`}
+                      >
+                        <span className="relative">
+                          <img src={b.image} alt="" width={56} height={56} loading="lazy" className="object-contain" />
+                          {b.canBeShiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
+                          {wanted && <span className="absolute -left-1 top-0 rounded-full bg-go px-1 text-[8px] font-bold leading-3.5 text-white">★</span>}
+                        </span>
+                        <span className="line-clamp-2 text-[11px] font-semibold leading-tight">{name(b.name, b.image)}</span>
+                        {cpLine({ image: b.image, name: b.name }, true)}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </li>
@@ -397,7 +413,8 @@ function MaxBattles() {
   const { lang } = useLang();
   const events = useEvents();
   const dataset = useDataset();
-  const { isWanted } = useMissingHunts();
+  const { hasMissing, isWantedKey } = useMissingHunts();
+  const [onlyHunts, setOnlyHunts] = useState(false);
   const list = useMemo(() => (events.data ?? []).filter((e) => isMaxEvent(e) && eventStatus(e) !== 'past').sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')), [events.data]);
   if (events.isPending) return <Spinner />;
   if (events.isError) return <LiveError retry={() => void events.refetch()} />;
@@ -406,10 +423,20 @@ function MaxBattles() {
   const named = (name: string) => {
     if (!idx) return [];
     const hay = ` ${name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
-    return idx.ds.species.filter((s) => s.name.en.length >= 4 && hay.includes(` ${s.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `));
+    return idx.ds.species.filter((s) => s.name.en.length >= 3 && hay.includes(` ${s.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `));
   };
-  const now = list.filter((e) => eventStatus(e) === 'current');
-  const upcoming = list.filter((e) => eventStatus(e) === 'upcoming');
+  const isMaxSpeciesWanted = (dex: number, gmax: boolean) => {
+    const v = gmax ? idx?.variantsByDex.get(dex)?.find((x) => x.kind === 'gmax') : undefined;
+    return isWantedKey(gmax ? (v?.key ?? `${dex}.fGIGANTAMAX`) : String(dex), gmax ? 'gmax' : 'max');
+  };
+  const eventHasWanted = (e: GameEvent) => {
+    const gmax = /gigantamax/i.test(e.name);
+    return named(e.name).some((sp) => isMaxSpeciesWanted(sp.dex, gmax));
+  };
+  const anyWanted = hasMissing && list.some(eventHasWanted);
+  const visible = onlyHunts ? list.filter(eventHasWanted) : list;
+  const now = visible.filter((e) => eventStatus(e) === 'current');
+  const upcoming = visible.filter((e) => eventStatus(e) === 'upcoming');
   const block = (title: string, items: GameEvent[]) => (
     <Section title={title} count={items.length}>
       {items.length === 0 && <p className="text-sm text-ink-3">{t.max_empty}</p>}
@@ -429,7 +456,7 @@ function MaxBattles() {
                   {species.map((sp) => {
                     const cover = idx.coverOf.get(sp.dex);
                     const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') ?? cover : cover;
-                    const wanted = isWanted(`/pm${sp.dex}.icon.png`);
+                    const wanted = isMaxSpeciesWanted(sp.dex, gmax);
                     return v ? (
                       <Link key={sp.dex} to={`/dex/${sp.dex}`} title={wanted ? t.game_wanted_badge : undefined} className={`flex flex-col items-center rounded-lg p-0.5 text-center ${wanted ? 'bg-go-soft/50 ring-2 ring-go/70' : ''}`}>
                         <span className="relative">
@@ -451,6 +478,11 @@ function MaxBattles() {
   );
   return (
     <>
+      {anyWanted && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <Chip active={onlyHunts} onClick={() => setOnlyHunts((v) => !v)} className="min-h-8 px-2.5 text-xs">{t.game_my_hunts}</Chip>
+        </div>
+      )}
       {block(t.max_now, now)}
       {block(t.max_upcoming, upcoming)}
     </>
@@ -482,14 +514,14 @@ function Research() {
     return t.items[r.name] ?? (lang === 'fr' ? r.nameFr : undefined) ?? r.name;
   };
   const normQ = normalize(query);
-  const anyWanted = hasMissing && q.data.some((c) => c.tasks.some((task) => task.rewards.some((r) => r.kind === 'encounter' && isWanted(r.image, r.canBeShiny))));
+  const anyWanted = hasMissing && q.data.some((c) => c.tasks.some((task) => task.rewards.some((r) => r.kind === 'encounter' && isWanted(r.image, r.name, 'research', r.canBeShiny))));
   const filterCategory = (c: ResearchCategory): ResearchCategory => ({
     ...c,
     tasks: c.tasks.filter((task) => {
       const encs = task.rewards.filter((r) => r.kind === 'encounter');
       if (encountersOnly && !encs.length) return false;
       if (shinyOnly && !encs.some((r) => r.canBeShiny)) return false;
-      if (onlyHunts && !encs.some((r) => isWanted(r.image, r.canBeShiny))) return false;
+      if (onlyHunts && !encs.some((r) => isWanted(r.image, r.name, 'research', r.canBeShiny))) return false;
       if (!normQ) return true;
       const hay = normalize([task.text, task.textFr ?? '', ...task.rewards.map((r) => `${r.name} ${r.kind === 'encounter' ? liveName(r.name, r.image, idx?.speciesByDex, lang) : rewardName(r)}`)].join(' '));
       return hay.includes(normQ);
@@ -510,7 +542,7 @@ function Research() {
                     p={r}
                     size={48}
                     event={eventOf(r.image, r.name)}
-                    wanted={isWanted(r.image, r.canBeShiny)}
+                    wanted={isWanted(r.image, r.name, 'research', r.canBeShiny)}
                     sub={r.combatPower?.max ? `${t.game_hundo} ${r.combatPower.max}` : undefined}
                   />
                 ) : items && !encountersOnly ? (
@@ -605,7 +637,7 @@ function Eggs() {
   const normQ = normalize(query);
   const matchMon = (m: EggItem) => {
     if (distFilter !== 'all' && m.eggType !== distFilter) return false;
-    if (onlyHunts && !isWanted(m.image, m.canBeShiny)) return false;
+    if (onlyHunts && !isWanted(m.image, m.name, 'egg', m.canBeShiny)) return false;
     if (shinyOnly && !m.canBeShiny) return false;
     if (!normQ) return true;
     const localN = liveName(m.name, m.image, idx?.speciesByDex, lang);
@@ -621,7 +653,7 @@ function Eggs() {
     pool.mons.push(e);
   }
   const shownPools = [...pools.values()];
-  const anyWanted = hasMissing && q.data.some((m) => isWanted(m.image, m.canBeShiny));
+  const anyWanted = hasMissing && q.data.some((m) => isWanted(m.image, m.name, 'egg', m.canBeShiny));
 
   const byTier = (mons: EggItem[]) => {
     const tiers = new Map<number, EggItem[]>();
@@ -685,7 +717,7 @@ function Eggs() {
                     )}
                     <div className="flex flex-wrap gap-2">
                       {list.map((m, i) => (
-                        <Mon key={`${m.name}-${i}`} p={m} event={eventOf(m.image, m.name)} wanted={isWanted(m.image, m.canBeShiny)} regional={m.isRegional} />
+                        <Mon key={`${m.name}-${i}`} p={m} event={eventOf(m.image, m.name)} wanted={isWanted(m.image, m.name, 'egg', m.canBeShiny)} regional={m.isRegional} />
                       ))}
                     </div>
                   </div>
@@ -694,7 +726,7 @@ function Eggs() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {pool.mons.map((m, i) => (
-                  <Mon key={`${m.name}-${i}`} p={m} event={eventOf(m.image, m.name)} wanted={isWanted(m.image, m.canBeShiny)} regional={m.isRegional} />
+                  <Mon key={`${m.name}-${i}`} p={m} event={eventOf(m.image, m.name)} wanted={isWanted(m.image, m.name, 'egg', m.canBeShiny)} regional={m.isRegional} />
                 ))}
               </div>
             )}
@@ -744,9 +776,9 @@ function EventSpawnsTab() {
     for (const m of e.spawns) if (!all.has(m.image)) all.set(m.image, { m, event: title(e), featured: false });
   }
   const allGrid = [...all.values()].sort((a, b) => Number(b.featured) - Number(a.featured) || (dexFromImage(a.m.image) ?? 9999) - (dexFromImage(b.m.image) ?? 9999));
-  const anyWanted = hasMissing && wild.some((e) => [...e.featured, ...e.spawns].some((m) => isWanted(m.image, m.canBeShiny)));
-  const grid = allGrid.filter(({ m }) => (!onlyHunts || isWanted(m.image, m.canBeShiny)) && (!shinyOnly || !!m.canBeShiny));
-  const matchMon = (m: LivePokemon) => (!onlyHunts || isWanted(m.image, m.canBeShiny)) && (!shinyOnly || !!m.canBeShiny);
+  const anyWanted = hasMissing && wild.some((e) => [...e.featured, ...e.spawns].some((m) => isWanted(m.image, m.name, 'wild', m.canBeShiny)));
+  const grid = allGrid.filter(({ m }) => (!onlyHunts || isWanted(m.image, m.name, 'wild', m.canBeShiny)) && (!shinyOnly || !!m.canBeShiny));
+  const matchMon = (m: LivePokemon) => (!onlyHunts || isWanted(m.image, m.name, 'wild', m.canBeShiny)) && (!shinyOnly || !!m.canBeShiny);
   const filterEvents = (list: EventSpawns[]) =>
     list
       .map((e) => ({ e, feat: e.featured.filter(matchMon), spw: e.spawns.filter(matchMon) }))
@@ -765,13 +797,13 @@ function EventSpawnsTab() {
       {feat.length > 0 && (
         <div className="border-t border-line px-3 py-2">
           <p className="mb-1 text-xs font-semibold text-ink-3">{t.spawns_featured}</p>
-          <div className="flex flex-wrap gap-2">{feat.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} wanted={isWanted(m.image, m.canBeShiny)} />)}</div>
+          <div className="flex flex-wrap gap-2">{feat.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} wanted={isWanted(m.image, m.name, 'wild', m.canBeShiny)} />)}</div>
         </div>
       )}
       {spw.length > 0 && (
         <div className="border-t border-line px-3 py-2">
           <p className="mb-1 text-xs font-semibold text-ink-3">{t.spawns_wild}</p>
-          <div className="flex flex-wrap gap-2">{spw.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} wanted={isWanted(m.image, m.canBeShiny)} />)}</div>
+          <div className="flex flex-wrap gap-2">{spw.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} wanted={isWanted(m.image, m.name, 'wild', m.canBeShiny)} />)}</div>
         </div>
       )}
     </li>
@@ -793,7 +825,7 @@ function EventSpawnsTab() {
           <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
             {grid.map(({ m, event, featured }) => (
               <li key={m.image} className="flex flex-col items-center">
-                <Mon p={m} wanted={isWanted(m.image, m.canBeShiny)} />
+                <Mon p={m} wanted={isWanted(m.image, m.name, 'wild', m.canBeShiny)} />
                 <span className={`mt-0.5 line-clamp-1 w-[4.5rem] text-center text-[10px] leading-tight ${featured ? 'font-semibold text-sky' : 'text-ink-3'}`}>{featured ? `★ ${event}` : event}</span>
               </li>
             ))}

@@ -7,7 +7,7 @@ import { ListHistory } from '../components/ListHistory.js';
 import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, TextField, TopBar, useRolling } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -734,7 +734,7 @@ function EditSheet({
   onClose: () => void;
   list: ListDetail;
   shareUrl: string | null;
-  onSave: (b: { name: string; description: string | null; visibility: ListVisibility }) => Promise<void>;
+  onSave: (b: { name: string; description: string | null; visibility: ListVisibility; alertPreEvolutions: boolean }) => Promise<void>;
   onShare: (on: boolean) => Promise<void>;
   onDuplicate: () => Promise<void>;
   onDelete: () => Promise<void>;
@@ -744,6 +744,14 @@ function EditSheet({
   const [name, setName] = useState(list.name);
   const [description, setDescription] = useState(list.description ?? '');
   const [visibility, setVisibility] = useState<ListVisibility>(list.visibility);
+  const [alertPreEvolutions, setAlertPreEvolutions] = useState(!!list.alertPreEvolutions);
+  useEffect(() => {
+    if (!open) return;
+    setName(list.name);
+    setDescription(list.description ?? '');
+    setVisibility(list.visibility);
+    setAlertPreEvolutions(!!list.alertPreEvolutions);
+  }, [open, list.name, list.description, list.visibility, list.alertPreEvolutions]);
   return (
     <Sheet open={open} onClose={onClose} title={t.edit}>
       {open && (
@@ -751,7 +759,19 @@ function EditSheet({
           <TextField label={t.list_name} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
           <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
           <VisibilityField value={visibility} onChange={setVisibility} />
-          <Button tone="primary" className="w-full" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), description: description.trim() || null, visibility })}>{t.save}</Button>
+          <button
+            type="button"
+            aria-pressed={alertPreEvolutions}
+            onClick={() => setAlertPreEvolutions((v) => !v)}
+            className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">{t.list_alert_pre_evos}</span>
+              <span className="block text-xs text-ink-3">{t.list_alert_pre_evos_hint}</span>
+            </span>
+            <SwitchThumb on={alertPreEvolutions} />
+          </button>
+          <Button tone="primary" className="w-full" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), description: description.trim() || null, visibility, alertPreEvolutions })}>{t.save}</Button>
           <div className="rounded-card border border-line p-3">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{t.share} {shareUrl && <Badge tone="grass">{t.share_on}</Badge>}</div>
             {shareUrl ? (

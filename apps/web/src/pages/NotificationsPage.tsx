@@ -95,6 +95,13 @@ export function NotificationsPage() {
         return v ? [{ v, shiny: false, id: b.key }] : [];
       });
     }
+    if (n.type === 'spawn' || n.type === 'quest') {
+      const ms = (n.data.mons as { key: string }[] | undefined) ?? [];
+      return ms.slice(0, 4).flatMap((m) => {
+        const v = idx.variantByKey.get(m.key) ?? idx.coverOf.get(Number(m.key.split('.')[0]));
+        return v ? [{ v, shiny: false, id: m.key }] : [];
+      });
+    }
     return [];
   };
 

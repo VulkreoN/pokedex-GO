@@ -674,10 +674,11 @@ test('PvP IV steppers/presets, battle swap, and Me profile stats + inline passwo
   await expect(sheet.getByRole('alert')).toBeVisible();
 });
 
-test('game eggs: unified distance filters, source explanations, search, and clean rarity tiers', async ({ page }) => {
-  await page.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/eggs.json', (route) =>
+test('game eggs: unified distance filters, source explanations, search, and clean rarity tiers', async ({ page, context }) => {
+  await context.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/eggs.json', (route) =>
     route.fulfill({
       contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
       body: JSON.stringify([
         { name: 'Bulbasaur', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm1.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 4 },
         { name: 'Charmander', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm4.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 4 },
@@ -703,4 +704,83 @@ test('game eggs: unified distance filters, source explanations, search, and clea
   await page.getByRole('searchbox', { name: 'Chercher un Pokémon dans les œufs' }).fill('riolu');
   await expect(page.getByText('Riolu')).toBeVisible();
   await expect(page.getByText('Bulbizarre')).toHaveCount(0);
+});
+
+test('startup page picker in Me redirects / to the chosen tab or last collection', async ({ page }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+  const listId = (await (await page.request.post('/api/lists', { data: { name: 'Ma chasse' } })).json()).list.id;
+
+  await page.goto('/me');
+  const group = page.getByRole('radiogroup', { name: 'Page au démarrage' });
+  await expect(group.getByRole('button', { name: 'Pokédex', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await group.getByRole('button', { name: 'Jeu', exact: true }).click();
+  await expect(group.getByRole('button', { name: 'Jeu', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/game$/);
+
+  await page.goto(`/lists/${listId}`);
+  await expect(page.getByRole('heading', { name: 'Ma chasse' })).toBeVisible();
+  await page.goto('/me');
+  await page.getByRole('radiogroup', { name: 'Page au démarrage' }).getByRole('button', { name: 'Dernière collection', exact: true }).click();
+  await page.goto('/');
+  await expect(page).toHaveURL(new RegExp(`/lists/${listId}$`));
+});
+
+test('My hunts matches exact variants (never Gigantamax/Galarian false positives) and obeys per-list pre-evolution toggle', async ({ page, context }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+  const listId = (await (await page.request.post('/api/lists', { data: { name: 'Strict Hunts' } })).json()).list.id;
+  await page.request.put(`/api/lists/${listId}/entries`, {
+    data: {
+      entries: [
+        { variantKey: '143.fGIGANTAMAX', shiny: false, tag: '', done: false },
+        { variantKey: '52.fGIGANTAMAX', shiny: false, tag: '', done: false },
+        { variantKey: '6', shiny: false, tag: '', done: false },
+      ],
+    },
+  });
+
+  await context.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/eggs.json', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify([
+        { name: 'Charmander', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm4.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+        { name: 'Galarian Meowth', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm52.fGALARIAN.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+        { name: 'Snorlax', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm143.icon.png', eggType: '10 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+      ]),
+    }),
+  );
+
+  // With pre-evolutions OFF: none of Charmander, Galarian Meowth, or plain Snorlax match -> no "Mes chasses" chip.
+  await page.goto('/game?tab=eggs');
+  await expect(page.getByText('Miaouss de Galar')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mes chasses', exact: true })).toHaveCount(0);
+
+  // Enable per-list pre-evolution matching in the collection's Edit sheet and verify persistence across reload.
+  await page.goto(`/lists/${listId}`);
+  await page.getByRole('button', { name: 'Modifier' }).click();
+  const sheet = page.locator('dialog[open]');
+  const preEvoToggle = sheet.getByRole('button', { name: /Pré-évolutions dans Mes chasses et alertes/ });
+  await expect(preEvoToggle).toHaveAttribute('aria-pressed', 'false');
+  await preEvoToggle.click();
+  await expect(preEvoToggle).toHaveAttribute('aria-pressed', 'true');
+  await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(sheet).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Modifier' }).click();
+  await expect(page.locator('dialog[open]').getByRole('button', { name: /Pré-évolutions dans Mes chasses et alertes/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+
+  // Now Charmander (pre-evo of plain Charizard) is wanted, while Galarian Meowth & plain Snorlax stay excluded!
+  await page.goto('/game?tab=eggs');
+  const myHunts = page.getByRole('button', { name: 'Mes chasses', exact: true });
+  await expect(myHunts).toBeVisible();
+  await myHunts.click();
+  await expect(page.getByText('Salamèche')).toBeVisible();
+  await expect(page.getByText('Miaouss de Galar')).toHaveCount(0);
+  await expect(page.getByText('Ronflex')).toHaveCount(0);
 });

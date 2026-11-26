@@ -4,7 +4,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { ListSummary, ListVisibility } from '@mydexpogo/shared';
-import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, SwitchThumb, TextField, TopBar } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { useDataset } from '../lib/dataset.js';
 import { LIST_TEMPLATES, buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
@@ -59,6 +59,7 @@ export function ListsPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] = useState<ListVisibility>('friends');
+  const [alertPreEvolutions, setAlertPreEvolutions] = useState(false);
   const [template, setTemplate] = useState<ListTemplateId>('empty');
   const [filling, setFilling] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -95,7 +96,7 @@ export function ListsPage() {
     if (!name.trim()) return;
     setFilling(true);
     try {
-      const r = await create.mutateAsync({ name: name.trim(), description: description.trim() || null, visibility });
+      const r = await create.mutateAsync({ name: name.trim(), description: description.trim() || null, visibility, alertPreEvolutions });
       if (template !== 'empty' && dataset.data) {
         const entries = buildTemplateEntries(dataset.data, template);
         for (let k = 0; k < entries.length; k += 1000) {
@@ -106,6 +107,7 @@ export function ListsPage() {
       setOpen(false);
       setName('');
       setDescription('');
+      setAlertPreEvolutions(false);
       setTemplate('empty');
     } finally {
       setFilling(false);
@@ -212,6 +214,18 @@ export function ListsPage() {
               </div>
             </div>
             <VisibilityField value={visibility} onChange={setVisibility} />
+            <button
+              type="button"
+              aria-pressed={alertPreEvolutions}
+              onClick={() => setAlertPreEvolutions((v) => !v)}
+              className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">{t.list_alert_pre_evos}</span>
+                <span className="block text-xs text-ink-3">{t.list_alert_pre_evos_hint}</span>
+              </span>
+              <SwitchThumb on={alertPreEvolutions} />
+            </button>
             <Button tone="primary" className="w-full" type="submit" disabled={filling || create.isPending || !name.trim()}>
               {filling ? t.template_filling : t.create}
             </Button>

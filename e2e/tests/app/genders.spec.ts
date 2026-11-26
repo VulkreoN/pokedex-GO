@@ -62,6 +62,7 @@ test('a two-gender Pokémon is added as ♂ + ♀ by default, one card in the li
   await expect(sheet.getByRole('button', { name: /^♀ Normal/ })).toHaveAttribute('aria-pressed', 'true');
   await sheet.getByRole('checkbox').first().check();
   await sheet.getByRole('button', { name: /^Ajouter · 2/ }).click();
+  await expect(sheet).toHaveCount(0);
   await page.goto(`/lists/${id}`);
   await expect(page.locator('li', { hasText: 'Raichu' })).toHaveCount(1);
   await expect(page.locator('li', { hasText: 'Raichu' }).getByRole('button', { name: /^[♂♀]/ })).toHaveCount(2);
