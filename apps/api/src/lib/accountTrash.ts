@@ -19,6 +19,7 @@ type Snapshot = {
   friendships: Row<typeof schema.friendships>[];
   requests: Row<typeof schema.friendRequests>[];
   pvp: Row<typeof schema.pvpPokemon>[];
+  pvpTeams?: Row<typeof schema.pvpTeams>[];
   trashedLists: Row<typeof schema.deletedLists>[];
 };
 
@@ -30,7 +31,7 @@ export async function trashAccount(userId: string, deletedBy: string | null): Pr
     const lists = await tx.select().from(schema.lists).where(eq(schema.lists.ownerId, userId));
     const ids = lists.map((l) => l.id);
     const onLists = <T>(q: (ids: string[]) => Promise<T[]>) => (ids.length ? q(ids) : Promise.resolve([] as T[]));
-    const [entries, events, offers, unfollows, favorites, friendships, requests, pvp, trashedLists] = await Promise.all([
+    const [entries, events, offers, unfollows, favorites, friendships, requests, pvp, pvpTeams, trashedLists] = await Promise.all([
       onLists((i) => tx.select().from(schema.listEntries).where(inArray(schema.listEntries.listId, i))),
       onLists((i) => tx.select().from(schema.listEvents).where(inArray(schema.listEvents.listId, i))),
       onLists((i) => tx.select().from(schema.listOffers).where(inArray(schema.listOffers.listId, i))),
@@ -39,9 +40,10 @@ export async function trashAccount(userId: string, deletedBy: string | null): Pr
       tx.select().from(schema.friendships).where(or(eq(schema.friendships.userId, userId), eq(schema.friendships.friendId, userId))),
       tx.select().from(schema.friendRequests).where(or(eq(schema.friendRequests.fromId, userId), eq(schema.friendRequests.toId, userId))),
       tx.select().from(schema.pvpPokemon).where(eq(schema.pvpPokemon.userId, userId)),
+      tx.select().from(schema.pvpTeams).where(eq(schema.pvpTeams.userId, userId)),
       tx.select().from(schema.deletedLists).where(eq(schema.deletedLists.ownerId, userId)),
     ]);
-    const snapshot: Snapshot = { user, lists, entries, events, offers, unfollows, favorites, friendships, requests, pvp, trashedLists };
+    const snapshot: Snapshot = { user, lists, entries, events, offers, unfollows, favorites, friendships, requests, pvp, pvpTeams, trashedLists };
     const values = { username: user.username, friendCode: user.friendCode, deletedBy, deletedAt: new Date(), snapshot: snapshot as unknown as Record<string, unknown> };
     await tx.insert(schema.deletedUsers).values({ id: user.id, ...values }).onConflictDoUpdate({ target: schema.deletedUsers.id, set: values });
     await tx.delete(schema.users).where(eq(schema.users.id, userId));
@@ -71,7 +73,7 @@ export async function restoreAccount(id: string): Promise<RestoreResult> {
     const alive = new Set([id, ...(others.length ? (await tx.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, others))).map((r) => r.id) : [])]);
     const ownLists = new Set(s.lists.map((l) => l.id));
 
-    if (s.lists.length) await tx.insert(schema.lists).values(s.lists.map((l) => ({ ...l, createdAt: at(l.createdAt)!, updatedAt: at(l.updatedAt)! })));
+    if (s.lists.length) await tx.insert(schema.lists).values(s.lists.map((l) => ({ ...l, alertPreEvolutions: l.alertPreEvolutions ?? false, createdAt: at(l.createdAt)!, updatedAt: at(l.updatedAt)! })));
     if (s.entries.length) await tx.insert(schema.listEntries).values(s.entries.map((e) => ({ ...e, updatedAt: at(e.updatedAt)! })));
     if (s.events.length) await tx.insert(schema.listEvents).values(s.events.map(({ id: _id, ...e }) => ({ ...e, actorId: e.actorId && alive.has(e.actorId) ? e.actorId : null, createdAt: at(e.createdAt)! })));
     const offers = s.offers.filter((o) => alive.has(o.userId) && ownLists.has(o.listId));
@@ -87,10 +89,11 @@ export async function restoreAccount(id: string): Promise<RestoreResult> {
     if (unfollows.length) await tx.insert(schema.listUnfollows).values(unfollows);
     if (favorites.length) await tx.insert(schema.listFavorites).values(favorites);
     const friendships = s.friendships.filter((f) => alive.has(f.userId) && alive.has(f.friendId));
-    if (friendships.length) await tx.insert(schema.friendships).values(friendships.map((f) => ({ ...f, createdAt: at(f.createdAt)! }))).onConflictDoNothing();
+    if (friendships.length) await tx.insert(schema.friendships).values(friendships.map((f) => ({ ...f, lucky: f.lucky ?? false, createdAt: at(f.createdAt)! }))).onConflictDoNothing();
     const requests = s.requests.filter((r) => alive.has(r.fromId) && alive.has(r.toId));
     if (requests.length) await tx.insert(schema.friendRequests).values(requests.map((r) => ({ ...r, createdAt: at(r.createdAt)!, respondedAt: at(r.respondedAt) }))).onConflictDoNothing();
     if (s.pvp.length) await tx.insert(schema.pvpPokemon).values(s.pvp.map((p) => ({ ...p, createdAt: at(p.createdAt)! })));
+    if (s.pvpTeams?.length) await tx.insert(schema.pvpTeams).values(s.pvpTeams.map((pt) => ({ ...pt, createdAt: at(pt.createdAt)!, updatedAt: at(pt.updatedAt)! })));
     if (s.trashedLists.length) await tx.insert(schema.deletedLists).values(s.trashedLists.map((l) => ({ ...l, deletedBy: l.deletedBy && alive.has(l.deletedBy) ? l.deletedBy : null, deletedAt: at(l.deletedAt)! }))).onConflictDoNothing();
     await tx.delete(schema.deletedUsers).where(eq(schema.deletedUsers.id, id));
     return { ok: true, username: u.username } as const;

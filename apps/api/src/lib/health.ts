@@ -1,5 +1,5 @@
 /** Last success and failure of each outside source the API reads, for the admin panel. */
-export type SourceName = 'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'feed';
+export type SourceName = 'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'hunts' | 'events' | 'feed';
 export interface SourceHealth { okAt: string | null; errorAt: string | null; error: string | null }
 
 const state = new Map<SourceName, SourceHealth>();

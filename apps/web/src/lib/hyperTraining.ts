@@ -69,11 +69,11 @@ const fr: Record<HtStat, string[]> = {
     "Gagner 20 combats d'Arène avec le Pokémon dans ton équipe",
     'Gagner 10 raids avec le Pokémon dans ton équipe',
     'Vaincre 15 membres de la Team GO Rocket avec le Pokémon dans ton équipe',
-    'Vaincre 2 fois un Leader de la Team GO Rocket avec le Pokémon dans ton équipe',
+    'Vaincre 2 fois un Chef de la Team GO Rocket avec le Pokémon dans ton équipe',
     'Gagner 20 raids avec le Pokémon dans ton équipe',
     "Gagner 40 combats d'Arène avec le Pokémon dans ton équipe",
     'Vaincre 40 membres de la Team GO Rocket avec le Pokémon dans ton équipe',
-    'Vaincre 5 fois un Leader de la Team GO Rocket avec le Pokémon dans ton équipe',
+    'Vaincre 5 fois un Chef de la Team GO Rocket avec le Pokémon dans ton équipe',
     'Gagner 40 raids avec le Pokémon dans ton équipe',
   ],
   def: [

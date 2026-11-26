@@ -1,4 +1,4 @@
-import { adminLogin, clipboard, expect, test } from '../fixtures.js';
+import { adminLogin, apiRegister, clipboard, expect, test } from '../fixtures.js';
 
 test.describe('without an account', () => {
   test('home sends visitors to the login page, which lets them browse anyway', async ({ page }) => {
@@ -166,10 +166,13 @@ test.describe('PvP', () => {
 });
 
 test.describe('game tab', () => {
-  test('every section renders', async ({ page }) => {
+  test('every section renders (Events first by default)', async ({ page }) => {
     await page.goto('/game');
-    await expect(page.getByText(/Raids \d étoiles|Impossible de charger/).first()).toBeVisible({ timeout: 20_000 });
-    for (const tab of ['Dynamax', 'Événements', 'Études', 'Œufs']) {
+    const tabs = page.getByRole('tab');
+    await expect(tabs.first()).toHaveText('Événements');
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText(/Ma semaine|En cours|À venir|Actualités/).first()).toBeVisible({ timeout: 20_000 });
+    for (const tab of ['Raids', 'Dynamax', 'Études', 'Œufs']) {
       await page.getByRole('tab', { name: tab, exact: true }).click();
       await expect(page.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('main')).not.toBeEmpty();
@@ -735,9 +738,11 @@ test('My hunts matches exact variants (never Gigantamax/Galarian false positives
   await page.request.put(`/api/lists/${listId}/entries`, {
     data: {
       entries: [
+        { variantKey: '1', shiny: false, tag: '', done: false },
         { variantKey: '143.fGIGANTAMAX', shiny: false, tag: '', done: false },
         { variantKey: '52.fGIGANTAMAX', shiny: false, tag: '', done: false },
         { variantKey: '6', shiny: false, tag: '', done: false },
+        { variantKey: '80.fMEGA', shiny: false, tag: '', done: false },
       ],
     },
   });
@@ -748,13 +753,40 @@ test('My hunts matches exact variants (never Gigantamax/Galarian false positives
       headers: { 'access-control-allow-origin': '*' },
       body: JSON.stringify([
         { name: 'Charmander', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm4.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+        { name: 'Slowpoke', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm79.icon.png', eggType: '2 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+        { name: 'Galarian Slowpoke', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm79.fGALARIAN.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
         { name: 'Galarian Meowth', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm52.fGALARIAN.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
         { name: 'Snorlax', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm143.icon.png', eggType: '10 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
       ]),
     }),
   );
+  await context.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/rocketLineups.json', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify([
+        {
+          name: 'Grass Grunt',
+          title: 'Team GO Rocket Grunt',
+          type: 'grass',
+          quote: 'Don’t tangle with us!',
+          firstPokemon: [{ name: 'Bulbasaur', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm1.icon.png', types: ['grass', 'poison'], canBeShiny: true, isEncounter: true }],
+          secondPokemon: [],
+          thirdPokemon: [],
+        },
+      ]),
+    }),
+  );
 
-  // With pre-evolutions OFF: none of Charmander, Galarian Meowth, or plain Snorlax match -> no "Mes chasses" chip.
+  // Plain collections match Rocket encounters too (Bulbasaur in Grass Grunt).
+  await page.goto('/game?tab=rocket');
+  const rocketHunts = page.getByRole('button', { name: 'Mes chasses', exact: true });
+  await expect(rocketHunts).toBeVisible();
+  await rocketHunts.click();
+  await expect(page.getByText('Sbire · Plante')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Bulbizarre/ })).toBeVisible();
+
+  // With pre-evolutions OFF: none of Charmander, Slowpoke, Galarian Meowth, or plain Snorlax match -> no "Mes chasses" chip.
   await page.goto('/game?tab=eggs');
   await expect(page.getByText('Miaouss de Galar')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mes chasses', exact: true })).toHaveCount(0);
@@ -775,12 +807,468 @@ test('My hunts matches exact variants (never Gigantamax/Galarian false positives
   await expect(page.locator('dialog[open]').getByRole('button', { name: /Pré-évolutions dans Mes chasses et alertes/ })).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
 
-  // Now Charmander (pre-evo of plain Charizard) is wanted, while Galarian Meowth & plain Snorlax stay excluded!
+  // Now Charmander (plain Charizard pre-evo) and Kanto Slowpoke (Mega Slowbro pre-evo) are wanted,
+  // while Galarian Slowpoke, Galarian Meowth & plain Snorlax stay excluded!
   await page.goto('/game?tab=eggs');
   const myHunts = page.getByRole('button', { name: 'Mes chasses', exact: true });
   await expect(myHunts).toBeVisible();
   await myHunts.click();
   await expect(page.getByText('Salamèche')).toBeVisible();
+  await expect(page.getByText('Ramoloss', { exact: true })).toBeVisible();
+  await expect(page.getByText('Ramoloss de Galar')).toHaveCount(0);
   await expect(page.getByText('Miaouss de Galar')).toHaveCount(0);
   await expect(page.getByText('Ronflex')).toHaveCount(0);
+});
+
+test('v1.3: Game "Pour moi" overview + countdowns, Collection stats, Trainer medals, Recent filter, and Saved PvP teams', async ({ page, context }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+  const listId = (await (await page.request.post('/api/lists', { data: { name: 'Ma Gen 1-2' } })).json()).list.id;
+  await page.request.put(`/api/lists/${listId}/entries`, {
+    data: {
+      entries: [
+        { variantKey: '1', gender: 'm', shiny: false, tag: '', done: true },
+        { variantKey: '4', gender: 'm', shiny: true, tag: '', done: true },
+        { variantKey: '25', gender: 'm', shiny: false, tag: '', done: false },
+        { variantKey: '143.fGIGANTAMAX', gender: '', shiny: false, tag: '', done: false },
+        { variantKey: '152', gender: 'm', shiny: false, tag: '', done: false },
+      ],
+    },
+  });
+
+  // 1. Collection Stats sheet on ListPage.
+  await page.goto(`/lists/${listId}`);
+  await page.getByRole('button', { name: 'Statistiques', exact: true }).click();
+  const statsSheet = page.locator('dialog[open]');
+  await expect(statsSheet.getByText('40 %')).toBeVisible();
+  await expect(statsSheet.getByText('Chromatiques')).toBeVisible();
+  await expect(statsSheet.getByText('Kanto')).toBeVisible();
+  await expect(statsSheet.getByText('Johto')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // 2. Trainer Medals card & full sheet on MePage.
+  await page.goto('/me');
+  await expect(page.getByRole('heading', { name: 'Mes médailles' })).toBeVisible();
+  await page.getByRole('button', { name: 'Voir toutes les médailles' }).click();
+  const medalSheet = page.locator('dialog[open]');
+  await expect(medalSheet.getByText('Chasse & profil')).toBeVisible();
+  await expect(medalSheet.getByText('Régions du Pokédex')).toBeVisible();
+  await medalSheet.getByRole('button', { name: /Kanto/ }).click();
+  await expect(medalSheet.getByText(/Kanto · 2 \//)).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // 3. Pokédex "Sorties récentes" filter chip.
+  await page.goto('/dex');
+  await page.getByRole('button', { name: 'Filtres' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Sorties récentes', exact: true }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: /^Voir / }).click();
+  await expect(page.getByRole('button', { name: 'Sorties récentes ✕' })).toBeVisible();
+
+  // 4. Game "Pour moi" overview with live countdown badge on an active Gigantamax event + missing egg.
+  const endSoon = new Date(Date.now() + 2 * 3600_000).toISOString();
+  const startPast = new Date(Date.now() - 3600_000).toISOString();
+  await context.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify([
+        { eventID: 'gmax-snorlax-live', name: 'Gigantamax Snorlax Max Battle Day', eventType: 'max-battles', heading: '', link: 'https://leekduck.com/', image: '', start: startPast, end: endSoon },
+      ]),
+    }),
+  );
+  await context.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/eggs.json', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify([
+        { name: 'Pikachu', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm25.icon.png', eggType: '2 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+      ]),
+    }),
+  );
+  await page.goto('/game?tab=hunts');
+  await expect(page.getByRole('tab', { name: 'Pour moi', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText(/Fin dans /).first()).toBeVisible();
+  await expect(page.getByText('Ronflex').first()).toBeVisible();
+  await expect(page.getByText('Pikachu').first()).toBeVisible();
+
+  // 5. PvP saved teams of 3: save, reload, load into slots, and delete.
+  await page.goto('/pvp/team?l=great&p=184,308,227');
+  await page.getByRole('button', { name: 'Enregistrer l’équipe' }).click();
+  const saveSheet = page.locator('dialog[open]');
+  await saveSheet.getByLabel('Nom de l’équipe').fill('Mon équipe S26');
+  await saveSheet.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await expect(page.getByText('Équipe enregistrée')).toBeVisible();
+
+  await page.goto('/pvp/team');
+  await expect(page.getByRole('heading', { name: /^Mes équipes enregistrées/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Charger Mon équipe S26' }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('p')).toBe('184,308,227');
+
+  await page.getByRole('button', { name: 'Supprimer Mon équipe S26' }).click();
+  await expect(page.getByText('Équipe supprimée')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^Mes équipes enregistrées/ })).toHaveCount(0);
+});
+
+test('automatic Events tab renders multi-template infographics (Max Battle + Long Event) with French bonuses, raid tiers, GO Pass & tickets', async ({ page, context }) => {
+  // Keep startPast inside the current local day so the mobile WeeklySchedule ("today" tab) always includes it even right after midnight.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 1, 0);
+  const startPast = new Date(Math.max(todayStart.getTime(), Date.now() - 3600_000)).toISOString();
+  const endSoon = new Date(Date.now() + 3 * 3600_000).toISOString();
+  await context.route('**/api/game/events', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        events: [
+          {
+            eventID: 'gmax-inteleon-e2e',
+            name: 'Gigantamax Inteleon Max Battle Day',
+            eventType: 'max-battles',
+            heading: 'Max Battles',
+            template: 'max',
+            link: 'https://leekduck.com/events/gigantamax-inteleon/',
+            image: '',
+            start: startPast,
+            end: endSoon,
+            summary: 'Gigantamax Inteleon arrives!',
+            bonuses: [
+              { text: 'Max Particle collection limit increased to 1,600', image: 'https://cdn.leekduck.com/assets/img/bonuses/max-particles.png' },
+              { text: 'Up to three Special Trades for the day', image: 'https://cdn.leekduck.com/assets/img/bonuses/special-trade.png' },
+            ],
+            highlights: [],
+            featured: [{ name: 'Gigantamax Inteleon', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm818.fGIGANTAMAX.icon.png', canBeShiny: true, newShiny: true }],
+            spawnGroups: [],
+            raidGroups: [],
+            eggGroups: [],
+            research: [],
+            researchNote: null,
+            rocket: [],
+            newShinies: [{ name: 'Gigantamax Inteleon', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm818.fGIGANTAMAX.icon.png', canBeShiny: true, newShiny: true }],
+            moves: [],
+            ticket: {
+              title: 'Event Ticket',
+              price: 'US$4.99',
+              rewards: ['1 Max Mushroom', '25,000 XP', '6,400 Max Particles'],
+              bonuses: [{ text: '2× XP from Max Battles', paid: true }],
+            },
+          },
+          {
+            eventID: 'mega-clefable-e2e',
+            name: 'Clefable Super Mega Raid Day',
+            eventType: 'raid-day',
+            heading: 'Raid Day',
+            template: 'raid_day',
+            link: 'https://leekduck.com/events/clefable-super-mega-raid-day/',
+            image: '',
+            start: startPast,
+            end: endSoon,
+            summary: 'Mega Clefable makes its Pokémon GO debut during Clefable Super Mega Raid Day on Saturday, November 28, 2026, from 2:00 p.m. to 5:00 p.m. local time!',
+            bonuses: [],
+            highlights: [
+              { kind: 'debut', title: 'Mega Clefable Debut', text: 'Mega Clefable, a Fairy- and Flying-type Pokémon, makes its Pokémon GO debut in Super Mega Raids!' },
+              { kind: 'super_max', title: 'New Mega Level: Super Max', text: 'Mega Clefable can reach Super Max Level for the first time. Raise its Mega-Level to Max first, then use Clefable Mega-Energy to reach Super Max.' },
+              { kind: 'move', title: 'Moonblast+', text: 'Mega Clefable will know the Charged Attack Moonblast+.' },
+            ],
+            featured: [{ name: 'Clefable', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm36.icon.png', canBeShiny: true }],
+            spawnGroups: [],
+            raidGroups: [],
+            eggGroups: [],
+            research: [],
+            researchNote: null,
+            rocket: [],
+            newShinies: [],
+            moves: [],
+          },
+          {
+            eventID: 'champions-e2e',
+            name: 'Pokémon Champions Celebration Event 2026',
+            eventType: 'event',
+            heading: 'Event',
+            template: 'event',
+            link: 'https://leekduck.com/events/champions/',
+            image: '',
+            start: startPast,
+            end: endSoon,
+            summary: null,
+            bonuses: [
+              { text: 'Increased chance to encounter Kecleon at PokéStops' },
+              { text: '2× Candy for catching Pokémon', group: 'Tier 2 – Rank 10' },
+              { text: 'GO Pass Deluxe: Receive up to two free Raid Passes per day from spinning Gym Photo Discs', group: 'Tier 3 – Rank 20', paid: true },
+            ],
+            highlights: [{ kind: 'background', title: 'Special Backgrounds', text: 'Pokémon from raids may have a Special Background.' }],
+            featured: [],
+            spawnGroups: [{ label: 'Spawns', mons: [{ name: 'Charmander', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm4.icon.png', canBeShiny: true }] }],
+            raidGroups: [{ label: 'Five-Star Raids*', mons: [{ name: 'Latias', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm380.icon.png', canBeShiny: true }] }],
+            eggGroups: [],
+            research: [],
+            researchNote: null,
+            rocket: [],
+            newShinies: [],
+            moves: [],
+            goPass: { title: 'GO Pass', price: 'US$4.99', freeRewards: ['Lucky Egg'], deluxeRewards: ['Premium Battle Pass'] },
+          },
+        ],
+      }),
+    }),
+  );
+
+  await context.route('**/api/game/promo-codes', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        codes: [
+          { code: 'ADIDASxPOKEMON', title: 'adidas Shoes Avatar Item', description: 'adidas shoes', rewards: [], redeemUrl: 'https://store.pokemongo.com/offer-redemption?passcode=ADIDASxPOKEMON' },
+          { code: 'CROCSxPIKACHU', title: 'Pikachu Clog', description: 'Pikachu clog', rewards: [], redeemUrl: 'https://store.pokemongo.com/offer-redemption?passcode=CROCSxPIKACHU' },
+        ],
+      }),
+    }),
+  );
+
+  await page.goto('/game?tab=events');
+  // Promo codes dropdown starts collapsed by default, expands on click, and supports hiding per-code or all with persistence.
+  const promoToggle = page.getByRole('button', { name: /Codes promo actifs/ });
+  await expect(promoToggle).toBeVisible();
+  await expect(promoToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('ADIDASxPOKEMON')).toHaveCount(0);
+  await promoToggle.click();
+  await expect(promoToggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Objet d’avatar : Chaussures adidas')).toBeVisible();
+  await expect(page.getByText('ADIDASxPOKEMON')).toBeVisible();
+  await page.getByRole('button', { name: 'Masquer ce code ADIDASxPOKEMON' }).click();
+  await expect(page.getByText('ADIDASxPOKEMON')).toHaveCount(0);
+  await expect(page.getByText('CROCSxPIKACHU')).toBeVisible();
+  await page.getByRole('button', { name: 'Masquer', exact: true }).click();
+  await expect(promoToggle).toHaveCount(0);
+  await expect(page.getByText('🎁 2 codes promo masqués')).toBeVisible();
+  await page.getByRole('button', { name: 'Réafficher' }).click();
+  await expect(promoToggle).toBeVisible();
+
+  // Weekly schedule ("Ma semaine") displays today's Gigantamax event right in the calendar
+  const weekly = page.getByRole('region', { name: 'Ma semaine' });
+  await expect(weekly).toBeVisible();
+  await expect(weekly.getByRole('button', { name: /Journée Combat Gigamax : Lézargus/ }).first()).toBeVisible();
+
+  // Gigantamax Max Battle Day card + full sheet
+  const gmaxCard = page.locator('main ul button', { hasText: 'Journée Combat Gigamax : Lézargus' });
+  await expect(gmaxCard).toBeVisible();
+  await expect(gmaxCard.getByText('Limite de Particules Max portée à 1 600')).toBeVisible();
+  await gmaxCard.click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByText('Jusqu’à 3 échanges spéciaux par jour')).toBeVisible();
+  await expect(sheet.getByText('1 Champi Max')).toBeVisible();
+  await expect(sheet.getByText('6 400 Particules Max')).toBeVisible();
+  await expect(sheet.getByText('2× PX en Combats Max')).toBeVisible();
+  // Export the event infographic as a real PNG image and as a real PDF, reusing page bonus icons via `/api/game/asset`!
+  const tinyPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const proxiedUrls: string[] = [];
+  await context.route('**/api/game/asset**', (route) => {
+    const u = new URL(route.request().url()).searchParams.get('url');
+    if (u) proxiedUrls.push(u);
+    return route.fulfill({ status: 200, contentType: 'image/png', body: tinyPng });
+  });
+  const [pngDl] = await Promise.all([
+    page.waitForEvent('download'),
+    sheet.getByRole('button', { name: /Image PNG/ }).click(),
+  ]);
+  expect(pngDl.suggestedFilename()).toMatch(/\.png$/);
+  expect(proxiedUrls).toContain('https://cdn.leekduck.com/assets/img/bonuses/max-particles.png');
+  expect(proxiedUrls).toContain('https://cdn.leekduck.com/assets/img/bonuses/special-trade.png');
+  const [pdfDl] = await Promise.all([
+    page.waitForEvent('download'),
+    sheet.getByRole('button', { name: /PDF/ }).click(),
+  ]);
+  expect(pdfDl.suggestedFilename()).toMatch(/\.pdf$/);
+  await page.keyboard.press('Escape');
+
+  // Super Mega Raid Day promotes Clefable to Méga-Mélodelfe with Fée + Vol types and French move/highlight texts!
+  const megaCard = page.locator('main ul button', { hasText: 'Super Journée de Méga-Raids : Mélodelfe' });
+  await expect(megaCard).toBeVisible();
+  await megaCard.click();
+  const megaSheet = page.locator('dialog[open]');
+  await expect(megaSheet.getByText('Méga-Mélodelfe', { exact: true })).toBeVisible();
+  await expect(megaSheet.getByText('Fée', { exact: true })).toBeVisible();
+  await expect(megaSheet.getByText('Vol', { exact: true })).toBeVisible();
+  await expect(megaSheet.getByText('Début de Méga-Mélodelfe')).toBeVisible();
+  await expect(megaSheet.getByText('Nouveau niveau Méga : Super Max')).toBeVisible();
+  await expect(megaSheet.getByText('Pouvoir Lunaire +', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Long event card + full sheet (Kecleon bonus, Raid 5★, GO Pass Deluxe, Special Background in French)
+  const longCard = page.locator('main ul button', { hasText: 'Pokémon Champions Celebration Event 2026' });
+  await expect(longCard).toBeVisible();
+  await longCard.click();
+  const sheet2 = page.locator('dialog[open]');
+  await expect(sheet2.getByText('Chances accrues de rencontrer Kecleon aux PokéStops')).toBeVisible();
+  await expect(sheet2.getByText('Les Pokémon obtenus en raids peuvent avoir un Fond spécial.')).toBeVisible();
+  await expect(sheet2.getByText('Raids 5★')).toBeVisible();
+  await expect(sheet2.getByText('Palier 2 · Rang 10')).toBeVisible();
+  await expect(sheet2.getByText('Passe de combat premium')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Weekly schedule ("Ma semaine") also exports a real PNG poster!
+  await weekly.getByRole('button', { name: /Partager \/ PDF/ }).click();
+  const weekSheet = page.locator('dialog[open]');
+  const [weekPngDl] = await Promise.all([
+    page.waitForEvent('download'),
+    weekSheet.getByRole('button', { name: /Image PNG/ }).click(),
+  ]);
+  expect(weekPngDl.suggestedFilename()).toMatch(/^ma-semaine-.*\.png$/);
+});
+
+test('admin panel upgrades: overrides manager, health runtime + push test, user search/filters, audit search', async ({ browser }) => {
+  const ctx = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.9.9.1' } });
+  const page = await ctx.newPage();
+  await adminLogin(page.request);
+  // Seed a temporary override on Bulbasaur so the Overrides tab has an active entry to inspect & reset.
+  await page.request.put('/api/overrides/1', { data: { shinyReleased: false } });
+
+  await page.goto('/admin?tab=overrides');
+  await expect(page.getByRole('link', { name: /Bulbizarre/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Réinitialiser', exact: true }).first().click();
+  await expect(page.getByText('Annulé')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Santé' }).click();
+  await expect(page.getByText('Mémoire API')).toBeVisible();
+  await expect(page.getByText('Fiches événements (Leek Duck)')).toBeVisible();
+  await page.getByRole('button', { name: /Tester les push sur mon appareil/ }).click();
+  await expect(page.getByText(/Aucun appareil abonné|Notification envoyée/)).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Comptes' }).click();
+  await page.getByRole('button', { name: 'Staff', exact: true }).click();
+  await expect(page.getByRole('button', { name: /admin/i }).first()).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Journal' }).click();
+  await page.getByPlaceholder(/Filtrer le journal/).fill('override');
+  await expect(page.locator('main ul li').first()).toBeVisible();
+
+  await ctx.close();
+});
+
+test('desktop & mobile responsive layout: zero overflow and all Game tabs/filters clickable on desktop', async ({ page }) => {
+  await apiRegister(page.request);
+
+  // Desktop 1280×800: wide layout, all 9 Game tabs visible without clipping, zero sideways overflow.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const path of ['/dex', '/lists', '/game', '/game?tab=raids', '/pvp', '/friends', '/friends?tab=add', '/me']) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, `desktop overflow on ${path}`).toBeLessThanOrEqual(0);
+  }
+  await page.goto('/game');
+  for (const name of ['Événements', 'Pour moi', 'Raids', 'Pops', 'Dynamax', 'Rocket', 'Études', 'Œufs', 'Outils']) {
+    const tab = page.getByRole('tab', { name, exact: true });
+    await expect(tab).toBeVisible();
+    const box = await tab.boundingBox();
+    expect(box, `tab ${name} bounding box`).not.toBeNull();
+    expect(box!.x + box!.width, `tab ${name} fits in desktop viewport`).toBeLessThanOrEqual(1280);
+  }
+  // Mobile 360×780: zero sideways overflow on every main page, including weekly calendar in Game > Events.
+  await page.setViewportSize({ width: 360, height: 780 });
+  for (const path of ['/dex', '/lists', '/game', '/friends', '/friends?tab=add', '/me']) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, `mobile overflow on ${path}`).toBeLessThanOrEqual(0);
+  }
+});
+
+test('skippable per-page guided tutorials & ? help sheet across pages', async ({ page }) => {
+  await apiRegister(page.request);
+  // Complete welcome tour with page guides enabled (default on).
+  await page.goto('/welcome');
+  await page.getByRole('button', { name: 'C’est parti' }).click();
+  await page.getByRole('button', { name: 'Suivant' }).click();
+  await page.getByRole('button', { name: 'Plus tard' }).click();
+  await page.getByRole('button', { name: 'Plus tard' }).click();
+  await page.getByRole('button', { name: 'Terminer' }).click();
+  await expect(page).toHaveURL(/\/dex$/);
+
+  // Auto guide banner appears on Pokédex, supports stepping and skipping.
+  const dexGuide = page.getByRole('complementary', { name: 'Guide rapide · Pokédex' });
+  await expect(dexGuide).toBeVisible();
+  await expect(dexGuide.getByText('Étape 1 / 4')).toBeVisible();
+  await dexGuide.getByRole('button', { name: 'Suivant' }).click();
+  await expect(dexGuide.getByText('Étape 2 / 4')).toBeVisible();
+  await dexGuide.getByRole('button', { name: 'Passer', exact: true }).click();
+  await expect(dexGuide).toBeHidden();
+
+  // Navigating to Game shows the Game guide; "Passer tous les tutos" disables remaining pages.
+  await page.goto('/game');
+  const gameGuide = page.getByRole('complementary', { name: 'Guide rapide · Jeu' });
+  await expect(gameGuide).toBeVisible();
+  await gameGuide.getByRole('button', { name: 'Passer tous les tutos' }).click();
+  await expect(gameGuide).toBeHidden();
+
+  // Friends no longer auto-shows the banner, but the "?" button in TopBar opens the interactive guide sheet anytime.
+  await page.goto('/friends');
+  await expect(page.getByRole('complementary', { name: /Guide rapide/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Guide de cette page' }).click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('heading', { name: /Guide · Amis/ })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Pokédex', exact: true }).click();
+  await expect(sheet.getByRole('heading', { name: 'Recherche puissante' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Re-enabling guides from Me brings the auto guide back.
+  await page.goto('/me');
+  await page.getByRole('button', { name: 'Relancer sur chaque page' }).click();
+  await expect(page.getByRole('complementary', { name: 'Guide rapide · Moi & Réglages' })).toBeVisible();
+});
+
+test('power-up cost calculator matches exact Pokémon GO per-step rounding (Shadow, Purified, Lucky)', async ({ page }) => {
+  await page.goto('/game?tab=tools');
+  await page.getByRole('button', { name: 'Coûts' }).click();
+  await page.getByRole('button', { name: '40 → 50' }).click();
+  const dl = page.locator('dl').first();
+  await expect(dl).toContainText('250');
+  await expect(dl).toContainText('296');
+
+  await page.getByRole('button', { name: 'Obscur', exact: true }).click();
+  await expect(dl).toContainText('300');
+  await expect(dl).toContainText('360');
+
+  await page.getByRole('button', { name: 'Purifié', exact: true }).click();
+  await expect(dl).toContainText('225');
+  await expect(dl).toContainText('272');
+
+  await page.getByRole('button', { name: 'Chanceux purifié', exact: true }).click();
+  await expect(dl).toContainText('112');
+  await expect(dl).toContainText('272');
+
+  await page.getByRole('button', { name: '20 → 40' }).click();
+  await page.getByRole('button', { name: 'Obscur', exact: true }).click();
+  await expect(dl).toContainText('270');
+  await expect(dl).toContainText('312');
+});
+
+test('managers can remove a bogus variant from the Pokédex and restore it', async ({ page }) => {
+  await adminLogin(page.request);
+  const ds = (await (await page.request.get('/api/data/pokedex.json')).json()) as {
+    variants: { key: string; dex: number; kind: string; label?: { fr?: string; en: string } | null }[];
+  };
+  // Pick a Pokémon with a clear single-word costume variant (e.g. Bulbasaur, Charmander or Squirtle).
+  const target = ds.variants.find((v) => v.dex <= 20 && v.kind === 'costume' && !v.key.endsWith('.g2') && v.label?.en)!;
+  expect(target).toBeTruthy();
+  const label = target.label!.fr ?? target.label!.en;
+
+  await page.goto(`/dex/${target.dex}`);
+  const card = page.locator('li', { hasText: label }).first();
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: /Gérer/ }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('button', { name: /Maintenir pour supprimer du Pokédex/ }).click({ delay: 1500 });
+  await expect(page.getByText('Variante supprimée du Pokédex')).toBeVisible();
+
+  // Variant disappears from the species list and appears inside the collapsible removed-variants panel.
+  const details = page.locator('details', { hasText: /variante.*supprimée/ });
+  await expect(details).toBeVisible();
+  await details.locator('summary').click();
+  await expect(details).toContainText(target.key);
+  await details.getByRole('button', { name: 'Restaurer' }).click();
+  await expect(page.getByText('Variante restaurée dans le Pokédex')).toBeVisible();
+  await expect(page.locator('li', { hasText: label }).first()).toBeVisible();
 });

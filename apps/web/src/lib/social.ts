@@ -7,16 +7,34 @@ import { api } from './api.js';
 export const useAllFriendLists = (enabled = true) =>
   useQuery({ queryKey: ['friends-lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists/friends').then((r) => r.lists), enabled });
 
+export interface OfferVariantInput {
+  variantKey: string;
+  gender: string;
+  shiny: boolean;
+  tag: string;
+}
+
 export function useOffer(listId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { variantKey: string; gender: string; shiny: boolean; tag: string; on: boolean }) => api<{ list: ListDetail }>(`/lists/${listId}/offers`, { body: b }),
+    mutationFn: (b: OfferVariantInput & { on: boolean; deferNotify?: boolean }) => api<{ list: ListDetail }>(`/lists/${listId}/offers`, { body: b }),
     onSuccess: (r) => {
       qc.setQueryData(['list', listId], (old: { list: ListDetail; access: string } | undefined) => (old ? { ...old, list: r.list } : old));
       void qc.invalidateQueries({ queryKey: ['list', listId, 'history'] });
-      void qc.invalidateQueries({ queryKey: ['friend-matches'] });
     },
   });
+}
+
+/** Flushes deferred "I have it" notifications when leaving a friend's list (uses keepalive so tab close succeeds too). */
+export function flushOfferNotifications(listId: string, variants: OfferVariantInput[]) {
+  if (!variants.length) return;
+  void fetch(`/api/lists/${listId}/offers/notify`, {
+    method: 'POST',
+    credentials: 'include',
+    keepalive: true,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ variants }),
+  }).catch(() => {});
 }
 
 export const useNotifications = (enabled = true) =>
@@ -86,7 +104,7 @@ export function useRealtime(loggedIn: boolean) {
       document.documentElement.dataset.live = 'ready';
       // Whatever happened between the page load and this connection (or during a reconnect) sent no event here:
       // re-read everything social. Only what is on screen is fetched again, the rest is just marked stale.
-      for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+      for (const k of ['lists', 'friends-lists', 'friends', 'friend-requests', 'notifications', 'list', 'friend-lists', 'postcards-discover']) void qc.invalidateQueries({ queryKey: [k] });
     });
     es.addEventListener('live', (msg) => {
       const e = JSON.parse((msg as MessageEvent<string>).data) as LiveEvent;
@@ -96,9 +114,9 @@ export function useRealtime(loggedIn: boolean) {
         void qc.invalidateQueries({ queryKey: ['lists-membership'] });
         void qc.invalidateQueries({ queryKey: ['friends-lists'] });
         void qc.invalidateQueries({ queryKey: ['friend-lists', e.ownerId] });
-        void qc.invalidateQueries({ queryKey: ['friend-matches'] });
+        void qc.invalidateQueries({ queryKey: ['postcards-discover'] });
       } else if (e.type === 'friends') {
-        for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists', 'friend-matches']) void qc.invalidateQueries({ queryKey: [k] });
+        for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists', 'postcards-discover']) void qc.invalidateQueries({ queryKey: [k] });
       } else if (e.type === 'notification') {
         void qc.invalidateQueries({ queryKey: ['notifications'] });
       } else if (e.type === 'announcement') {

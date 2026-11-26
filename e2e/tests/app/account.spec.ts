@@ -114,8 +114,10 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   await apiCreateList(pa.request, 'Ma collection Kanto', ['1:m', '4:m', '7:m']);
 
   await pb.goto('/friends');
+  await pb.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
   await pb.getByPlaceholder('Code ami à 12 chiffres').fill(ua.friendCode);
   await pb.getByRole('button', { name: 'Envoyer' }).click();
+  await pb.getByRole('tab', { name: 'Mes amis' }).click();
   await expect(pb.getByRole('listitem').getByText(`Demande envoyée à ${ua.username}`)).toBeVisible();
 
   await pa.goto('/friends');
@@ -125,9 +127,9 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   await pb.reload();
   // The friend's row (a link), not the request shown from the device's copy before the fresh data comes.
   await pb.getByRole('link', { name: new RegExp(ua.username) }).click();
-  await pb.getByText('Ma collection Kanto').click();
-  await expect(pb.getByText('0 / 3 attrapés')).toBeVisible();
+  await pb.getByRole('link', { name: /Ma collection Kanto/ }).click();
   await expect(pb.getByRole('button', { name: 'Copier cette collection chez moi' })).toBeVisible();
+  await expect(pb.getByText('0 / 3 attrapés')).toBeVisible();
 
   await pb.goto('/friends');
   await expect(pb.getByText(/^1 collection · ami depuis /)).toBeVisible();

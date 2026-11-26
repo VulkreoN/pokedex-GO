@@ -100,9 +100,21 @@ class DataService {
 
   private variantIndex: { version: string; manual: ManualOverrides; byKey: Map<string, Variant>; hunt: HuntIndex } | null = null;
   /** What players see for a variant right now (corrections included), for the admin journal's before / after. */
-  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean; kind: VariantKind } | null> {
+  async shownState(key: string): Promise<{ released: boolean; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean; noEvolve: boolean; noMega: boolean; kind: VariantKind; hidden: boolean } | null> {
+    const manual = await this.loadOverrides();
     const v = (await this.variants())?.get(key);
-    return v ? { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve, noMega: !!v.noMega, kind: v.kind } : null;
+    if (v) return { released: !v.datamined, label: v.label, genders: v.genders ?? null, shinyReleased: v.hasShiny && v.shinyReleased !== false, noEvolve: !!v.noEvolve, noMega: !!v.noMega, kind: v.kind, hidden: false };
+    const raw = this.raw?.variants.find((x) => x.key === key);
+    if (raw && manual[key]?.hidden === true) {
+      return { released: !raw.datamined, label: raw.label, genders: raw.genders ?? null, shinyReleased: raw.hasShiny && raw.shinyReleased !== false, noEvolve: !!raw.noEvolve, noMega: !!raw.noMega, kind: raw.kind, hidden: true };
+    }
+    return null;
+  }
+
+  /** Original dataset metadata for a variant (even when hidden by a manager override), for restore UIs. */
+  rawVariantMeta(key: string): { dex: number; label: LocalizedText | null; img: string | null; kind: VariantKind } | null {
+    const v = this.raw?.variants.find((x) => x.key === key);
+    return v ? { dex: v.dex, label: v.label, img: v.img, kind: v.kind } : null;
   }
 
   /** "Pikachu · Casquette d'Ash" for messages; the key when the dataset does not know it. */
@@ -356,6 +368,7 @@ class DataService {
         noEvolve: r.noEvolve,
         noMega: r.noMega,
         kind: r.kind as VariantKind | null,
+        hidden: r.hidden,
       };
     }
     this.overridesCache = manual;

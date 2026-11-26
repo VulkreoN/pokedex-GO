@@ -1,5 +1,4 @@
-import { Button, TopBar } from '../components/ui.js';
-import { setXEmbeds, useXEmbeds } from '../components/XEmbed.js';
+import { TopBar } from '../components/ui.js';
 import { relativeTime, useDataStatus } from '../lib/admin.js';
 import { useDataset } from '../lib/dataset.js';
 import { Changelog } from '../components/WhatsNew.js';
@@ -17,13 +16,12 @@ export function AboutPage() {
   const status = useDataStatus();
   const dataset = useDataset();
   const ds = dataset.data?.ds;
-  const xOn = useXEmbeds();
   const date = (iso: string) => new Date(iso).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
       <TopBar title={t.about_title} back />
-      <main className="mx-auto max-w-3xl space-y-4 px-3 pb-24">
+      <main className="mx-auto max-w-6xl space-y-4 px-3 pb-24 sm:px-5">
         <section className="sky-header rounded-card p-5">
           <img src="/icons/icon.svg" alt="" width={56} height={56} className="rounded-2xl shadow-card" />
           <h2 className="mt-3 text-[26px] font-bold leading-tight">MyDexPoGo</h2>
@@ -63,7 +61,7 @@ export function AboutPage() {
 
         <section id="news" className="card scroll-mt-20 p-4">
           <h2 className="mb-3 text-base font-bold">{t.whats_new_history}</h2>
-          <Changelog />
+          <Changelog showToggle />
         </section>
 
         <section className="card p-4 text-sm text-ink-2">
@@ -101,10 +99,6 @@ export function AboutPage() {
               <p>{text}</p>
             </div>
           ))}
-          <div className="mt-3 flex items-center gap-3 rounded-lg bg-paper-2 p-2">
-            <span className="min-w-0 flex-1 text-xs">{xOn ? t.privacy_x_on : t.privacy_x_off}</span>
-            {xOn && <Button tone="ghost" className="min-h-8 shrink-0 px-3 text-xs" onClick={() => setXEmbeds(false)}>{t.privacy_x_withdraw}</Button>}
-          </div>
         </section>
 
         <p className="px-1 text-xs leading-relaxed text-ink-3">{t.about_legal}</p>

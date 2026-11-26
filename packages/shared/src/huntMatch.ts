@@ -5,11 +5,14 @@
  * Design rules:
  * 1. Never degrade an explicit costume/form/clone/Gigantamax URL token to the plain species when unknown.
  * 2. Exact match respects variant key, shiny availability, and source <-> tag compatibility
- *    (wild/egg/research/raid -> plain; megaRaid -> Mega form + plain catch; shadowRaid/rocket -> shadow/purified;
- *    max -> dynamax/plain; gmax -> Gigantamax form only).
+ *    (plain collections match all non-Gigantamax sources: wild, egg, research, raid, megaRaid plain catch, max,
+ *    rocket and shadowRaid — Shadow catches can be purified; shadow/purified collections match rocket & shadowRaid;
+ *    dynamax matches max; gmax matches Gigantamax form only).
  * 3. Pre-evolution matching is opt-in per collection and strictly safe:
- *    - Never matches pre-evolutions for Gigantamax or Mega/Primal variants.
- *    - Never matches a variant with `noEvolve: true`.
+ *    - Never matches pre-evolutions for Gigantamax.
+ *    - For Mega/Primal variants, matches the Mega-capable plain base form and its guaranteed base pre-evolutions
+ *      across all non-Gigantamax sources (including Rocket & Shadow Raids, since purified Pokémon can Mega Evolve).
+ *    - Never matches a variant with `noEvolve: true` or `noMega: true`.
  *    - Costumes only come from the exact same evolvable costume (and never cross with plain variants).
  *    - Regional and special forms only come from their exact valid lineage in the game master
  *      (e.g. Galarian Meowth -> Perrserker, never Kanto Meowth; Alolan Raichu has no pre-evo in GO).
@@ -257,7 +260,14 @@ function normalizedFormName(species: Species | undefined, form: string | null): 
 /** Direct (1-step) guaranteed pre-evolutions for a target variant. */
 function directPreEvolutions(index: HuntIndex, target: Variant): Variant[] {
   const tKey = neutralKey(target.key);
-  if (target.kind === 'gmax' || target.kind === 'mega') return [];
+  if (target.kind === 'gmax') return [];
+  if (target.kind === 'mega') {
+    // Only the plain Mega-capable base form (never noMega clones/armored or non-Mega regional forms).
+    const base = (index.variantsByDex.get(target.dex) ?? []).find(
+      (v) => v.kind === 'base' && !v.key.endsWith('.g2') && !v.noMega,
+    );
+    return base ? [base] : [];
+  }
   if (NO_PRE_EVO_KEYS.has(tKey)) return [];
   if (target.form && /^BREAD_DOUGH_MODE/i.test(target.form)) return [];
 
@@ -336,8 +346,10 @@ function directPreEvolutions(index: HuntIndex, target: Variant): Variant[] {
 }
 
 /**
- * Returns every neutral variant key that can legitimately evolve (in 1 to 3 steps) into `targetKey`.
- * Empty for Gigantamax, Mega/Primal, raid-only regional evolutions, non-evolvable costumes, etc.
+ * Returns every neutral variant key that can legitimately evolve (in 1 to 4 steps) into `targetKey`.
+ * For Mega/Primal variants, returns the Mega-capable base species and its guaranteed base pre-evolutions
+ * (e.g. Mega Charizard X -> Charizard, Charmeleon, Charmander; never Clone Charizard or non-Mega regional forms).
+ * Empty for Gigantamax, raid-only regional evolutions, non-evolvable costumes, etc.
  */
 export function safePreEvolutions(index: HuntIndex, targetKey: string): string[] {
   const key = neutralKey(targetKey);
@@ -353,7 +365,7 @@ export function safePreEvolutions(index: HuntIndex, targetKey: string): string[]
   const found: string[] = [];
   const visited = new Set<string>([key]);
   let frontier: Variant[] = [target];
-  for (let depth = 0; depth < 3 && frontier.length > 0; depth++) {
+  for (let depth = 0; depth < 4 && frontier.length > 0; depth++) {
     const next: Variant[] = [];
     for (const cur of frontier) {
       for (const p of directPreEvolutions(index, cur)) {
@@ -419,9 +431,9 @@ export function candidateTargetKeys(index: HuntIndex | null, lives: Pick<LiveMon
 
 /** True when a collection entry's tag can be obtained from the given live source. */
 export function sourceMatchesTag(source: HuntSource, tag: string, isMegaKey = false): boolean {
-  if (source === 'shadowRaid' || source === 'rocket') return tag === 'shadow' || tag === 'purified';
+  if (source === 'rocket' || source === 'shadowRaid') return !isMegaKey && (tag === '' || tag === 'shadow' || tag === 'purified');
   if (source === 'gmax') return tag === '' || tag === 'dynamax';
-  if (source === 'max') return tag === '' || tag === 'dynamax';
+  if (source === 'max') return !isMegaKey && (tag === '' || tag === 'dynamax');
   if (source === 'megaRaid') return tag === '';
   // wild, egg, research, raid: plain catches only (never shadow, purified, lucky, dynamax, background, xxl/xxs)
   return !isMegaKey && tag === '';
@@ -449,36 +461,56 @@ export function entryMatchesLive(index: HuntIndex | null, entry: HuntEntry, live
   const targetIsGmax = targetKey.endsWith('.fGIGANTAMAX');
 
   // Gigantamax entries only ever come from Gigantamax battles.
-  if (targetIsGmax && live.source !== 'gmax') return false;
-  // Mega entries only ever come from Mega/Primal raids.
-  if (targetIsMega && live.source !== 'megaRaid') return false;
+  if (targetIsGmax) {
+    return live.source === 'gmax' && sourceMatchesTag(live.source, entry.tag, false) && exact.includes(targetKey);
+  }
+  // Mega/Primal entries come directly from Mega/Primal raids, OR (when pre-evolutions are enabled on the list)
+  // from any Mega-capable pre-evolution across all non-Gigantamax sources (including Rocket & Shadow Raids,
+  // since Shadow Pokémon can be purified and Mega Evolved).
+  if (targetIsMega) {
+    if (entry.tag !== '') return false;
+    if (live.source === 'megaRaid' && exact.includes(targetKey)) return true;
+    if (
+      entry.alertPreEvolutions &&
+      index &&
+      live.source !== 'gmax' &&
+      catchableForPreEvo.length > 0
+    ) {
+      const pres = safePreEvolutions(index, targetKey);
+      if (catchableForPreEvo.some((k) => pres.includes(k))) return true;
+    }
+    return false;
+  }
 
-  if (!sourceMatchesTag(live.source, entry.tag, targetIsMega)) return false;
+  if (!sourceMatchesTag(live.source, entry.tag, false)) return false;
 
   if (exact.includes(targetKey)) return true;
 
-  if (entry.alertPreEvolutions && index && catchableForPreEvo.length > 0 && !targetIsMega && !targetIsGmax) {
+  if (entry.alertPreEvolutions && index && catchableForPreEvo.length > 0) {
     const pres = safePreEvolutions(index, targetKey);
     if (catchableForPreEvo.some((k) => pres.includes(k))) return true;
   }
   return false;
 }
 
-type SourceBucket = 'plain' | 'shadow' | 'max' | 'gmax' | 'mega';
+type SourceBucket = 'plain' | 'shadowRaid' | 'rocket' | 'max' | 'gmax' | 'mega';
+
+const ALL_PLAIN_BUCKETS: SourceBucket[] = ['plain', 'max', 'rocket', 'shadowRaid'];
 
 function bucketsForEntry(entry: HuntEntry, isMegaTarget: boolean, isGmaxTarget: boolean): SourceBucket[] {
   if (isGmaxTarget) return entry.tag === '' || entry.tag === 'dynamax' ? ['gmax'] : [];
   if (isMegaTarget) return entry.tag === '' ? ['mega'] : [];
-  if (entry.tag === '') return ['plain', 'max'];
+  if (entry.tag === '') return ALL_PLAIN_BUCKETS;
   if (entry.tag === 'dynamax') return ['max'];
-  if (entry.tag === 'shadow' || entry.tag === 'purified') return ['shadow'];
+  if (entry.tag === 'shadow' || entry.tag === 'purified') return ['shadowRaid', 'rocket'];
   return [];
 }
 
 function sourceToBucket(source: HuntSource, isMegaKey: boolean): SourceBucket {
   if (source === 'gmax') return 'gmax';
   if (source === 'max') return 'max';
-  if (source === 'shadowRaid' || source === 'rocket') return 'shadow';
+  if (source === 'rocket') return 'rocket';
+  if (source === 'shadowRaid') return 'shadowRaid';
   if (source === 'megaRaid' && isMegaKey) return 'mega';
   return 'plain';
 }
@@ -516,9 +548,11 @@ export function buildHuntMatcher(index: HuntIndex | null, entries: HuntEntry[]):
     hasMissing = true;
     const map = e.shiny ? shiny : normal;
     add(map, targetKey, buckets);
-    if (e.alertPreEvolutions && index && !isMega && !isGmax) {
+    if (e.alertPreEvolutions && index && !isGmax) {
+      // Unified across all non-Gigantamax sources (wild, egg, research, raid, max, rocket, shadowRaid).
+      const preBuckets: SourceBucket[] = isMega ? ALL_PLAIN_BUCKETS : buckets;
       for (const pre of safePreEvolutions(index, targetKey)) {
-        add(map, pre, buckets);
+        add(map, pre, preBuckets);
       }
     }
   }

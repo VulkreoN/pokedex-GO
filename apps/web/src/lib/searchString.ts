@@ -78,8 +78,8 @@ export function savePreEvolutions(on: boolean) {
 
 /**
  * The versions that safely evolve into this one: a Scatterbug or Spewpa becomes the wanted Vivillon, a Galarian
- * Meowth becomes Perrserker (never Kanto Meowth), an evolvable costume only matches the same costume, and
- * Gigantamax / Mega / raid-only regional evolutions return nothing.
+ * Meowth becomes Perrserker (never Kanto Meowth), an evolvable costume only matches the same costume, a Mega expands
+ * to its Mega-capable plain species + base pre-evolutions, and Gigantamax / raid-only regional evolutions return nothing.
  */
 export function preEvolutions(idx: DatasetIndex, v: Variant): Variant[] {
   return safePreEvolutions(idx.hunt, v.key)

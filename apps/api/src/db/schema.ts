@@ -107,6 +107,8 @@ export const friendships = pgTable(
     friendId: text('friend_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     /** userId pinned this friend to the top of their friends. */
     favorite: boolean('favorite').notNull().default(false),
+    /** userId marked this friendship as Lucky Friends in Pokémon GO. */
+    lucky: boolean('lucky').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.friendId] })],
@@ -129,6 +131,8 @@ export const variantOverrides = pgTable('variant_overrides', {
   noMega: boolean('no_mega'),
   /** A manager's category for it (a 'costume' the game master calls a form, or the reverse); null = automatic. */
   kind: text('kind'),
+  /** true = hidden/removed from the Pokédex (does not exist in-game), null/false = visible. */
+  hidden: boolean('hidden'),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -329,6 +333,37 @@ export const pvpPokemon = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('pvp_pokemon_user_idx').on(t.userId)],
+);
+
+/** A player's saved PvP teams of up to 3 Pokémon per league. */
+export const pvpTeams = pgTable(
+  'pvp_teams',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    league: text('league', { enum: ['great', 'ultra', 'master'] }).notNull(),
+    /** Up to 3 PvP form keys ("184", "105.fALOLA"). */
+    members: jsonb('members').$type<string[]>().notNull(),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('pvp_teams_user_idx').on(t.userId)],
+);
+
+/** Regional Vivillon (Prismillon) gift postcards a trainer has available to share with new friends. */
+export const userPostcards = pgTable(
+  'user_postcards',
+  {
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** One of the 18 regional Vivillon patterns (e.g. "MEADOW", "OCEAN", "SANDSTORM"). */
+    pattern: text('pattern').notNull(),
+    /** null = home region (unlimited), >= 1 = saved travel postcards count. */
+    quantity: integer('quantity'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.pattern] }), index('user_postcards_pattern_idx').on(t.pattern)],
 );
 
 /** Instance settings an admin changes from the app (sign-up mode...), one JSON value per key. */

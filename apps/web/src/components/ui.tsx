@@ -100,7 +100,7 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
   const t = useT();
   return (
     <header className="topbar sky-header pt-safe sticky top-0 z-20">
-      <div className="mx-auto flex min-h-14 max-w-3xl items-center gap-1 px-3">
+      <div className="mx-auto flex min-h-14 max-w-6xl items-center gap-1 px-3 sm:px-5">
         {back && (
           <IconButton label={t.close} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/dex'))}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
@@ -161,7 +161,7 @@ export function BottomNav() {
   const active = items.findIndex((it) => pathname.startsWith(it.to));
   return (
     <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-card/95 shadow-[0_-6px_18px_-12px_rgb(35_56_66/0.35)] backdrop-blur">
-      <div className="relative mx-auto flex max-w-3xl">
+      <div className="relative mx-auto flex max-w-4xl">
         {active >= 0 && (
           <span aria-hidden="true" className="rubber-track pointer-events-none absolute inset-y-1 left-0" style={{ width: `${100 / items.length}%`, transform: `translateX(${active * 100}%)` }}>
             <span key={active} className="rubber-pill absolute inset-x-1.5 inset-y-0 rounded-2xl bg-go-soft dark:bg-go/15" />
@@ -202,17 +202,17 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out]"
+      className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out] sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-3xl md:max-w-3xl"
     >
-      <div className="pb-safe px-4 pt-2">
-        <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-line" />
+      <div className="pb-safe px-4 pt-2 sm:px-5 sm:pt-4">
+        <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-line sm:hidden" />
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-lg font-bold">{title}</h2>
           <IconButton label={t.close} onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </IconButton>
         </div>
-        <div className="max-h-[75vh] overflow-y-auto overflow-x-hidden pb-4">{children}</div>
+        <div className="max-h-[75vh] overflow-y-auto overflow-x-hidden pb-4 sm:max-h-[80vh]">{children}</div>
       </div>
     </dialog>
   );

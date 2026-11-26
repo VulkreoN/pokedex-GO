@@ -78,16 +78,17 @@ describe('matchAlerts', () => {
     ...extra,
   });
 
-  it('matches plain entries to normal raids, Shadow entries to Shadow raids, shinies only when the boss can be shiny', () => {
+  it('matches plain entries across normal and Shadow raids, Shadow entries to Shadow raids only, shinies only when the boss can be shiny', () => {
     const got = matchAlerts(
       [marowak, shadowLarvitar],
-      [e('ash', '105.fALOLA'), e('ash', '105.fALOLA', { listId: 'L2' }), e('ash', '105.fALOLA', { shiny: true }), e('misty', '246'), e('brock', '246', { tag: 'shadow', shiny: true })],
+      [e('ash', '105.fALOLA'), e('ash', '105.fALOLA', { listId: 'L2' }), e('ash', '105.fALOLA', { shiny: true }), e('misty', '246'), e('brock', '246', { tag: 'shadow', shiny: true }), e('gary', '105.fALOLA', { tag: 'shadow' })],
       new Set(),
       huntIndex,
     );
     expect(got.get('ash')).toEqual([{ boss: marowak, listIds: ['L1', 'L2'] }]);
-    expect(got.has('misty')).toBe(false);
+    expect(got.get('misty')).toEqual([{ boss: shadowLarvitar, listIds: ['L1'] }]);
     expect(got.get('brock')).toEqual([{ boss: shadowLarvitar, listIds: ['L1'] }]);
+    expect(got.has('gary')).toBe(false);
   });
 
   it('Mega Raid alerts both Mega and plain hunters; Clone Charizard NEVER alerts Mega or plain Charizard hunters', () => {
@@ -123,7 +124,7 @@ describe('matchAlerts', () => {
     expect(got.get('optIn')?.map((x) => x.boss.key)).toEqual(['4']);
     expect(got.has('optOut')).toBe(false);
     expect(got.has('gmax')).toBe(false);
-    expect(got.has('mega')).toBe(false);
+    expect(got.get('mega')?.map((x) => x.boss.key)).toEqual(['4']);
   });
 
   it('leaves out a boss the player was already told about', () => {

@@ -94,6 +94,8 @@ const ds: Dataset = {
     sp(711, 'Gourgeist', 710),
     sp(744, 'Rockruff'),
     sp(745, 'Lycanroc', 744),
+    sp(767, 'Wimpod'),
+    sp(768, 'Golisopod', 767),
     sp(854, 'Sinistea'),
     sp(855, 'Polteageist', 854),
     sp(863, 'Perrserker', 52),
@@ -135,6 +137,7 @@ const ds: Dataset = {
     variant({ key: '79.fGALARIAN', dex: 79, kind: 'regional', form: 'GALARIAN' }),
     variant({ key: '79.f2020', dex: 79, kind: 'costume', form: '2020' }),
     variant({ key: '80', dex: 80, kind: 'base' }),
+    variant({ key: '80.fMEGA', dex: 80, kind: 'mega', form: 'MEGA' }),
     variant({ key: '80.fGALARIAN', dex: 80, kind: 'regional', form: 'GALARIAN' }),
     variant({ key: '80.f2021', dex: 80, kind: 'costume', form: '2021' }),
     variant({ key: '94', dex: 94, kind: 'base' }),
@@ -181,6 +184,9 @@ const ds: Dataset = {
     variant({ key: '744.fDUSK', dex: 744, kind: 'form', form: 'DUSK' }),
     variant({ key: '745.fMIDDAY', dex: 745, kind: 'form', form: 'MIDDAY' }),
     variant({ key: '745.fDUSK', dex: 745, kind: 'form', form: 'DUSK' }),
+    variant({ key: '767', dex: 767, kind: 'base' }),
+    variant({ key: '768', dex: 768, kind: 'base' }),
+    variant({ key: '768.fMEGA', dex: 768, kind: 'mega', form: 'MEGA' }),
     variant({ key: '854.fANTIQUE', dex: 854, kind: 'form', form: 'ANTIQUE' }),
     variant({ key: '854.fPHONY', dex: 854, kind: 'form', form: 'PHONY' }),
     variant({ key: '855.fANTIQUE', dex: 855, kind: 'form', form: 'ANTIQUE' }),
@@ -219,6 +225,7 @@ const ds: Dataset = {
       pvp('670', 670, ['671']),
       pvp('710', 710, ['711']),
       pvp('744', 744, ['745', '745.fMIDNIGHT']),
+      pvp('767', 767, ['768']),
       pvp('854', 854, ['855']),
       pvp('1012', 1012, ['1013']),
     ],
@@ -271,13 +278,14 @@ describe('safePreEvolutions', () => {
     expect(safePreEvolutions(index, '143')).toEqual(['446']);
   });
 
-  it('returns EMPTY for Gigantamax and Mega/Primal variants', () => {
+  it('returns EMPTY for Gigantamax, and returns Mega-capable base pre-evolutions for Mega/Primal variants', () => {
     expect(safePreEvolutions(index, '143.fGIGANTAMAX')).toEqual([]);
     expect(safePreEvolutions(index, '52.fGIGANTAMAX')).toEqual([]);
     expect(safePreEvolutions(index, '6.fGIGANTAMAX')).toEqual([]);
-    expect(safePreEvolutions(index, '6.fMEGA_X')).toEqual([]);
-    expect(safePreEvolutions(index, '6.fMEGA_Y')).toEqual([]);
-    expect(safePreEvolutions(index, '382.fPRIMAL')).toEqual([]);
+    expect(safePreEvolutions(index, '6.fMEGA_X')).toEqual(['6', '5', '4']);
+    expect(safePreEvolutions(index, '6.fMEGA_Y')).toEqual(['6', '5', '4']);
+    expect(safePreEvolutions(index, '80.fMEGA')).toEqual(['80', '79']);
+    expect(safePreEvolutions(index, '382.fPRIMAL')).toEqual(['382']);
   });
 
   it('matches costumed evolutions ONLY to the exact same evolvable costume (never plain, never noEvolve)', () => {
@@ -337,13 +345,42 @@ describe('exact & pre-evolution hunt matching (Vipezarre & user regressions)', (
     expect(kantoMeowth.isWanted(img('pm52'), 'Meowth', 'wild', true)).toBe(true);
   });
 
-  it('hunting Mega Charizard X matches Mega Charizard X raids, NEVER Clone Charizard or wild Charmander', () => {
-    const m = buildHuntMatcher(index, [entry('6.fMEGA_X', { alertPreEvolutions: true })]);
-    expect(m.isWanted(img('pm6.fMEGA_X'), 'Mega Charizard X', 'megaRaid', true)).toBe(true);
-    expect(m.isWanted(img('pm6.fMEGA_X'), 'Mega Charizard X', 'raid', true)).toBe(true);
-    expect(m.isWanted(img('pm6.fCOPY_2019'), 'Clone Charizard', 'raid', true)).toBe(false);
-    expect(m.isWanted(img('pm6'), 'Charizard', 'wild', true)).toBe(false);
-    expect(m.isWanted(img('pm4'), 'Charmander', 'wild', true)).toBe(false);
+  it('hunting Mega Charizard X matches Mega raids directly, and Mega-capable base pre-evolutions ONLY when alertPreEvolutions is on', () => {
+    const off = buildHuntMatcher(index, [entry('6.fMEGA_X', { alertPreEvolutions: false })]);
+    expect(off.isWanted(img('pm6.fMEGA_X'), 'Mega Charizard X', 'megaRaid', true)).toBe(true);
+    expect(off.isWanted(img('pm6.fMEGA_X'), 'Mega Charizard X', 'raid', true)).toBe(true);
+    expect(off.isWanted(img('pm6.fCOPY_2019'), 'Clone Charizard', 'raid', true)).toBe(false);
+    expect(off.isWanted(img('pm6'), 'Charizard', 'wild', true)).toBe(false);
+    expect(off.isWanted(img('pm4'), 'Charmander', 'wild', true)).toBe(false);
+
+    const on = buildHuntMatcher(index, [entry('6.fMEGA_X', { alertPreEvolutions: true })]);
+    expect(on.isWanted(img('pm6.fMEGA_X'), 'Mega Charizard X', 'megaRaid', true)).toBe(true);
+    expect(on.isWanted(img('pm6'), 'Charizard', 'wild', true)).toBe(true);
+    expect(on.isWanted(img('pm5'), 'Charmeleon', 'raid', true)).toBe(true);
+    expect(on.isWanted(img('pm4'), 'Charmander', 'wild', true)).toBe(true);
+    expect(on.isWanted(img('pm4'), 'Charmander', 'max', true)).toBe(true);
+    // Rocket & Shadow Raids also match unified Mega pre-evolutions (Shadow Pokémon can be purified and Mega Evolved).
+    expect(on.isWanted(img('pm4'), 'Shadow Charmander', 'rocket', true)).toBe(true);
+    expect(on.isWanted(img('pm4'), 'Shadow Charmander', 'shadowRaid', true)).toBe(true);
+    // Clones and costumes still cannot evolve/Mega Evolve into Mega Charizard directly.
+    expect(on.isWanted(img('pm6.fCOPY_2019'), 'Clone Charizard', 'raid', true)).toBe(false);
+    expect(on.isWanted(img('pm4.fFALL_2019'), 'Charmander', 'wild', true)).toBe(false);
+    expect(on.isWanted(img('pm4.fGOGGLES_2026'), 'Charmander', 'wild', true)).toBe(false);
+
+    // Mega Golisopod (Méga-Sarmuraï) with alertPreEvolutions highlights Wimpod (Sovkipou) uniformly across ALL non-Gigantamax sources.
+    const golisopod = buildHuntMatcher(index, [entry('768.fMEGA', { alertPreEvolutions: true })]);
+    for (const src of ['wild', 'egg', 'research', 'raid', 'max', 'rocket', 'shadowRaid'] as const) {
+      expect(golisopod.isWanted(img('pm767'), 'Wimpod', src, false), `Wimpod via ${src}`).toBe(true);
+    }
+    expect(golisopod.isWanted(img('pm768.fMEGA'), 'Mega Golisopod', 'megaRaid', true)).toBe(true);
+    expect(golisopod.isWanted(img('pm767'), 'Wimpod', 'gmax', true)).toBe(false);
+
+    // Mega Slowbro only matches Kanto Slowbro/Slowpoke, NEVER Galarian Slowpoke/Slowbro.
+    const slowbro = buildHuntMatcher(index, [entry('80.fMEGA', { alertPreEvolutions: true })]);
+    expect(slowbro.isWanted(img('pm80'), 'Slowbro', 'raid', true)).toBe(true);
+    expect(slowbro.isWanted(img('pm79'), 'Slowpoke', 'wild', true)).toBe(true);
+    expect(slowbro.isWanted(img('pm79.fGALARIAN'), 'Galarian Slowpoke', 'egg', true)).toBe(false);
+    expect(slowbro.isWanted(img('pm80.fGALARIAN'), 'Galarian Slowbro', 'raid', true)).toBe(false);
   });
 
   it('Mega Raid also satisfies a hunt for the plain species (caught after defeating the Mega boss)', () => {
@@ -362,7 +399,9 @@ describe('exact & pre-evolution hunt matching (Vipezarre & user regressions)', (
     expect(on.isWanted(img('pm5'), 'Charmeleon', 'raid', false)).toBe(true);
     expect(on.isWanted(img('pm4.fFALL_2019'), 'Charmander', 'wild', true)).toBe(false);
     expect(on.isWanted(img('pm4.fGOGGLES_2026'), 'Charmander', 'wild', true)).toBe(false);
-    expect(on.isWanted(img('pm4'), 'Shadow Charmander', 'rocket', true)).toBe(false);
+    // Plain collections also highlight Rocket & Shadow Raid encounters (can be caught & purified or kept for the dex).
+    expect(on.isWanted(img('pm4'), 'Shadow Charmander', 'rocket', true)).toBe(true);
+    expect(on.isWanted(img('pm4'), 'Shadow Charmander', 'shadowRaid', true)).toBe(true);
 
     const shadow = buildHuntMatcher(index, [entry('6', { tag: 'shadow', alertPreEvolutions: true })]);
     expect(shadow.isWanted(img('pm4'), 'Charmander', 'rocket', false)).toBe(true);
@@ -396,6 +435,7 @@ describe('exact & pre-evolution hunt matching (Vipezarre & user regressions)', (
     expect(targets).toContain('5');
     expect(targets).toContain('6');
     expect(targets).toContain('6.fMEGA_X');
+    expect(targets).toContain('6.fMEGA_Y');
     expect(targets).toContain('863');
     expect(targets).not.toContain('53');
     expect(targets).not.toContain('6.fGIGANTAMAX');

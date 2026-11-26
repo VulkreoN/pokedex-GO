@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import type { EntryTag, ListDetail, ListDetailEntry, ListVisibility } from '@mydexpogo/shared';
 import { ExportSheet } from '../components/ExportSheet.js';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
+import { CollectionStatsSheet } from '../components/Medals.js';
 import { SearchStrings } from '../components/SearchStrings.js';
+import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
+import { WhatsNewBanner } from '../components/WhatsNew.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
@@ -15,7 +18,7 @@ import { localized, useLang, useT } from '../lib/i18n.js';
 import { buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
 import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, useUpsertEntries, type ListAccess } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
-import { useFollowList, useOffer } from '../lib/social.js';
+import { flushOfferNotifications, useFollowList, useOffer, type OfferVariantInput } from '../lib/social.js';
 import { CARD_SORTS, cardDone, cardMissing, cardsOf, sortCards, type CardSort, type EntryCard } from '../lib/cards.js';
 import { selection, useSelection, useSuppressSelectionBar } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
@@ -54,7 +57,7 @@ function ListView({ query, id, token }: { query: Q; id?: string; token?: string 
   const t = useT();
   const dataset = useDataset();
   const me = useMe();
-  if (query.isPending || dataset.isPending) return <main className="mx-auto max-w-3xl px-3 pt-20"><CardsSkeleton count={9} className="grid-cols-3 sm:grid-cols-5" /></main>;
+  if (query.isPending || dataset.isPending) return <main className="mx-auto max-w-6xl px-3 pt-20 sm:px-5"><CardsSkeleton count={12} className="grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7" /></main>;
   if (query.isError || !query.data || !dataset.data) {
     return (
       <>
@@ -80,6 +83,30 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   const friend = access === 'friend';
   const offer = useOffer(list.id);
   const follow = useFollowList(list.id);
+  // Defer "I have it" notifications until the friend leaves this page: ticking then unticking sends nothing.
+  const pendingOffersRef = useRef<Map<string, OfferVariantInput>>(new Map());
+  const inFlightOffersRef = useRef<Set<Promise<unknown>>>(new Set());
+  const offerKey = (m: OfferVariantInput) => `${m.variantKey}|${m.gender}|${m.shiny ? 1 : 0}|${m.tag}`;
+  useEffect(() => {
+    if (!friend) return;
+    const flush = (waitInFlight: boolean) => {
+      if (!pendingOffersRef.current.size) return;
+      const variants = [...pendingOffersRef.current.values()];
+      pendingOffersRef.current.clear();
+      if (waitInFlight && inFlightOffersRef.current.size) {
+        const waits = [...inFlightOffersRef.current];
+        void Promise.allSettled(waits).then(() => flushOfferNotifications(list.id, variants));
+      } else {
+        flushOfferNotifications(list.id, variants);
+      }
+    };
+    const onHide = () => flush(false);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      flush(true);
+    };
+  }, [list.id, friend]);
   const [sharing, setSharing] = useState(false);
   const [view, setView] = useState<View>('missing');
   const [shinyFilter, setShinyFilter] = useState<'all' | 'shiny' | 'normal'>('all');
@@ -91,6 +118,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   const [selected, setSelected] = useState<EntryCard | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [templateBusy, setTemplateBusy] = useState(false);
   // Several cards at once: tapping a card picks it instead of ticking it.
@@ -222,7 +250,15 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   };
   const setOffer = (m: ListDetailEntry, on: boolean) => {
     feedback(on ? 'tick' : 'untick');
-    offer.mutate({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on });
+    const item: OfferVariantInput = { variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag };
+    const k = offerKey(item);
+    if (on) pendingOffersRef.current.set(k, item);
+    else pendingOffersRef.current.delete(k);
+    const p = offer.mutateAsync({ ...item, on, deferNotify: true }).catch(() => {
+      if (on) pendingOffersRef.current.delete(k);
+    });
+    inFlightOffersRef.current.add(p);
+    void p.finally(() => inFlightOffersRef.current.delete(p));
   };
 
   /** Owner: one gender caught / not caught. Friend: "I have this one" for that gender, if still hunted. */
@@ -293,7 +329,14 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       toast(t.removed(gone.length), { action: { label: t.undo, onClick: () => void inParts(gone, (part) => writeDone(part, (m) => m.done)) } });
     });
   };
-  const bulkOffer = () => bulk(async () => { for (const m of pickedMembers.filter((m) => !m.done && !m.offeredByMe)) await offer.mutateAsync({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, on: true }); });
+  const bulkOffer = () =>
+    bulk(async () => {
+      for (const m of pickedMembers.filter((m) => !m.done && !m.offeredByMe)) {
+        const item: OfferVariantInput = { variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag };
+        await offer.mutateAsync({ ...item, on: true, deferNotify: true });
+        pendingOffersRef.current.set(offerKey(item), item);
+      }
+    });
   const toBasket = () => {
     const entries = pickedMembers.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag }));
     selection.add(entries);
@@ -310,6 +353,11 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
         back
         actions={
           <>
+            {list.entries.length > 0 && (
+              <IconButton label={t.stats_title} onClick={() => setStatsOpen(true)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6" /></svg>
+              </IconButton>
+            )}
             {(owner || friend) && id && (
               <IconButton label={t.history} onClick={() => setHistoryOpen(true)}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>
@@ -324,10 +372,11 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
                 {following ? t.unfollow : t.follow}
               </Button>
             ) : null}
+            <PageTourButton page="list" />
           </>
         }
       >
-        <div className="mx-auto max-w-3xl px-3 pb-2">
+        <div className="mx-auto max-w-6xl px-3 pb-2 sm:px-5">
           {!owner && <p className="muted text-sm">{t.by(list.ownerName)}</p>}
           {friend && <p className="muted text-sm">{t.offer_hint(list.ownerName)}</p>}
           {friend && following === false && <p className="muted text-sm">{t.unfollowed_hint}</p>}
@@ -336,7 +385,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
             <Progress done={done} total={list.entries.length} />
             <span className="muted tnum shrink-0 text-xs font-semibold">{t.progress(rolledDone, list.entries.length)}</span>
           </div>
-          <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
+          <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
               <Chip key={v} active={view === v} onClick={() => setView(v)}>{{ missing: t.missing, caught: t.caught, all: t.filter_all }[v]}</Chip>
             ))}
@@ -370,7 +419,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
         </div>
       </TopBar>
 
-      <main className={`mx-auto max-w-3xl px-3 ${picking ? 'pb-72' : 'pb-44'}`}>
+      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${picking ? 'pb-72' : 'pb-44'}`}>
+        <WhatsNewBanner />
+        <PageTourBanner page="list" />
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}
@@ -440,7 +491,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
         )}
         {cards.length > 0 && (picking || owner) && <p className="pb-2 pt-1.5 text-xs text-ink-3">{picking ? t.pick_hint : t.list_owner_hint}</p>}
         {cards.length > 0 && !picking && !owner && <div className="pb-2" />}
-        <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7">
           {shownCards.map((c) => {
             const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
             const sp = v && idx.speciesByDex.get(v.dex);
@@ -553,7 +604,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
 
       {picking && (
         <div className="pb-safe fixed inset-x-0 bottom-[var(--nav-h)] z-30 px-3" role="toolbar" aria-label={t.pick_count(picked.size)}>
-          <div className="mx-auto max-w-3xl rounded-card bg-card p-2 shadow-lg ring-1 ring-line">
+          <div className="mx-auto max-w-6xl rounded-card bg-card p-2 shadow-lg ring-1 ring-line">
             <div className="flex items-center gap-2 px-1 pb-1.5">
               <p className="flex-1 text-sm font-semibold">{t.pick_count(pickedMembers.length)}</p>
               <button type="button" className="text-sm font-semibold text-sky" onClick={pickAll}>{t.pick_all}</button>
@@ -586,7 +637,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
 
       {owner && !picking && (
         <div className={`pb-safe pointer-events-none fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-3xl justify-end gap-2">
+          <div className="mx-auto flex max-w-6xl justify-end gap-2">
             <button type="button" onClick={() => setImporting(true)} aria-label={t.import_title} title={t.import_title} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-card px-4 font-semibold text-ink shadow-lg ring-1 ring-line hover:brightness-[0.98]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></svg>
               {t.import_short}
@@ -696,6 +747,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
         })()}
       </Sheet>
 
+      <CollectionStatsSheet open={statsOpen} onClose={() => setStatsOpen(false)} idx={idx} list={list} />
       {owner && id && (
         <EditSheet
           open={editing}

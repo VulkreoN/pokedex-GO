@@ -12,6 +12,7 @@ import {
   entryMatchesLive,
   eventTitle,
   inferHuntSource,
+  researchTaskFr,
   resolveLiveKey,
   type HuntIndex,
   type HuntSource,
@@ -24,12 +25,54 @@ import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
 import { getEventSpawns, type EventSpawns } from '../game/eventSpawns.js';
 import { getResearch } from '../game/research.js';
+import { recordSource } from '../lib/health.js';
 import { notify } from './service.js';
 
 const SAME_MON_MS = 14 * 86_400_000;
 const ONE_A_DAY_MS = 20 * 3600_000;
 /** Alerts run every three hours: a reminder comes 21 to 24 hours before the event. */
 const REMIND_BEFORE_MS = 24 * 3600_000;
+const EVENTS_URL = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json';
+
+interface ScrapedEvent {
+  eventID: string;
+  name: string;
+  eventType: string;
+  start: string | null;
+  end: string | null;
+}
+
+/** Extracts Gigantamax / Dynamax targets from ScrapedDuck's Max Battle events (active or within 3 weeks). */
+export function maxBattleFound(
+  events: ScrapedEvent[],
+  huntIndex: HuntIndex,
+  speciesNames: Map<number, LocalizedText>,
+  now = Date.now(),
+): Found[] {
+  const soon = now + 21 * 86_400_000;
+  const species = new Map([...speciesNames].map(([dex, name]) => [dex, { name }]));
+  const out: Found[] = [];
+  for (const e of events) {
+    if (!/max-|dynamax|gigantamax/i.test(`${e.eventType} ${e.name}`)) continue;
+    const start = e.start ? new Date(e.start).getTime() : now;
+    const end = e.end ? new Date(e.end).getTime() : Infinity;
+    if (end < now || start > soon) continue;
+    const gmax = /gigantamax/i.test(e.name);
+    const hay = ` ${e.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+    const started = !e.start || start <= now;
+    const whereFr = eventTitle(e.name, species, 'fr');
+    for (const sp of huntIndex.speciesByDex.values()) {
+      if (sp.name.en.length < 3) continue;
+      if (!hay.includes(` ${sp.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `)) continue;
+      const gmaxVariant = gmax ? (huntIndex.variantsByDex.get(sp.dex) ?? []).find((v) => v.kind === 'gmax') : undefined;
+      const key = gmax ? (gmaxVariant?.key ?? `${sp.dex}.fGIGANTAMAX`) : String(sp.dex);
+      const v = huntIndex.variantByKey.get(key) ?? huntIndex.variantByKey.get(String(sp.dex));
+      const canBeShiny = !!v && v.hasShiny && v.shinyReleased !== false;
+      out.push({ key, source: gmax ? 'gmax' : 'max', canBeShiny, where: e.name, whereFr, from: started ? null : e.start });
+    }
+  }
+  return out;
+}
 
 export interface Found {
   /** Variant key of what is caught ("546.cSPRING_2024", "74.fALOLA", "6.fMEGA_X"). */
@@ -259,13 +302,20 @@ export async function runHuntAlerts(): Promise<number> {
       return key ? [{ key, source: 'wild' as const, canBeShiny: m.canBeShiny, where: e.name, whereFr: eventTitle(e.name, species, 'fr'), from: started ? null : e.start }] : [];
     }),
   );
+  // Also alert for active / upcoming Gigantamax & Dynamax Max Battle events.
+  const scrapedEvents = await fetch(EVENTS_URL)
+    .then((r) => (r.ok ? (r.json() as Promise<ScrapedEvent[]>) : []))
+    .catch(() => [] as ScrapedEvent[]);
+  if (huntIndex && dataService.speciesNames()) {
+    spawns.push(...maxBattleFound(scrapedEvents, huntIndex, dataService.speciesNames()!));
+  }
   sent += await alert('spawn', spawns, huntIndex);
   sent += await remindUpcoming(events, known, Date.now(), huntIndex);
   const research = await getResearch().catch(() => []);
   const quests: Found[] = [];
   for (const c of research) {
     for (const task of c.tasks) {
-      const whereFr = (await questFr(task.text)) ?? undefined;
+      const whereFr = (await questFr(task.text)) ?? researchTaskFr(task.text, species, 'fr');
       for (const r of task.rewards) {
         const key = r.kind === 'encounter' ? keyOfPicture(r.image, r.name, known) : null;
         if (key) quests.push({ key, source: 'research', canBeShiny: !!r.canBeShiny, where: task.text, whereFr });
@@ -273,5 +323,6 @@ export async function runHuntAlerts(): Promise<number> {
     }
   }
   sent += await alert('quest', quests, huntIndex);
+  recordSource('hunts');
   return sent;
 }

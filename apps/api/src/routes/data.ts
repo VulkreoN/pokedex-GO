@@ -17,7 +17,7 @@ import { notifyAccount } from '../notify/service.js';
 /** The categories a manager can put a variant in. */
 const VARIANT_KINDS = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'] as const;
 
-export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind });
+export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind, hidden: o.hidden });
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
 export const dataRoutes = new Hono<AuthEnv>()
@@ -62,9 +62,11 @@ const overrideBody = z.object({
   /** The "no Mega" mark, by hand. */
   noMega: z.boolean().nullable().optional(),
   kind: z.enum(VARIANT_KINDS).nullable().optional(),
+  /** true = hide/remove this bogus variant from the Pokédex (restorable anytime). */
+  hidden: z.boolean().nullable().optional(),
 });
 
-/** Managers: force a variant released / not released, or rename it. */
+/** Managers: force a variant released / not released, rename it, or remove/restore bogus variants. */
 export const overrideRoutes = new Hono<AuthEnv>()
   .get('/', async (c) => {
     const rows = await db
@@ -73,17 +75,30 @@ export const overrideRoutes = new Hono<AuthEnv>()
       .leftJoin(schema.users, eq(schema.users.id, schema.variantOverrides.updatedBy))
       .orderBy(sql`${schema.variantOverrides.updatedAt} desc`);
     return c.json({
-      overrides: rows.map(({ o, by }) => ({ variantKey: o.variantKey, released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind, updatedBy: by, updatedAt: o.updatedAt.toISOString() })),
+      overrides: rows.map(({ o, by }) => ({
+        variantKey: o.variantKey,
+        released: o.released,
+        label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null,
+        genders: o.genders,
+        shinyReleased: o.shinyReleased,
+        noEvolve: o.noEvolve,
+        noMega: o.noMega,
+        kind: o.kind,
+        hidden: o.hidden,
+        meta: dataService.rawVariantMeta(o.variantKey),
+        updatedBy: by,
+        updatedAt: o.updatedAt.toISOString(),
+      })),
     });
   })
   /**
-   * Managers: the same change on many variants at once (released, shiny out, can't evolve). A field left out is
+   * Managers: the same change on many variants at once (released, shiny out, can't evolve, hidden). A field left out is
    * not touched, and each variant keeps its other corrections (name, genders). One journal line per variant.
    */
   .patch(
     '/',
     requireRole('manager'),
-    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional(), noMega: z.boolean().nullable().optional(), kind: z.enum(VARIANT_KINDS).nullable().optional() })),
+    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional(), noMega: z.boolean().nullable().optional(), kind: z.enum(VARIANT_KINDS).nullable().optional(), hidden: z.boolean().nullable().optional() })),
     async (c) => {
       const { keys, ...patch } = c.req.valid('json');
       if (!keys.every(isValidVariantKey)) return c.json({ error: 'invalid_variant_key' }, 400);
@@ -103,10 +118,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
           noEvolve: patch.noEvolve !== undefined ? patch.noEvolve : (before?.noEvolve ?? null),
           noMega: patch.noMega !== undefined ? patch.noMega : (before?.noMega ?? null),
           kind: patch.kind !== undefined ? patch.kind : (before?.kind ?? null),
+          hidden: patch.hidden !== undefined ? patch.hidden : (before?.hidden ?? null),
           updatedBy: me,
           updatedAt: new Date(),
         };
-        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null) {
+        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
           await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k));
         } else {
           await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
@@ -136,10 +152,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
       noEvolve: body.noEvolve ?? null,
       noMega: body.noMega ?? null,
       kind: body.kind ?? null,
+      hidden: body.hidden ?? null,
       updatedBy: c.get('user').id,
       updatedAt: new Date(),
     };
-    if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null) {
+    if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
       await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     } else {
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
@@ -148,7 +165,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
     // was / now: what players saw before and see after, so the journal can say what changed.
     await audit(c.get('user').id, 'override.set', 'variant', key, {
       before: before ? overrideState(before) : null,
-      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders, shinyReleased: values.shinyReleased, noEvolve: values.noEvolve, noMega: values.noMega, kind: values.kind },
+      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders, shinyReleased: values.shinyReleased, noEvolve: values.noEvolve, noMega: values.noMega, kind: values.kind, hidden: values.hidden },
       was,
       now: await dataService.shownState(key),
     });
@@ -174,17 +191,58 @@ export const userRoutes = new Hono<AuthEnv>()
   .use(requireRole('admin'))
   .get('/', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
+    const digits = q.replace(/\D/g, '');
+    const filter = c.req.query('filter') ?? 'all';
+    const sort = c.req.query('sort') ?? 'role';
     const offset = Math.max(0, Number(c.req.query('offset') ?? 0) || 0);
-    const where = q ? sql`lower(${schema.users.username}) like lower(${'%' + q + '%'})` : sql`true`;
+
+    const conds = [];
+    if (q) {
+      conds.push(
+        digits.length >= 4
+          ? sql`(lower(${schema.users.username}) like lower(${'%' + q + '%'}) or ${schema.users.friendCode} like ${'%' + digits + '%'})`
+          : sql`lower(${schema.users.username}) like lower(${'%' + q + '%'})`,
+      );
+    }
+    if (filter === 'staff') conds.push(sql`${schema.users.role} in ('admin', 'manager')`);
+    else if (filter === 'suspended') conds.push(sql`${schema.users.suspendedAt} is not null`);
+    else if (filter === 'push') conds.push(sql`exists (select 1 from ${schema.pushSubscriptions} where ${schema.pushSubscriptions.userId} = ${schema.users.id})`);
+
+    const where = conds.length ? sql.join(conds, sql` and `) : sql`true`;
     const [count] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(schema.users).where(where);
+    const order =
+      sort === 'recent'
+        ? [sql`${schema.users.lastSeenAt} desc nulls last`, sql`${schema.users.createdAt} desc`]
+        : sort === 'created'
+          ? [sql`${schema.users.createdAt} desc`]
+          : [sql`case ${schema.users.role} when 'admin' then 0 when 'manager' then 1 else 2 end`, sql`${schema.users.createdAt} desc`];
+
     const rows = await db
-      .select({ id: schema.users.id, username: schema.users.username, role: schema.users.role, friendCode: schema.users.friendCode, createdAt: schema.users.createdAt })
+      .select({
+        id: schema.users.id,
+        username: schema.users.username,
+        role: schema.users.role,
+        friendCode: schema.users.friendCode,
+        createdAt: schema.users.createdAt,
+        lastSeenAt: schema.users.lastSeenAt,
+        suspendedAt: schema.users.suspendedAt,
+        listsCount: sql<number>`(select count(*) from ${schema.lists} where ${schema.lists.ownerId} = ${schema.users.id})`.mapWith(Number),
+      })
       .from(schema.users)
       .where(where)
-      .orderBy(sql`case ${schema.users.role} when 'admin' then 0 when 'manager' then 1 else 2 end`, sql`${schema.users.createdAt} desc`)
+      .orderBy(...order)
       .limit(50)
       .offset(offset);
-    return c.json({ users: rows.map((u) => ({ ...u, createdAt: u.createdAt.toISOString() })), total: count?.n ?? 0, offset });
+    return c.json({
+      users: rows.map((u) => ({
+        ...u,
+        createdAt: u.createdAt.toISOString(),
+        lastSeenAt: u.lastSeenAt?.toISOString() ?? null,
+        suspendedAt: u.suspendedAt?.toISOString() ?? null,
+      })),
+      total: count?.n ?? 0,
+      offset,
+    });
   })
   /** Issues a one-time reset code (shown once to the admin, valid 24h). */
   .post('/:id/reset-code', async (c) => {

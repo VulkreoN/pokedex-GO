@@ -19,6 +19,7 @@ import { localized, typeName, useLang, useT } from '../lib/i18n.js';
 import { useList, useMembership } from '../lib/lists.js';
 import { useSelection } from '../lib/selection.js';
 import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
 import { useProgressive } from '../lib/progressive.js';
 
 /** Appeared in the last 45 days. */
@@ -36,12 +37,12 @@ const RARITIES: Rarity[] = ['normal', 'legendary', 'mythic', 'ultra_beast'];
  */
 const memory: {
   query: string; kinds: Set<VariantKind> | null; onlyDatamined: boolean; hideDatamined: boolean;
-  onlyShinyOut: boolean; onlyBackgrounds: boolean; typeFilter: PokemonType | ''; rarity: Rarity | '';
+  onlyShinyOut: boolean; onlyBackgrounds: boolean; onlyRecent: boolean; typeFilter: PokemonType | ''; rarity: Rarity | '';
   gen: number; shiny: boolean; gender: GenderFilter; forceExploded: boolean; sort: 'dex' | 'new' | 'family';
   scrollY: number; built: number;
 } = {
   query: '', kinds: null, onlyDatamined: false, hideDatamined: false,
-  onlyShinyOut: false, onlyBackgrounds: false, typeFilter: '', rarity: '',
+  onlyShinyOut: false, onlyBackgrounds: false, onlyRecent: false, typeFilter: '', rarity: '',
   gen: 0, shiny: false, gender: 'all', forceExploded: false, sort: 'dex',
   scrollY: 0, built: 0,
 };
@@ -61,6 +62,7 @@ export function PokedexPage() {
   const [hideDatamined, setHideDatamined] = useState(restore?.hideDatamined ?? false);
   const [onlyShinyOut, setOnlyShinyOut] = useState(restore?.onlyShinyOut ?? false);
   const [onlyBackgrounds, setOnlyBackgrounds] = useState(restore?.onlyBackgrounds ?? false);
+  const [onlyRecent, setOnlyRecent] = useState(restore?.onlyRecent ?? false);
   const [typeFilter, setTypeFilter] = useState<PokemonType | ''>(restore?.typeFilter ?? '');
   const [rarity, setRarity] = useState<Rarity | ''>(restore?.rarity ?? '');
   const [gen, setGen] = useState(restore?.gen ?? 0);
@@ -119,13 +121,14 @@ export function PokedexPage() {
   const q = useDeferredValue(normalize(query));
   /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
   const allKinds = kinds.size === KINDS.length;
-  const exploded = forceExploded || !allKinds || onlyDatamined || onlyShinyOut || onlyBackgrounds || q !== '' || multi;
+  const exploded = forceExploded || !allKinds || onlyDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || q !== '' || multi;
   const activeCount =
     (allKinds ? 0 : 1) +
     (onlyDatamined ? 1 : 0) +
     (hideDatamined ? 1 : 0) +
     (onlyShinyOut ? 1 : 0) +
     (onlyBackgrounds ? 1 : 0) +
+    (onlyRecent ? 1 : 0) +
     (typeFilter ? 1 : 0) +
     (rarity ? 1 : 0) +
     (gen ? 1 : 0) +
@@ -143,6 +146,7 @@ export function PokedexPage() {
     if (hideDatamined && v.datamined) return false;
     if (onlyShinyOut && !isShinyOutVariant(v, species)) return false;
     if (onlyBackgrounds && !(v.backgrounds?.length)) return false;
+    if (onlyRecent && (!isRecent(v.firstSeen) || v.datamined)) return false;
     if (typeFilter && !(v.types ?? species?.types ?? []).includes(typeFilter)) return false;
     if (hideInTarget && targetList && variantStatus.has(neutralKey(v.key))) return false;
     return true;
@@ -179,7 +183,7 @@ export function PokedexPage() {
     if (!idx) return [];
     const familyCache = new Map<string, Set<string>>();
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
-    const hasVariantFilter = !allKinds || onlyDatamined || hideDatamined || onlyShinyOut || onlyBackgrounds || !!typeFilter || (hideInTarget && !!targetList);
+    const hasVariantFilter = !allKinds || onlyDatamined || hideDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || !!typeFilter || (hideInTarget && !!targetList);
     return idx.ds.species.filter((s) => {
       if (gen && s.gen !== gen) return false;
       if (rarity && s.rarity !== rarity) return false;
@@ -187,7 +191,7 @@ export function PokedexPage() {
       if (!hasVariantFilter) return true;
       return (idx.variantsByDex.get(s.dex) ?? []).some((v) => shown(v, s));
     });
-  }, [dataset.data, q, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, typeFilter, rarity, gen, labelText, hideInTarget, targetList, variantStatus]);
+  }, [dataset.data, q, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, rarity, gen, labelText, hideInTarget, targetList, variantStatus]);
 
   /** Newest first: a species ranks by the most recent of its variants. `+family` searches show evolution order automatically. */
   const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
@@ -216,9 +220,12 @@ export function PokedexPage() {
         out.push({ species: s, group: g, id: `${s.dex}-${g.id}` });
       }
     }
-    if (sort === 'new') out.sort((a, b) => (b.group.variants[0]!.firstSeen ?? '').localeCompare(a.group.variants[0]!.firstSeen ?? '') || a.species.dex - b.species.dex);
+    if (sort === 'new') {
+      const groupNewest = (g: VariantGroup) => g.variants.reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
+      out.sort((a, b) => groupNewest(b.group).localeCompare(groupNewest(a.group)) || a.species.dex - b.species.dex);
+    }
     return out;
-  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, typeFilter, q, gender, sort, hideInTarget, targetList, variantStatus]);
+  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, q, gender, sort, hideInTarget, targetList, variantStatus]);
 
   const toggleTick = (id: string, g: VariantGroup) => {
     feedback(ticked.has(id) ? 'untick' : 'tick');
@@ -234,6 +241,7 @@ export function PokedexPage() {
     setHideDatamined(false);
     setOnlyShinyOut(false);
     setOnlyBackgrounds(false);
+    setOnlyRecent(false);
     setTypeFilter('');
     setRarity('');
     setGen(0);
@@ -251,12 +259,12 @@ export function PokedexPage() {
   const speciesLinkSuffix = targetList ? `?to=${targetList.id}` : '';
   const resultCount = exploded ? t.variants_count(cards.length) : t.species_count(rows.length);
   // Long grids build their first cards at once, the next ones as they come near the screen.
-  const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${onlyShinyOut}|${onlyBackgrounds}|${typeFilter}|${rarity}|${gen}|${gender}|${sort}|${shiny}|${multi}|${hideInTarget}`;
+  const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${onlyShinyOut}|${onlyBackgrounds}|${onlyRecent}|${typeFilter}|${rarity}|${gen}|${gender}|${sort}|${shiny}|${multi}|${hideInTarget}`;
   const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, gridKey, 60, restore?.built);
   const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey, 60, restore?.built);
   // Remembered as it changes, so a Pokémon opened from here comes back to the same place.
   Object.assign(memory, {
-    query, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, typeFilter, rarity,
+    query, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, rarity,
     gen, shiny, gender, forceExploded, sort, built: Math.max(shownCards.length, shownRows.length),
   });
   // Detach in layout cleanup before React removes the tall grid on navigation, otherwise the shorter destination page
@@ -282,8 +290,8 @@ export function PokedexPage() {
 
   return (
     <>
-      <TopBar title={t.nav_dex}>
-        <div className="mx-auto max-w-3xl px-3 pb-2">
+      <TopBar title={t.nav_dex} actions={<PageTourButton page="dex" />}>
+        <div className="mx-auto max-w-6xl px-3 pb-2 sm:px-5">
           {/* Active target collection banner when arriving from "+ Add Pokémon" inside a collection. */}
           {targetList && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-go-soft px-2.5 py-1.5 text-xs font-semibold text-go-ink">
@@ -324,7 +332,7 @@ export function PokedexPage() {
             )}
           </div>
           {/* Quick controls side by side: Filters, 1-tap Shiny, PvP, Multi-select. */}
-          <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
+          <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
             <Chip active={activeCount > 0} onClick={() => setFiltersOpen(true)} aria-label={t.filters}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 5h18M6 12h12M10 19h4" /></svg>
               {t.filters}
@@ -345,12 +353,13 @@ export function PokedexPage() {
           </div>
           {/* Active filters on their own row, each removable with a tap. */}
           {activeCount - (multi && !allKinds ? 1 : 0) > 0 && (
-            <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
               {!allKinds && !multi && <Chip active onClick={() => setKinds(ALL_KINDS)}>{kindsSummary()} ✕</Chip>}
               {onlyDatamined && <Chip active onClick={() => setOnlyDatamined(false)}>{t.filter_datamined} ✕</Chip>}
               {hideDatamined && <Chip active onClick={() => setHideDatamined(false)}>{t.hide_datamined} ✕</Chip>}
               {onlyShinyOut && <Chip active onClick={() => setOnlyShinyOut(false)}>{t.only_shiny_out} ✕</Chip>}
               {onlyBackgrounds && <Chip active onClick={() => setOnlyBackgrounds(false)}>{t.only_backgrounds} ✕</Chip>}
+              {onlyRecent && <Chip active onClick={() => setOnlyRecent(false)}>{t.only_recent} ✕</Chip>}
               {typeFilter && <Chip active onClick={() => setTypeFilter('')}>{typeName(typeFilter, lang)} ✕</Chip>}
               {rarity && <Chip active onClick={() => setRarity('')}>{t[`rarity_${rarity}`]} ✕</Chip>}
               {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
@@ -362,7 +371,7 @@ export function PokedexPage() {
           )}
           {/* While ticking cards, the kinds to show stay at hand, on a row of their own. */}
           {multi && (
-            <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]">
+            <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
               {KINDS.map((k) => (
                 <Chip key={k} active={kinds.has(k)} onClick={() => toggleKind(k)} disabled={kinds.has(k) && kinds.size === 1}>
                   {kinds.has(k) && check}
@@ -374,12 +383,13 @@ export function PokedexPage() {
         </div>
       </TopBar>
 
-      <main className={`mx-auto max-w-3xl px-3 ${multi && basketCount > 0 ? 'pb-44' : 'pb-28'}`}>
-        {dataset.isPending && <CardsSkeleton count={12} />}
+      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${multi && basketCount > 0 ? 'pb-44' : 'pb-28'}`}>
+        {dataset.isPending && <CardsSkeleton count={12} className="grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6" />}
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
         <WelcomeResume />
         <InstallBanner />
         <WhatsNewBanner />
+        <PageTourBanner page="dex" />
         {dataset.data && (
           <>
             <p className="tnum flex items-center gap-2 py-2 text-xs font-semibold text-ink-3">
@@ -394,7 +404,7 @@ export function PokedexPage() {
             {multi && <p className="mb-2 text-xs text-ink-3">{t.multi_hint}</p>}
             {(exploded ? cards.length : rows.length) === 0 && <Empty>{t.nothing_here}</Empty>}
             {exploded && (
-              <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4">
+              <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {shownCards.map(({ species, group, id }) => {
                   const baseKey = neutralKey((group.variants.find((x) => x.gender !== 'f') ?? group.variants[0]!).key);
                   return (
@@ -424,7 +434,7 @@ export function PokedexPage() {
               </ul>
             )}
             {!exploded && (
-              <ul className="stagger grid grid-cols-4 gap-2 sm:grid-cols-6">
+              <ul className="stagger grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9">
                 {shownRows.map((s) => {
                   const idx = dataset.data;
                   const cover = idx.coverOf.get(s.dex)!;
@@ -466,7 +476,7 @@ export function PokedexPage() {
 
       {multi && ticked.size > 0 && (
         <div className={`pb-safe fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
             <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
             {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}
             <Button tone="ghost" className="min-h-9 bg-white px-3 text-sm text-go-ink hover:bg-white" onClick={() => setBulkOpen(true)}>{t.add}</Button>
@@ -491,7 +501,8 @@ export function PokedexPage() {
                 ))}
               </div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <Chip active={onlyDatamined} onClick={() => { setOnlyDatamined((v) => !v); setHideDatamined(false); }}>{t.only_datamined}</Chip>
+                <Chip active={onlyRecent} onClick={() => { const next = !onlyRecent; setOnlyRecent(next); if (next) { setOnlyDatamined(false); setSort('new'); } }}>{t.only_recent}</Chip>
+                <Chip active={onlyDatamined} onClick={() => { setOnlyDatamined((v) => !v); setHideDatamined(false); setOnlyRecent(false); }}>{t.only_datamined}</Chip>
                 <Chip active={hideDatamined} onClick={() => { setHideDatamined((v) => !v); setOnlyDatamined(false); }}>{t.hide_datamined}</Chip>
                 <Chip active={onlyShinyOut} onClick={() => { const next = !onlyShinyOut; setOnlyShinyOut(next); if (next) setShiny(true); }}>{t.only_shiny_out}</Chip>
                 <Chip active={onlyBackgrounds} onClick={() => setOnlyBackgrounds((v) => !v)}>{t.only_backgrounds}</Chip>

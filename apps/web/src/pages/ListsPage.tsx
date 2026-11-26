@@ -5,6 +5,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { ListSummary, ListVisibility } from '@mydexpogo/shared';
 import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, SwitchThumb, TextField, TopBar } from '../components/ui.js';
+import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
+import { WhatsNewBanner } from '../components/WhatsNew.js';
 import { useToast } from '../components/toast.js';
 import { useDataset } from '../lib/dataset.js';
 import { LIST_TEMPLATES, buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
@@ -118,35 +120,51 @@ export function ListsPage() {
     <>
       <TopBar
         title={t.nav_lists}
-        actions={
-          tab === 'mine' ? (
-            <IconButton label={t.new_list} onClick={() => setOpen(true)} className="bg-ink text-paper hover:bg-ink">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            </IconButton>
-          ) : null
-        }
+        actions={<PageTourButton page="lists" />}
       >
-        <div className="mx-auto flex max-w-3xl gap-2 px-3 pb-2">
+        <div className="mx-auto flex max-w-6xl gap-2 px-3 pb-2 sm:px-5">
           <Chip active={tab === 'mine'} onClick={() => setParams({}, { replace: true })}>{t.lists_mine}</Chip>
           <Chip active={tab === 'friends'} onClick={() => setParams({ tab: 'friends' }, { replace: true })}>{t.lists_friends}</Chip>
         </div>
       </TopBar>
       {tab === 'friends' ? (
-        <main className="mx-auto max-w-3xl px-3 pb-24">
+        <main className="mx-auto max-w-6xl px-3 pb-24 sm:px-5">
+          <PageTourBanner page="lists" />
           <FriendLists lists={friendLists.data} pending={friendLists.isPending} />
         </main>
       ) : (
-      <main className={`mx-auto max-w-3xl px-3 ${ordering ? 'pb-40' : 'pb-24'}`}>
+      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${ordering ? 'pb-40' : 'pb-24'}`}>
+        <WhatsNewBanner />
+        <PageTourBanner page="lists" />
         {lists.isPending && <Spinner />}
         {lists.data?.length === 0 && (
           <Empty>
             {t.no_lists_yet}
             <br />
-            <Button tone="primary" className="mt-4" onClick={() => setOpen(true)}>{t.new_list}</Button>
+            <Button tone="primary" className="mt-4" onClick={() => setOpen(true)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              {t.new_list}
+            </Button>
           </Empty>
         )}
+        {(lists.data?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-2 py-2.5">
+            {!ordering && (
+              <Button tone="primary" className="min-h-10 px-3.5 text-sm shadow-sm" onClick={() => setOpen(true)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                {t.new_list}
+              </Button>
+            )}
+            <p className="min-w-0 flex-1 text-xs text-ink-3">{ordering ? t.reorder_hint : ''}</p>
+            {(lists.data?.length ?? 0) > 1 && (
+              <button type="button" aria-pressed={ordering} onClick={() => setOrdering((v) => !v)} className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${ordering ? 'bg-sky text-white' : 'bg-paper-2 text-ink'}`}>
+                {ordering ? t.pick_done : t.reorder}
+              </button>
+            )}
+          </div>
+        )}
         {(lists.data?.length ?? 0) > 6 && !ordering && (
-          <div className="relative pt-2">
+          <div className="relative pb-2">
             <input
               type="search"
               inputMode="search"
@@ -157,16 +175,8 @@ export function ListsPage() {
               className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
             />
             {listQuery && (
-              <button type="button" onClick={() => setListQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 mt-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">✕</button>
+              <button type="button" onClick={() => setListQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 -mt-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">✕</button>
             )}
-          </div>
-        )}
-        {(lists.data?.length ?? 0) > 1 && (
-          <div className="flex items-center gap-3 py-2">
-            <p className="min-w-0 flex-1 text-xs text-ink-3">{ordering ? t.reorder_hint : ''}</p>
-            <button type="button" aria-pressed={ordering} onClick={() => setOrdering((v) => !v)} className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${ordering ? 'bg-sky text-white' : 'bg-paper-2 text-ink'}`}>
-              {ordering ? t.pick_done : t.reorder}
-            </button>
           </div>
         )}
         {ordering ? (
@@ -178,7 +188,7 @@ export function ListsPage() {
             </SortableContext>
           </DndContext>
         ) : (
-          <ul className="stagger space-y-2">
+          <ul className="stagger grid grid-cols-1 gap-2 md:grid-cols-2">
             {(lists.data ?? [])
               .filter((l) => !listQuery.trim() || `${l.name} ${l.description ?? ''}`.toLowerCase().includes(listQuery.trim().toLowerCase()))
               .map((l) => <ListCard key={l.id} l={l} />)}
@@ -189,7 +199,7 @@ export function ListsPage() {
       {ordering && tab === 'mine' && (
         // Stays on screen however far the list scrolls.
         <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[var(--nav-h)] z-20 px-3">
-          <div className="mx-auto flex max-w-3xl justify-center">
+          <div className="mx-auto flex max-w-6xl justify-center">
             <button type="button" onClick={() => setOrdering(false)} className="toast-in pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-sky px-6 font-semibold text-white shadow-lg hover:brightness-110">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
               {t.pick_done}
@@ -326,7 +336,7 @@ function FriendLists({ lists, pending }: { lists: ListSummary[] | undefined; pen
       {pinned.length > 0 && (
         <section className="mb-5">
           <h2 className="mb-2 text-base font-bold">{t.pinned} <span className="tnum font-normal text-ink-3">{pinned.length}</span></h2>
-          <ul className="stagger space-y-2">{pinned.map((l) => <ListCard key={l.id} l={{ ...l, description: l.description ? `${l.ownerName} · ${l.description}` : l.ownerName }} showVisibility={false} pinnable />)}</ul>
+          <ul className="stagger grid grid-cols-1 gap-2 md:grid-cols-2">{pinned.map((l) => <ListCard key={l.id} l={{ ...l, description: l.description ? `${l.ownerName} · ${l.description}` : l.ownerName }} showVisibility={false} pinnable />)}</ul>
         </section>
       )}
       {[...byOwner.values()].map((ls) => (
@@ -335,7 +345,7 @@ function FriendLists({ lists, pending }: { lists: ListSummary[] | undefined; pen
             {ls[0]!.ownerFavorite && <span className="mr-1 text-shiny" aria-hidden="true">★</span>}
             <Link to={`/friends/${ls[0]!.ownerId}`} className="hover:underline">{ls[0]!.ownerName}</Link> <span className="tnum font-normal text-ink-3">{ls.length}</span>
           </h2>
-          <ul className="stagger space-y-2">{ls.map((l) => <ListCard key={l.id} l={l} showVisibility={false} pinnable />)}</ul>
+          <ul className="stagger grid grid-cols-1 gap-2 md:grid-cols-2">{ls.map((l) => <ListCard key={l.id} l={l} showVisibility={false} pinnable />)}</ul>
         </section>
       ))}
     </>

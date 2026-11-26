@@ -8,6 +8,8 @@ import { requireAuth, requireRole, type AuthEnv } from '../auth.js';
 import { dataService } from '../data/service.js';
 import { db, schema } from '../db/index.js';
 import { env } from '../env.js';
+import { feedService } from '../feed/service.js';
+import { resetEventDetailsCache } from '../game/eventDetails.js';
 import { resetPromoCache } from '../game/promo.js';
 import { resetPvpokeCache } from '../game/pvpRankings.js';
 import { resetResearchCache } from '../game/research.js';
@@ -17,6 +19,7 @@ import { hashToken, newFriendCode, newId, normalizeFriendCode } from '../lib/ids
 import { rateLimit } from '../lib/ratelimit.js';
 import { getSetting, setSetting } from '../lib/settings.js';
 import { hub } from '../notify/hub.js';
+import { runHuntAlerts } from '../notify/huntAlerts.js';
 import { pushToUser } from '../notify/push.js';
 import { runRaidAlerts } from '../notify/raidAlerts.js';
 import { notifyAccount, notifyStaff } from '../notify/service.js';
@@ -58,17 +61,20 @@ export const adminRoutes = new Hono<AuthEnv>()
   /* ---------- Dashboard ---------- */
   .get('/stats', async (c) => {
     const days = (d: number) => new Date(Date.now() - d * 86_400_000);
-    const [users, active7, active30, lists, entries, friendships, pushDevices, raidAlerts7, errorsToday, openReports, weeks] = await Promise.all([
+    const [users, active7, active30, lists, entries, friendships, luckyFriends, pvpTeams, pushDevices, raidAlerts7, errorsToday, openReports, pendingFeed, weeks] = await Promise.all([
       count(db.select({ n }).from(schema.users)),
       count(db.select({ n }).from(schema.users).where(gt(schema.users.lastSeenAt, days(7)))),
       count(db.select({ n }).from(schema.users).where(gt(schema.users.lastSeenAt, days(30)))),
       count(db.select({ n }).from(schema.lists)),
       count(db.select({ n }).from(schema.listEntries)),
       count(db.select({ n }).from(schema.friendships)),
+      count(db.select({ n }).from(schema.friendships).where(eq(schema.friendships.lucky, true))),
+      count(db.select({ n }).from(schema.pvpTeams)),
       count(db.select({ n }).from(schema.pushSubscriptions)),
       count(db.select({ n }).from(schema.raidAlerts).where(gt(schema.raidAlerts.alertedAt, days(7)))),
       count(db.select({ n }).from(schema.clientErrors).where(gt(schema.clientErrors.lastSeen, days(1)))),
       count(db.select({ n }).from(schema.reports).where(eq(schema.reports.status, 'open'))),
+      count(db.select({ n }).from(schema.feedItems).where(eq(schema.feedItems.status, 'new'))),
       // Sign-ups per week, the last 8 weeks (oldest first, weeks without any included).
       db.execute<{ week: string; n: number }>(sql`
         select to_char(w.week, 'YYYY-MM-DD') as week, count(u.id)::int as n
@@ -76,13 +82,43 @@ export const adminRoutes = new Hono<AuthEnv>()
         left join users u on date_trunc('week', u.created_at) = w.week
         group by w.week order by w.week`),
     ]);
-    return c.json({ users, active7, active30, lists, entries, friendships: Math.round(friendships / 2), pushDevices, raidAlerts7, errorsToday, openReports, signupsByWeek: [...weeks].map((w) => ({ week: w.week, n: Number(w.n) })) });
+    return c.json({
+      users,
+      active7,
+      active30,
+      lists,
+      entries,
+      friendships: Math.round(friendships / 2),
+      luckyFriends,
+      pvpTeams,
+      pushDevices,
+      raidAlerts7,
+      errorsToday,
+      openReports,
+      pendingFeed,
+      signupsByWeek: [...weeks].map((w) => ({ week: w.week, n: Number(w.n) })),
+    });
   })
 
   /* ---------- Health ---------- */
-  .get('/health', (c) => {
+  .get('/health', async (c) => {
     const data = dataService.getStatus();
-    return c.json({ version: env.appVersion, startedAt: new Date(started).toISOString(), dataset: data, sources: sourceHealth() });
+    let dbSizeMb: number | null = null;
+    try {
+      const [row] = [...(await db.execute<{ bytes: string }>(sql`select pg_database_size(current_database())::text as bytes`))];
+      if (row?.bytes) dbSizeMb = Math.round((Number(row.bytes) / 1_048_576) * 10) / 10;
+    } catch {}
+    return c.json({
+      version: env.appVersion,
+      startedAt: new Date(started).toISOString(),
+      dataset: data,
+      sources: sourceHealth(),
+      runtime: {
+        memoryMb: Math.round(process.memoryUsage().rss / 1_048_576),
+        dbSizeMb,
+        sseConnections: hub.connections(),
+      },
+    });
   })
   .post('/health/:source/refresh', async (c) => {
     const source = c.req.param('source') as SourceName;
@@ -92,7 +128,10 @@ export const adminRoutes = new Hono<AuthEnv>()
       promo: async () => resetPromoCache(),
       research: async () => resetResearchCache(),
       pvpoke: async () => resetPvpokeCache(),
+      events: async () => resetEventDetailsCache(),
       raids: () => runRaidAlerts(),
+      hunts: () => runHuntAlerts(),
+      feed: () => feedService.poll(`manual by ${me.username}`),
     };
     if (!run[source]) return c.json({ error: 'not_found' }, 404);
     try {
@@ -103,19 +142,31 @@ export const adminRoutes = new Hono<AuthEnv>()
     await audit(me.id, 'source.refresh', 'source', source);
     return c.json({ ok: true });
   })
+  /** Sends a test Web Push to the current admin's subscribed devices to verify VAPID/SW delivery. */
+  .post('/push-test', async (c) => {
+    const me = c.get('user');
+    const sent = await pushToUser(me.id, {
+      title: 'MyDexPoGo · Test',
+      body: 'Les notifications push fonctionnent sur cet appareil.',
+      url: '/admin?tab=health',
+      tag: 'admin-push-test',
+    });
+    return c.json({ sent });
+  })
 
   /* ---------- Accounts ---------- */
   .get('/users/:id', async (c) => {
     const id = c.req.param('id');
     const [u] = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
     if (!u) return c.json({ error: 'not_found' }, 404);
-    const [lists, entries, friends, sessions, devices, pvp] = await Promise.all([
+    const [lists, entries, friends, sessions, devices, pvp, pvpTeams] = await Promise.all([
       count(db.select({ n }).from(schema.lists).where(eq(schema.lists.ownerId, id))),
       count(db.select({ n }).from(schema.listEntries).innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId)).where(eq(schema.lists.ownerId, id))),
       count(db.select({ n }).from(schema.friendships).where(eq(schema.friendships.userId, id))),
       count(db.select({ n }).from(schema.sessions).where(and(eq(schema.sessions.userId, id), gt(schema.sessions.expiresAt, new Date())))),
       count(db.select({ n }).from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, id))),
       count(db.select({ n }).from(schema.pvpPokemon).where(eq(schema.pvpPokemon.userId, id))),
+      count(db.select({ n }).from(schema.pvpTeams).where(eq(schema.pvpTeams.userId, id))),
     ]);
     // Its open sessions (which browser, last used) and its friends.
     const [sessionRows, friendRows] = await Promise.all([
@@ -130,7 +181,7 @@ export const adminRoutes = new Hono<AuthEnv>()
       user: { id: u.id, username: u.username, role: u.role, friendCode: u.friendCode, createdAt: u.createdAt.toISOString(), lastSeenAt: iso(u.lastSeenAt), suspendedAt: iso(u.suspendedAt), suspendedUntil: iso(u.suspendedUntil), suspendedBy: why?.by ?? null, suspendReason: (why?.data.reason as string | null | undefined) ?? null },
       sessions: sessionRows.map((s) => ({ createdAt: s.createdAt.toISOString(), lastUsedAt: iso(s.lastUsedAt), expiresAt: s.expiresAt.toISOString(), userAgent: s.userAgent })),
       friends: friendRows,
-      counts: { lists, entries, friends, sessions, devices, pvp },
+      counts: { lists, entries, friends, sessions, devices, pvp, pvpTeams },
     });
   })
   /**
@@ -321,7 +372,12 @@ export const adminRoutes = new Hono<AuthEnv>()
   /* ---------- Journal ---------- */
   .get('/audit', async (c) => {
     const offset = Math.max(0, Number(c.req.query('offset') ?? 0) || 0);
-    const where = auditWhere(c.req.query('kind'));
+    const q = (c.req.query('q') ?? '').trim();
+    const kindCond = auditWhere(c.req.query('kind'));
+    const searchCond = q
+      ? sql`lower(coalesce(${schema.users.username}, '') || ' ' || ${schema.auditLog.action} || ' ' || coalesce(${schema.auditLog.targetId}, '') || ' ' || ${schema.auditLog.data}::text) like lower(${'%' + q + '%'})`
+      : undefined;
+    const where = kindCond && searchCond ? and(kindCond, searchCond) : kindCond ?? searchCond;
     const rows = await db
       .select({ a: schema.auditLog, actor: schema.users.username })
       .from(schema.auditLog)
@@ -341,11 +397,17 @@ export const adminRoutes = new Hono<AuthEnv>()
   })
   /** The whole journal (or one filter of it) as a spreadsheet, newest first, at most 20,000 lines. */
   .get('/audit.csv', async (c) => {
+    const q = (c.req.query('q') ?? '').trim();
+    const kindCond = auditWhere(c.req.query('kind'));
+    const searchCond = q
+      ? sql`lower(coalesce(${schema.users.username}, '') || ' ' || ${schema.auditLog.action} || ' ' || coalesce(${schema.auditLog.targetId}, '') || ' ' || ${schema.auditLog.data}::text) like lower(${'%' + q + '%'})`
+      : undefined;
+    const where = kindCond && searchCond ? and(kindCond, searchCond) : kindCond ?? searchCond;
     const rows = await db
       .select({ a: schema.auditLog, actor: schema.users.username })
       .from(schema.auditLog)
       .leftJoin(schema.users, eq(schema.users.id, schema.auditLog.actorId))
-      .where(auditWhere(c.req.query('kind')))
+      .where(where)
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(20_000);
     const cell = (v: unknown) => {
@@ -382,7 +444,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     const was = await dataService.shownState(key);
     if (!before) await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     else {
-      const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, shinyReleased: before.shinyReleased ?? null, noEvolve: before.noEvolve ?? null, noMega: before.noMega ?? null, kind: before.kind ?? null, updatedBy: c.get('user').id, updatedAt: new Date() };
+      const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, shinyReleased: before.shinyReleased ?? null, noEvolve: before.noEvolve ?? null, noMega: before.noMega ?? null, kind: before.kind ?? null, hidden: before.hidden ?? null, updatedBy: c.get('user').id, updatedAt: new Date() };
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();

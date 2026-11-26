@@ -8,7 +8,7 @@ import type { VariantKind } from '@mydexpogo/shared';
 
 /** The categories of the Pokédex, in its order. */
 export const VARIANT_KINDS: VariantKind[] = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'];
-import { Button, Chip, Sheet, TextField } from './ui.js';
+import { Button, Chip, HoldButton, Sheet, TextField } from './ui.js';
 
 /** Manager tools for one form/costume: force released / not released / automatic, rename it. Applies to every gender picture of the group. */
 export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; onClose: () => void }) {
@@ -44,15 +44,17 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
     setKind(o?.kind ?? null);
   }, [group, overrides.data]);
 
-  const save = async (mode: boolean | null) => {
+  const save = async (mode: boolean | null, nextHidden?: boolean | null) => {
     if (!group) return;
     const changed = en.trim() !== (group.label?.en ?? '') || fr.trim() !== (group.label?.fr ?? '');
     // Saving rewrites the whole correction: keep a rename made earlier unless the name was edited now.
-    const previous = overrides.data?.find((x) => x.variantKey === group.variants[0]!.key)?.label ?? null;
+    const existing = overrides.data?.find((x) => x.variantKey === group.variants[0]!.key);
+    const previous = existing?.label ?? null;
     const label = changed ? (en.trim() ? { en: en.trim(), ...(fr.trim() ? { fr: fr.trim() } : {}) } : null) : previous;
     const g: Gender[] | null = { auto: null, mf: ['m', 'f'] as Gender[], m: ['m'] as Gender[], f: ['f'] as Gender[], none: [] as Gender[] }[genders];
-    await Promise.all(group.variants.map((v) => set.mutateAsync({ variantKey: v.key, released: mode, label, genders: g, shinyReleased: shinyOut, noEvolve, noMega, kind })));
-    toast(t.saved);
+    const hidden = nextHidden !== undefined ? nextHidden : (existing?.hidden ?? null);
+    await Promise.all(group.variants.map((v) => set.mutateAsync({ variantKey: v.key, released: mode, label, genders: g, shinyReleased: shinyOut, noEvolve, noMega, kind, hidden })));
+    toast(nextHidden === true ? t.variant_hidden_done : t.saved);
     onClose();
   };
 
@@ -115,6 +117,13 @@ export function ManagerSheet({ group, onClose }: { group: VariantGroup | null; o
           <TextField label={`${t.label_name} (FR)`} value={fr} onChange={(e) => setFr(e.target.value)} maxLength={60} />
           <Button tone="primary" className="w-full" disabled={set.isPending} onClick={() => save(released)}>{t.save}</Button>
           <p className="text-xs text-ink-3">{t.manage_hint}</p>
+          <div className="space-y-2 border-t border-line pt-3">
+            <p className="text-xs font-medium text-berry">{t.variant_hide}</p>
+            <p className="text-xs text-ink-3">{t.variant_hide_hint}</p>
+            <HoldButton className="w-full" disabled={set.isPending} onConfirm={() => save(released, true)}>
+              {t.variant_hide_confirm}
+            </HoldButton>
+          </div>
         </div>
       )}
     </Sheet>

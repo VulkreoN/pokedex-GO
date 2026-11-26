@@ -44,7 +44,20 @@ export interface BuildOptions {
 }
 
 /** What a manager can change from the web app, keyed by variant key. */
-export type ManualOverrides = Record<string, { released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null }>;
+export type ManualOverrides = Record<
+  string,
+  {
+    released?: boolean | null;
+    label?: LocalizedText | null;
+    genders?: Gender[] | null;
+    shinyReleased?: boolean | null;
+    noEvolve?: boolean | null;
+    noMega?: boolean | null;
+    kind?: VariantKind | null;
+    /** true = removed/hidden from the served Pokédex (variant does not exist in-game); restorable anytime. */
+    hidden?: boolean | null;
+  }
+>;
 
 export interface BuildResult {
   dataset: Dataset;
@@ -745,30 +758,32 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
   return {
     ...dataset,
     species,
-    variants: dataset.variants.map((v) => {
-      const spRel = speciesReleased.get(v.dex);
-      if (spRel === false && !manual[v.key]?.released) return { ...v, datamined: true };
-      const m = manual[v.key];
-      if (!m) return v;
-      const out: Variant = {
-        ...v,
-        datamined: m.released === null || m.released === undefined ? v.datamined : !m.released,
-        label: m.label ?? v.label,
-      };
-      if (m.genders) {
-        out.genders = m.genders;
-        delete out.gendersGuessed;
-      }
-      if (m.shinyReleased === true) delete out.shinyReleased;
-      else if (m.shinyReleased === false) out.shinyReleased = false;
-      if (m.noEvolve === true) out.noEvolve = true;
-      else if (m.noEvolve === false) delete out.noEvolve;
-      if (m.noMega === true) out.noMega = true;
-      else if (m.noMega === false) delete out.noMega;
-      // A manager's category wins over the game master's (Armored Mewtwo, numbered costumes…).
-      if (m.kind) out.kind = m.kind;
-      return out;
-    }),
+    variants: dataset.variants
+      .filter((v) => manual[v.key]?.hidden !== true && manual[neutralKey(v.key)]?.hidden !== true)
+      .map((v) => {
+        const spRel = speciesReleased.get(v.dex);
+        if (spRel === false && !manual[v.key]?.released) return { ...v, datamined: true };
+        const m = manual[v.key];
+        if (!m) return v;
+        const out: Variant = {
+          ...v,
+          datamined: m.released === null || m.released === undefined ? v.datamined : !m.released,
+          label: m.label ?? v.label,
+        };
+        if (m.genders) {
+          out.genders = m.genders;
+          delete out.gendersGuessed;
+        }
+        if (m.shinyReleased === true) delete out.shinyReleased;
+        else if (m.shinyReleased === false) out.shinyReleased = false;
+        if (m.noEvolve === true) out.noEvolve = true;
+        else if (m.noEvolve === false) delete out.noEvolve;
+        if (m.noMega === true) out.noMega = true;
+        else if (m.noMega === false) delete out.noMega;
+        // A manager's category wins over the game master's (Armored Mewtwo, numbered costumes…).
+        if (m.kind) out.kind = m.kind;
+        return out;
+      }),
   };
 }
 

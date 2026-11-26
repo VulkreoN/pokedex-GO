@@ -25,6 +25,7 @@ import { migrateAliases } from './lists/aliases.js';
 import { sql } from './db/index.js';
 import { clientErrorRoutes } from './routes/clientErrors.js';
 import { pvpPokemonRoutes } from './routes/pvpPokemon.js';
+import { pvpTeamRoutes } from './routes/pvpTeams.js';
 import { adminRoutes, announcementRoutes, reportRoutes } from './routes/admin.js';
 import { startRaidAlerts } from './notify/raidAlerts.js';
 
@@ -50,6 +51,7 @@ app.route('/push', pushRoutes);
 app.route('/stream', streamRoutes);
 app.route('/client-errors', clientErrorRoutes);
 app.route('/pvp-pokemon', pvpPokemonRoutes);
+app.route('/pvp-teams', pvpTeamRoutes);
 app.route('/admin', adminRoutes);
 app.route('/announcements', announcementRoutes);
 app.route('/reports', reportRoutes);

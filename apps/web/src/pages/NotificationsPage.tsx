@@ -10,7 +10,7 @@ import { useMe } from '../lib/auth.js';
 import { useFriendRequests, useRespondFriendRequest } from '../lib/lists.js';
 
 function target(n: AppNotification): string {
-  if (n.type === 'raid') return '/game';
+  if (n.type === 'raid') return '/game?tab=raids';
   if (n.type === 'spawn') return '/game?tab=spawns';
   if (n.type === 'quest') return '/game?tab=research';
   if (n.type === 'account') return '/me';
@@ -108,7 +108,7 @@ export function NotificationsPage() {
   return (
     <>
       <TopBar title={t.notifications} back />
-      <main className="mx-auto max-w-3xl px-3 pb-24 pt-2">
+      <main className="mx-auto max-w-6xl px-3 pb-24 pt-2 sm:px-5">
         {q.isPending && <Spinner />}
         {q.data?.items.length === 0 && <Empty>{t.notifications_empty}</Empty>}
         {!!allItems.length && (

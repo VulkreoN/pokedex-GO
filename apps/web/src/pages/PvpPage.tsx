@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { LEAGUES, cpOf, cpmAt, ivSearch, levelSteps, levelsForCp, powerUpCost, rankOf, rankTable, type Ivs, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
+import { LEAGUES, cpOf, cpmAt, gblSeasonFr, ivSearch, levelSteps, levelsForCp, powerUpCost, rankOf, rankTable, type Ivs, type PowerUpKind, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
 import { Sprite } from '../components/Sprite.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { PvpokeCard } from '../components/PvpokeCard.js';
 import { LEAGUE_LIST, PVPOKE_URL, formOf, leagueName, moveName, pvpokeRanks, pvpokeUrl, usePvpDetails, usePvpRankings, type League, type RankedDetail, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { Button, Chip, CopyButton, Empty, Spinner, TopBar } from '../components/ui.js';
+import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
+import { WhatsNewBanner } from '../components/WhatsNew.js';
 import { useToast } from '../components/toast.js';
 import { savedGameLang } from '../lib/searchString.js';
 import { useMe } from '../lib/auth.js';
@@ -110,8 +112,8 @@ function PvpSearch() {
   }, [query, pvp]);
   return (
     <>
-      <TopBar title={t.nav_pvp}>
-        <div className="mx-auto max-w-3xl px-3 pb-2">
+      <TopBar title={t.nav_pvp} actions={<PageTourButton page="pvp" />}>
+        <div className="mx-auto max-w-6xl px-3 pb-2 sm:px-5">
           <div className="relative">
             <input
               type="search"
@@ -137,35 +139,39 @@ function PvpSearch() {
           </div>
         </div>
       </TopBar>
-      <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
+      <main className="mx-auto max-w-6xl px-3 pb-24 pt-3 sm:px-5">
+        <WhatsNewBanner />
+        <PageTourBanner page="pvp" />
         {ds.isPending && <Spinner />}
         {ds.data && !pvp && <Empty>{t.pvp_unavailable}</Empty>}
         {pvp && !query && (
           <>
             <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
-            <Link to="/pvp/battle" className="card mb-2 flex items-center gap-3 p-3 hover:brightness-[0.98]">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-berry/10 text-berry">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /></svg>
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{t.battle_open}</span>
-                <span className="block text-xs text-ink-3">{t.battle_open_hint}</span>
-              </span>
-            </Link>
-            <Link to="/pvp/team" className="card mb-5 flex items-center gap-3 p-3 hover:brightness-[0.98]">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-go-soft text-go-ink">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{t.team_open}</span>
-                <span className="block text-xs text-ink-3">{t.team_intro}</span>
-              </span>
-            </Link>
+            <div className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Link to="/pvp/battle" className="card flex items-center gap-3 p-3 hover:brightness-[0.98]">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-berry/10 text-berry">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /></svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{t.battle_open}</span>
+                  <span className="block text-xs text-ink-3">{t.battle_open_hint}</span>
+                </span>
+              </Link>
+              <Link to="/pvp/team" className="card flex items-center gap-3 p-3 hover:brightness-[0.98]">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-go-ink">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{t.team_open}</span>
+                  <span className="block text-xs text-ink-3">{t.team_intro}</span>
+                </span>
+              </Link>
+            </div>
             {ds.data && <MyPokemon idx={ds.data} pvp={pvp} byKey={byKey} />}
             {picks.recent.length > 0 && (
               <section className="mb-5">
                 <h2 className="mb-2 text-base font-bold">{t.pvp_recent}</h2>
-                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.recent.map((p) => tile(p))}</ul>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8">{picks.recent.map((p) => tile(p))}</ul>
               </section>
             )}
             {picks.top.length > 0 ? (
@@ -181,7 +187,7 @@ function PvpSearch() {
                 </div>
                 {activeSeason === 'preview' && preview && (
                   <p className="mb-2 rounded-xl bg-info-soft px-3 py-1.5 text-xs font-medium text-info-ink">
-                    {t.pvp_preview_banner(preview.title)}
+                    {t.pvp_preview_banner(gblSeasonFr(preview.title, lang))}
                   </p>
                 )}
                 <div className="mb-2 flex flex-wrap gap-2">
@@ -192,24 +198,24 @@ function PvpSearch() {
                     </Chip>
                   ))}
                 </div>
-                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.top.map(({ p, r }) => tile(p, r))}</ul>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8">{picks.top.map(({ p, r }) => tile(p, r))}</ul>
                 <p className="mt-2 text-xs text-ink-3">
                   {t.pvp_source}{' '}
                   <a href={activeSeason === 'preview' && preview ? preview.url : PVPOKE_URL} target="_blank" rel="noreferrer" className="font-semibold text-sky">
-                    {activeSeason === 'preview' && preview ? `PvPoke · ${preview.title}` : 'PvPoke'}
+                    {activeSeason === 'preview' && preview ? `PvPoke · ${gblSeasonFr(preview.title, lang)}` : 'PvPoke'}
                   </a>
                 </p>
               </section>
             ) : (
               <section>
                 <h2 className="mb-2 text-base font-bold">{t.pvp_popular}</h2>
-                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.popular.map((p) => tile(p))}</ul>
+                <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8">{picks.popular.map((p) => tile(p))}</ul>
               </section>
             )}
           </>
         )}
         {pvp && query && results.length === 0 && <Empty>{t.nothing_here}</Empty>}
-        <ul className="space-y-2">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {ds.data &&
             results.map((p) => {
               const v = picture(ds.data, p);
@@ -264,6 +270,9 @@ function PvpDetail({ pkey }: { pkey: string }) {
   const level = params.get('l') ? Number(params.get('l')) : null;
   const floor = Number(params.get('f') ?? 0);
   const buddy = params.get('b') === '1';
+  const rawKind = params.get('k');
+  const costKind: PowerUpKind =
+    rawKind === 'shadow' || rawKind === 'purified' || rawKind === 'lucky' || rawKind === 'luckyPurified' ? rawKind : 'normal';
   const set = (patch: Record<string, string | null>) =>
     setParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -291,9 +300,9 @@ function PvpDetail({ pkey }: { pkey: string }) {
 
   return (
     <>
-      <TopBar title={localized(me.name, lang)} back />
-      <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
-        <section className="card p-3">
+      <TopBar title={localized(me.name, lang)} back actions={<PageTourButton page="pvp" />} />
+      <main className="mx-auto max-w-6xl px-3 pb-24 pt-3 sm:px-5 lg:grid lg:grid-cols-[minmax(0,390px)_minmax(0,1fr)] lg:items-start lg:gap-5">
+        <section className="card p-3 lg:sticky lg:top-20">
           <div className="flex items-center gap-3">
             {meVariant && <Sprite idx={ds.data} variant={meVariant} size={80} />}
             <div className="min-w-0 flex-1">
@@ -389,10 +398,11 @@ function PvpDetail({ pkey }: { pkey: string }) {
           )}
 
           {/* Rarely changed: folded, with the current choice in view. */}
-          <details className="mt-3 rounded-xl bg-paper-2 px-3 py-2" open={floor > 0 || buddy}>
+          <details className="mt-3 rounded-xl bg-paper-2 px-3 py-2" open={floor > 0 || buddy || costKind !== 'normal'}>
             <summary className="cursor-pointer text-sm font-medium text-ink-2">
               {t.pvp_floor} : <span className="font-semibold text-ink">{t[`pvp_floor_${floor as 0}`]}</span>
               {buddy && <span className="font-semibold text-ink"> · {t.pvp_buddy}</span>}
+              {costKind !== 'normal' && <span className="font-semibold text-ink"> · {t.costs_kind[costKind]}</span>}
             </summary>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {FLOORS.map((f) => (
@@ -400,7 +410,17 @@ function PvpDetail({ pkey }: { pkey: string }) {
               ))}
             </div>
             <p className="mt-1.5 text-xs text-ink-3">{t.pvp_floor_hint}</p>
-            <label className="mt-2 flex items-center gap-2 text-sm font-medium">
+            <div className="mt-2.5">
+              <p className="mb-1 text-xs font-medium text-ink-2">{t.pvp_cost_kind}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(['normal', 'shadow', 'purified', 'lucky', 'luckyPurified'] as const).map((k) => (
+                  <Chip key={k} active={costKind === k} onClick={() => set({ k: k === 'normal' ? null : k })} className="min-h-8 px-2.5 text-xs">
+                    {t.costs_kind[k]}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <label className="mt-2.5 flex items-center gap-2 text-sm font-medium">
               <input type="checkbox" checked={buddy} onChange={(e) => set({ b: e.target.checked ? '1' : null })} className="h-5 w-5 accent-go" />
               {t.pvp_buddy}
             </label>
@@ -411,8 +431,10 @@ function PvpDetail({ pkey }: { pkey: string }) {
           </Link>
         </section>
 
-        <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} />
-        <PvpokeCard idx={ds.data!} pvp={pvp} me={me} />
+        <div>
+          <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} costKind={costKind} />
+          <PvpokeCard idx={ds.data!} pvp={pvp} me={me} />
+        </div>
       </main>
     </>
   );
@@ -450,7 +472,7 @@ function IvSlider({ label, value, onChange }: { label: string; value: number; on
 }
 
 /** Results for one form of the evolution line at a time: the last one first, as that is what gets played. */
-function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number }) {
+function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; costKind: PowerUpKind }) {
   const { me, line, idx, pvp, iv, level, maxLevel } = props;
   const t = useT();
   const { lang } = useLang();
@@ -463,9 +485,9 @@ function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex;
     return mine.find((r) => !r.shadow) ?? mine[0];
   };
   return (
-    <section className="mt-4">
+    <section className="mt-4 lg:mt-0">
       {line.length > 1 && (
-        <div className="mb-2 flex gap-2 overflow-x-auto [scrollbar-width:none]" role="tablist" aria-label={t.pvp_evo_pick}>
+        <div className="mb-2 flex gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible" role="tablist" aria-label={t.pvp_evo_pick}>
           {line.map((x) => {
             const v = picture(idx, x);
             return (
@@ -513,7 +535,7 @@ const VERDICT_STYLE: Record<Verdict, string> = {
   weak: 'bg-berry/10 text-berry',
 };
 
-function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, pvpoke }: { league: League; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; pvpoke?: RankedDetail }) {
+function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, costKind, pvpoke }: { league: League; p: PvpPokemon; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; costKind: PowerUpKind; pvpoke?: RankedDetail }) {
   const t = useT();
   const { lang } = useLang();
   // Master League has no CP cap: the best is simply the strongest at max level.
@@ -601,7 +623,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, pvpoke }:
         ) : (
           <div className="text-sm">
             <span className="text-ink-2">{t.pvp_from(level)}</span>
-            <Cost pvp={pvp} from={level} to={r.level} />
+            <Cost pvp={pvp} from={level} to={r.level} kind={costKind} />
           </div>
         )}
       </div>
@@ -655,10 +677,10 @@ function BetterSearch({ league, p, idx, pvp, maxLevel }: { league: League; p: Pv
   );
 }
 
-function Cost({ pvp, from, to }: { pvp: PvpData; from: number; to: number }) {
+function Cost({ pvp, from, to, kind = 'normal' }: { pvp: PvpData; from: number; to: number; kind?: PowerUpKind }) {
   const t = useT();
   const { lang } = useLang();
-  const c = powerUpCost(pvp, from, to);
+  const c = powerUpCost(pvp, from, to, kind);
   const n = (x: number) => x.toLocaleString(lang);
   const buddyOnly = to > pvp.maxLevel;
   return (
@@ -751,7 +773,7 @@ function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey
           </div>
         )}
       </div>
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map(({ m, start, form, league, r }) => {
           const v = picture(idx, start);
           const qs = new URLSearchParams({ a: String(m.atk), d: String(m.def), s: String(m.sta), m: m.id, ...(m.level ? { l: String(m.level) } : {}) });

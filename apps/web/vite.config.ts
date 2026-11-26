@@ -45,7 +45,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         globIgnores: ['**/jspdf*.js', '**/jsQR*.js', '**/AdminPage*.js', '**/ReviewPage*.js'],
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],
         importScripts: ['push-sw.js'],
         runtimeCaching: [
           {

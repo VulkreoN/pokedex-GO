@@ -7,11 +7,28 @@ import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getEventSpawns } from '../game/eventSpawns.js';
+import { getRichEvents } from '../game/eventDetails.js';
 import { getResearch } from '../game/research.js';
 import { itemFr, questFr } from '../lib/gameTexts.js';
 import { LEAGUES, getBattleData, getPopularTeams, getPvpDetails, getPvpRankings, type League } from '../game/pvpRankings.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
+
+const ALLOWED_ASSET_HOSTS = new Set(['cdn.leekduck.com', 'leekduck.com', 'www.leekduck.com', 'raw.githubusercontent.com', 'trade.pokemongopro.com']);
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
+const MAX_ASSET_BYTES = 3 * 1024 * 1024;
+
+function parseAllowedAssetUrl(raw: string | undefined): URL | null {
+  if (!raw || raw.length > 500) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' || u.username || u.password) return null;
+    if (!ALLOWED_ASSET_HOSTS.has(u.hostname)) return null;
+    return u;
+  } catch {
+    return null;
+  }
+}
 
 /** Game tab data that is not a ScrapedDuck JSON: curated X posts, promo codes, field research, PvPoke rankings. */
 export const gameRoutes = new Hono<AuthEnv>()
@@ -31,6 +48,38 @@ export const gameRoutes = new Hono<AuthEnv>()
   .get('/event-spawns', async (c) => {
     try {
       return c.json({ events: await getEventSpawns() });
+    } catch (e) {
+      return c.json({ events: [], error: (e as Error).message }, 502);
+    }
+  })
+  /** Same-origin CORS-safe proxy for event bonus icons, banners & sprites during PNG/PDF infographic export. */
+  .get('/asset', async (c) => {
+    const u = parseAllowedAssetUrl(c.req.query('url'));
+    if (!u) return c.json({ error: 'invalid_url' }, 400);
+    try {
+      const res = await fetch(u.toString(), {
+        headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' },
+        signal: AbortSignal.timeout(6_000),
+      });
+      if (!res.ok) return c.json({ error: 'upstream_failed' }, 502);
+      const finalUrl = parseAllowedAssetUrl(res.url);
+      if (!finalUrl) return c.json({ error: 'invalid_redirect' }, 400);
+      const ct = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+      if (!ALLOWED_IMAGE_TYPES.has(ct)) return c.json({ error: 'invalid_type' }, 415);
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength === 0 || buf.byteLength > MAX_ASSET_BYTES) return c.json({ error: 'too_large' }, 413);
+      c.header('content-type', ct);
+      c.header('cache-control', 'public, max-age=86400');
+      c.header('x-content-type-options', 'nosniff');
+      return c.body(buf, 200);
+    } catch {
+      return c.json({ error: 'upstream_failed' }, 502);
+    }
+  })
+  /** Rich event details (bonuses, debuts, tiered raids, GO Pass, ticket rewards) for automatic event infographics. */
+  .get('/events', async (c) => {
+    try {
+      return c.json({ events: await getRichEvents() });
     } catch (e) {
       return c.json({ events: [], error: (e as Error).message }, 502);
     }

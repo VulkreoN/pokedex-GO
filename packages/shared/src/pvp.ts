@@ -94,15 +94,55 @@ export function rankOf(data: Pick<PvpData, 'cpm'>, base: BaseStats, iv: Ivs, cap
 }
 
 export interface PowerUpCost { stardust: number; candy: number; xlCandy: number }
+export type PowerUpKind = 'normal' | 'shadow' | 'purified' | 'lucky' | 'luckyPurified';
 
-/** Cost of powering up from one level to another (half steps). Levels above maxLevel come from best buddy and cost nothing. */
-export function powerUpCost(data: Pick<PvpData, 'stardust' | 'candy' | 'xlCandy' | 'xlFrom' | 'maxLevel'>, from: number, to: number): PowerUpCost {
+/** Exact integer ceiling of n * num / den (avoids IEEE-754 rounding errors like 1.2 * 14000). */
+function ceilRatio(n: number, num: number, den: number): number {
+  return n <= 0 ? 0 : Math.floor((n * num + den - 1) / den);
+}
+
+/**
+ * Cost of powering up from one level to another (half steps).
+ * Levels above maxLevel come from best buddy and cost nothing.
+ * Shadow (+20 %), Purified (−10 %) and Lucky (−50 % stardust) modifiers are rounded up per power-up step,
+ * matching Pokémon GO's exact in-game rules (e.g. 40→50 XL: 296 normal, 360 shadow, 272 purified).
+ */
+export function powerUpCost(
+  data: Pick<PvpData, 'stardust' | 'candy' | 'xlCandy' | 'xlFrom' | 'maxLevel'>,
+  from: number,
+  to: number,
+  kind: PowerUpKind = 'normal',
+): PowerUpCost {
   const cost = { stardust: 0, candy: 0, xlCandy: 0 };
-  for (let l = from; l < Math.min(to, data.maxLevel); l += 0.5) {
-    const i = Math.floor(l) - 1;
-    cost.stardust += data.stardust[i] ?? 0;
-    cost.candy += data.candy[i] ?? 0;
-    if (l >= data.xlFrom) cost.xlCandy += data.xlCandy[Math.floor(l) - data.xlFrom] ?? 0;
+  const start = Math.round(from * 2);
+  const end = Math.round(Math.min(to, data.maxLevel) * 2);
+  for (let step = start; step < end; step++) {
+    const level = Math.floor(step / 2);
+    const i = level - 1;
+    const baseDust = data.stardust[i] ?? 0;
+    const baseCandy = level < data.xlFrom ? (data.candy[i] ?? 0) : 0;
+    const baseXl = level >= data.xlFrom ? (data.xlCandy[level - data.xlFrom] ?? 0) : 0;
+    if (kind === 'shadow') {
+      cost.stardust += ceilRatio(baseDust, 12, 10);
+      cost.candy += ceilRatio(baseCandy, 12, 10);
+      cost.xlCandy += ceilRatio(baseXl, 12, 10);
+    } else if (kind === 'purified') {
+      cost.stardust += ceilRatio(baseDust, 9, 10);
+      cost.candy += ceilRatio(baseCandy, 9, 10);
+      cost.xlCandy += ceilRatio(baseXl, 9, 10);
+    } else if (kind === 'lucky') {
+      cost.stardust += ceilRatio(baseDust, 1, 2);
+      cost.candy += baseCandy;
+      cost.xlCandy += baseXl;
+    } else if (kind === 'luckyPurified') {
+      cost.stardust += ceilRatio(ceilRatio(baseDust, 9, 10), 1, 2);
+      cost.candy += ceilRatio(baseCandy, 9, 10);
+      cost.xlCandy += ceilRatio(baseXl, 9, 10);
+    } else {
+      cost.stardust += baseDust;
+      cost.candy += baseCandy;
+      cost.xlCandy += baseXl;
+    }
   }
   return cost;
 }

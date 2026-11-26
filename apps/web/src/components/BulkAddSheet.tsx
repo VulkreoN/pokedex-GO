@@ -182,7 +182,7 @@ export function BulkAddSheet({
           {tags.has('background') && availableBgs.length > 0 && (
             <>
               <p className="mb-1.5 text-xs font-medium text-ink-3">{t.which_backgrounds}</p>
-              <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+              <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
                 <button type="button" onClick={() => setBgs(new Set())} className={`flex h-16 w-24 shrink-0 items-center justify-center rounded-xl border-2 text-xs font-semibold ${bgs.size === 0 ? 'border-go bg-go-soft' : 'border-line'}`}>{t.background_any}</button>
                 {availableBgs.map((b) => {
                   const on = bgs.has(b.id);

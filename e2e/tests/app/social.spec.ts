@@ -47,7 +47,7 @@ test("a friend's list updates live while I look at it", async ({ browser }) => {
   await s.close();
 });
 
-test('"I have it" reaches the owner live, with a notification', async ({ browser }) => {
+test('"I have it" reaches the owner live, and notifies only when leaving the page', async ({ browser }) => {
   const s = await friends(browser, 3);
   await s.owner.goto(`/lists/${s.listId}`);
   await expect(s.owner.getByText('0 / 4 attrapés')).toBeVisible();
@@ -55,14 +55,37 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await s.friend.goto(`/lists/${s.listId}`);
   await expect(s.friend.getByText(`Touche un Pokémon que tu as pour prévenir ${s.uo.username}.`)).toBeVisible();
   const bulbasaur = s.friend.locator('li', { hasText: 'Bulbizarre' }).getByRole('button').first();
+
+  // Ticking then immediately unticking must NOT notify the owner when leaving the page.
   await bulbasaur.click();
   await expect(bulbasaur).toHaveAttribute('aria-pressed', 'true');
-  await expect(s.friend.locator('li', { hasText: 'Bulbizarre' }).getByText("Je l'ai")).toBeVisible();
-
-  // Owner side: the mark and the bell, without reloading.
   await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toBeVisible({ timeout: 10_000 });
+  await bulbasaur.click();
+  await expect(bulbasaur).toHaveAttribute('aria-pressed', 'false');
+  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toHaveCount(0, { timeout: 10_000 });
+  await s.friend.getByRole('link', { name: 'Amis' }).click();
+  await expect(s.friend).toHaveURL(/\/friends$/);
   await s.owner.goto('/dex');
-  await expect(s.owner.getByRole('link', { name: 'Notifications (1)' })).toBeVisible();
+  await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
+
+  // Ticking and staying on the page updates the owner's list live without notifying yet; leaving sends the notification.
+  await s.owner.goto(`/lists/${s.listId}`);
+  await s.friend.goto(`/lists/${s.listId}`);
+  const bulba2 = s.friend.locator('li', { hasText: 'Bulbizarre' }).getByRole('button').first();
+  await bulba2.click();
+  await expect(bulba2).toHaveAttribute('aria-pressed', 'true');
+  await expect(s.friend.locator('li', { hasText: 'Bulbizarre' }).getByText("Je l'ai")).toBeVisible();
+  await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toBeVisible({ timeout: 10_000 });
+
+  await s.owner.goto('/dex');
+  await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible();
+
+  // Friend leaves the collection page -> batched notification is flushed and lights the owner's bell live.
+  await Promise.all([
+    s.friend.waitForResponse((r) => r.url().includes(`/api/lists/${s.listId}/offers/notify`) && r.status() === 200),
+    s.friend.getByRole('link', { name: 'Amis' }).click(),
+  ]);
+  await expect(s.owner.getByRole('link', { name: 'Notifications (1)' })).toBeVisible({ timeout: 10_000 });
   await s.owner.getByRole('link', { name: 'Notifications (1)' }).click();
   await expect(s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`)).toBeVisible();
   // Opening it marks it read (the page changes in the app; the test reloads afterwards, so it waits for the answer).
@@ -77,8 +100,10 @@ test('"I have it" reaches the owner live, with a notification', async ({ browser
   await expect(s.owner.locator('html')).toHaveAttribute('data-live', 'ready');
 
   // Taking it back removes the mark.
-  await bulbasaur.click();
-  await expect(bulbasaur).toHaveAttribute('aria-pressed', 'false');
+  await s.friend.goto(`/lists/${s.listId}`);
+  const bulba3 = s.friend.locator('li', { hasText: 'Bulbizarre' }).getByRole('button').first();
+  await bulba3.click();
+  await expect(bulba3).toHaveAttribute('aria-pressed', 'false');
   await expect(s.owner.locator('li', { hasText: 'Bulbizarre' }).getByText(`${s.uf.username} l'a`)).toHaveCount(0, { timeout: 10_000 });
   await s.close();
 });
@@ -268,6 +293,7 @@ test("a friend's QR code, read from a screenshot, fills in the friend code", asy
   const png = await shower.getByRole('img', { name: ua.friendCode }).screenshot();
 
   await scanner.goto('/friends');
+  await scanner.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
   await scanner.getByRole('button', { name: 'Scanner un QR code' }).click();
   await scanner.locator('dialog[open] input[type=file]').setInputFiles({ name: 'qr.png', mimeType: 'image/png', buffer: png });
   await expect(scanner.getByPlaceholder('Code ami à 12 chiffres')).toHaveValue(ua.friendCode.replace(/(\d{4})(?=\d)/g, '$1 '));
@@ -289,52 +315,94 @@ test('my friend code can be replaced by the one of the game', async ({ page }) =
   await expect(page.getByText(game.replace(/(\d{4})(?=\d)/g, '$1 '), { exact: true })).toBeVisible();
 });
 
-test('friend Trades tab crosses caught vs missing lists and explicit offers in both directions', async ({ browser }) => {
-  const { owner, friend, uf, listId, close } = await friends(browser, 29);
+test('friend profile shows their shared collections, badges and postcards without a Trades tab', async ({ browser }) => {
+  const { owner, friend, uf, close } = await friends(browser, 29);
   try {
-    // Owner has caught Bulbasaur (1:m) and is missing Charmander (4:m), Lucky Squirtle (7:m), Pikachu (25:m).
-    await owner.request.delete(`/api/lists/${listId}/entries`, {
-      data: { entries: [{ variantKey: '7', gender: 'm', shiny: false, tag: '' }] },
-    });
-    await owner.request.put(`/api/lists/${listId}/entries`, {
-      data: {
-        entries: [
-          { variantKey: '1', gender: 'm', shiny: false, tag: '', done: true },
-          { variantKey: '7', gender: 'm', shiny: false, tag: 'lucky', done: false },
-        ],
-      },
-    });
-    // Friend has caught Charmander (4:m) and regular Squirtle (7:m, satisfies Owner's Lucky hunt), and is missing Bulbasaur (1:m).
-    const friendList = (await (await friend.request.post('/api/lists', { data: { name: 'Dex Kanto', visibility: 'friends' } })).json()).list;
-    await friend.request.put(`/api/lists/${friendList.id}/entries`, {
-      data: {
-        entries: [
-          { variantKey: '1', gender: 'm', shiny: false, tag: '', done: false },
-          { variantKey: '4', gender: 'm', shiny: false, tag: '', done: true },
-          { variantKey: '7', gender: 'm', shiny: false, tag: '', done: true },
-        ],
-      },
-    });
-    // Friend also explicitly offers Pikachu (25:m) on Owner's list.
-    await friend.request.post(`/api/lists/${listId}/offers`, {
-      data: { variantKey: '25', gender: 'm', shiny: false, tag: '', on: true },
+    const created = (await (await friend.request.post('/api/lists', { data: { name: 'Dex Kanto', visibility: 'friends' } })).json()).list;
+    await friend.request.put(`/api/lists/${created.id}/entries`, {
+      data: { entries: [{ variantKey: '25', gender: 'm', shiny: true, tag: '', done: true }] },
     });
 
     await owner.goto(`/friends/${uf.id}`);
-    const tradesTab = owner.getByRole('button', { name: /Échanges/ });
-    await expect(tradesTab).toBeVisible();
-    await tradesTab.click();
-    await expect(owner).toHaveURL(new RegExp(`/friends/${uf.id}\\?tab=trades$`));
-
-    await expect(owner.getByRole('heading', { name: new RegExp(`${uf.username} a pour toi`) })).toBeVisible();
-    await expect(owner.getByText('Salamèche ♂')).toBeVisible();
-    await expect(owner.getByText('Carapuce ♂')).toBeVisible();
-    await expect(owner.getByText('Pikachu ♂')).toBeVisible();
-    await expect(owner.getByText('Proposé')).toBeVisible();
-
-    await expect(owner.getByRole('heading', { name: new RegExp(`Tu as pour ${uf.username}`) })).toBeVisible();
-    await expect(owner.getByText('Bulbizarre ♂')).toBeVisible();
+    await expect(owner.getByRole('link', { name: /Dex Kanto/ })).toBeVisible();
+    await expect(owner.getByRole('heading', { name: 'Badges & médailles' })).toBeVisible();
+    await expect(owner.getByRole('heading', { name: /Cartes postales Prismillon/ })).toBeVisible();
+    await expect(owner.getByRole('button', { name: /Échanges/ })).toHaveCount(0);
+    await owner.getByRole('button', { name: 'Marquer Ami Chanceux' }).click();
+    await expect(owner.getByText('✨ Ami Chanceux')).toBeVisible();
   } finally {
     await close();
+  }
+});
+
+test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & profile, and Add friend matches Vivillon', async ({ browser }) => {
+  const { owner, uf, close } = await friends(browser, 31);
+  const c1 = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.32.1' } });
+  const c2 = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.32.2' } });
+  const sender = await c1.newPage();
+  const seeker = await c2.newPage();
+  try {
+    // 1. Lucky Friends toggle persists on FriendsPage, and global Trades tab is replaced by Add friend.
+    await owner.goto('/friends');
+    await expect(owner.getByRole('tab', { name: /Échanges/ })).toHaveCount(0);
+    await expect(owner.getByRole('tab', { name: 'Ajout d’amis · Prismillon' })).toBeVisible();
+    const row = owner.locator('li', { hasText: uf.username });
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: 'Marquer Ami Chanceux' }).click();
+    await expect(row.getByText('✨ Ami Chanceux')).toBeVisible();
+    await owner.reload();
+    await expect(owner.locator('li', { hasText: uf.username }).getByText('✨ Ami Chanceux')).toBeVisible();
+
+    // 2. Vivillon postcards: sender declares Ocean (unlimited) + Sandstorm (3) from their Me profile page.
+    const uSender = await apiRegister(sender.request, uniq('vivi_send'));
+    const uSeeker = await apiRegister(seeker.request, uniq('vivi_seek'));
+    const vList = (await (await seeker.request.post('/api/lists', { data: { name: 'Mes Prismillon', visibility: 'friends' } })).json()).list;
+    await seeker.request.put(`/api/lists/${vList.id}/entries`, {
+      data: { entries: [{ variantKey: '666.fOCEAN', gender: 'm', shiny: false, tag: '', done: false }] },
+    });
+
+    await sender.goto('/me');
+    await sender.getByRole('button', { name: 'Gérer mes cartes' }).click();
+    const sheet = sender.locator('dialog[open]');
+    await sheet.getByRole('button', { name: /Soleil Levant/ }).click();
+    await sheet.getByRole('button', { name: /Sable/ }).click();
+    await sheet.getByRole('button', { name: 'Quantité' }).last().click();
+    await sheet.getByRole('button', { name: /Enregistrer/ }).click();
+    await expect(sender.getByText('Cartes postales enregistrées')).toBeVisible();
+    await expect(sender.getByText('Soleil Levant').first()).toBeVisible();
+    await expect(sender.getByText('×3').first()).toBeVisible();
+
+    // 3. Seeker visits Friends -> Ajout d'amis · Prismillon, automatically sees Ocean missing & sender suggested, sends request in 1 tap.
+    await seeker.goto('/friends');
+    await seeker.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
+    await expect(seeker).toHaveURL(/\/friends\?tab=add$/);
+    await expect(seeker.getByRole('link', { name: /Modifier sur mon profil/ })).toBeVisible();
+    await expect(seeker.getByText('1 motif manquant dans tes collections')).toBeVisible();
+    const suggestion = seeker.locator('li', { hasText: uSender.username });
+    await expect(suggestion).toBeVisible();
+    await expect(suggestion.getByText('Soleil Levant')).toBeVisible();
+    await expect(suggestion.getByText('×3')).toBeVisible();
+    await suggestion.getByRole('button', { name: 'Ajouter', exact: true }).click();
+    await expect(suggestion.getByText('Demande envoyée')).toBeVisible();
+
+    // 4. Sender accepts; now seeker sees sender's postcards directly on /friends and on sender's /friends/:id profile.
+    await sender.goto('/friends');
+    await sender.locator('li', { hasText: uSeeker.username }).getByRole('button', { name: 'Accepter' }).click();
+    await expect(sender.getByRole('link', { name: new RegExp(uSeeker.username) })).toBeVisible();
+    await seeker.goto('/friends?tab=add');
+    await expect(seeker.locator('li', { hasText: uSender.username })).toHaveCount(0);
+
+    await seeker.goto('/friends');
+    const friendRow = seeker.locator('li', { hasText: uSender.username });
+    await expect(friendRow.getByText('Soleil Levant')).toBeVisible();
+    await expect(friendRow.getByText('×3')).toBeVisible();
+    await friendRow.getByRole('link', { name: new RegExp(uSender.username) }).click();
+    await expect(seeker).toHaveURL(new RegExp(`/friends/${uSender.id}$`));
+    await expect(seeker.getByText('Soleil Levant')).toBeVisible();
+    await expect(seeker.getByRole('heading', { name: 'Badges & médailles' })).toBeVisible();
+  } finally {
+    await close();
+    await c1.close();
+    await c2.close();
   }
 });

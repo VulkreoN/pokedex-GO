@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import type { Role } from '@mydexpogo/shared';
 import { ClientErrors } from '../components/ClientErrors.js';
+import { Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { Badge, Button, Chip, CopyButton, Empty, HoldButton, Odometer, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { api } from '../lib/api.js';
@@ -17,46 +18,56 @@ import {
   useAdminUserTrash,
   useAccountTrash,
   useAudit,
+  useOverrides,
   useReports,
   useSignups,
   useUsers,
+  type AdminUserFilter,
+  type AdminUserSort,
   type AuditEntry,
   type AuditKind,
   type Report,
   type SignupSettings,
 } from '../lib/admin.js';
-import { useDataset } from '../lib/dataset.js';
+import { normalize, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { errorMessage, fmtCode } from '../lib/errors.js';
 
-const TABS = ['dashboard', 'health', 'users', 'signups', 'audit', 'reports', 'announcements', 'errors'] as const;
+const TABS = ['dashboard', 'health', 'users', 'overrides', 'signups', 'audit', 'reports', 'announcements', 'errors'] as const;
 type Tab = (typeof TABS)[number];
 
-/** Admins only: the instance at a glance, accounts, sign-ups, journal, reports, announcements, errors. */
+/** Admins only: the instance at a glance, accounts, overrides, sign-ups, journal, reports, announcements, errors. */
 export function AdminPage() {
   const t = useT();
   const me = useMe();
+  const stats = useAdminStats();
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((x) => x === params.get('tab')) ?? 'dashboard';
   if (me.isPending) return <Spinner />;
   if (me.data?.role !== 'admin') return <Navigate to="/me" replace />;
+  const badgeOf = (id: Tab) => (id === 'reports' ? stats.data?.openReports : id === 'errors' ? stats.data?.errorsToday : 0) ?? 0;
   return (
     <>
       <TopBar title={t.admin_panel} back>
-        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none]" role="tablist">
-          {TABS.map((id) => (
-            <Chip key={id} role="tab" aria-selected={tab === id} active={tab === id} ref={(el) => { if (el && tab === id) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }} onClick={() => setParams(id === 'dashboard' ? {} : { tab: id }, { replace: true })}>
-              {t.admin_tabs[id]}
-            </Chip>
-          ))}
+        <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:px-5 sm:[mask-image:none]" role="tablist">
+          {TABS.map((id) => {
+            const count = badgeOf(id);
+            return (
+              <Chip key={id} role="tab" aria-selected={tab === id} active={tab === id} ref={(el) => { if (el && tab === id) el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }} onClick={() => setParams(id === 'dashboard' ? {} : { tab: id }, { replace: true })}>
+                {t.admin_tabs[id]}
+                {count > 0 && <span className="tnum rounded-full bg-berry px-1.5 text-[10px] font-bold leading-4 text-white">{count}</span>}
+              </Chip>
+            );
+          })}
         </div>
       </TopBar>
-      <main className="mx-auto max-w-3xl space-y-4 px-3 pb-24 pt-3">
+      <main className="mx-auto max-w-6xl space-y-4 px-3 pb-24 pt-3 sm:px-5">
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'health' && <Health />}
-        {tab === 'users' && <Users />}
+        {tab === 'users' && <Users onAudit={(username) => setParams({ tab: 'audit', q: username })} />}
+        {tab === 'overrides' && <Overrides />}
         {tab === 'signups' && <Signups />}
-        {tab === 'audit' && <Journal />}
+        {tab === 'audit' && <Journal initialQuery={params.get('q') ?? ''} />}
         {tab === 'reports' && <Reports />}
         {tab === 'announcements' && <Announcements />}
         {tab === 'errors' && <ClientErrors />}
@@ -87,13 +98,15 @@ function Dashboard() {
   const n = (x: number) => x.toLocaleString(lang);
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         <Tile label={t.admin_stat_users} value={s.users} sub={t.admin_stat_active(s.active7, s.active30)} to="/admin?tab=users" />
         <Tile label={t.admin_stat_lists} value={s.lists} sub={t.admin_stat_entries(n(s.entries))} />
-        <Tile label={t.admin_stat_friendships} value={s.friendships} />
-        <Tile label={t.admin_stat_push} value={s.pushDevices} sub={t.admin_stat_raids(s.raidAlerts7)} />
+        <Tile label={t.admin_stat_friendships} value={s.friendships} sub={s.luckyFriends ? t.admin_stat_lucky(s.luckyFriends) : undefined} />
+        <Tile label={t.admin_stat_push} value={s.pushDevices} sub={t.admin_stat_raids(s.raidAlerts7)} to="/admin?tab=health" />
         <Tile label={t.admin_stat_reports} value={s.openReports} to="/admin?tab=reports" />
         <Tile label={t.admin_stat_errors} value={s.errorsToday} to="/admin?tab=errors" />
+        {s.pendingFeed !== undefined && <Tile label={t.admin_stat_review} value={s.pendingFeed} to="/review" />}
+        {s.pvpTeams !== undefined && <Tile label={t.admin_stat_pvp_teams} value={s.pvpTeams} />}
       </div>
       <section className="card p-3">
         <h2 className="text-sm font-bold">{t.admin_signups_chart}</h2>
@@ -117,21 +130,46 @@ function Health() {
   const toast = useToast();
   const q = useAdminHealth();
   const refresh = useAdminAction((source: string) => api(`/admin/health/${source}/refresh`, { method: 'POST' }));
+  const testPush = useAdminAction(() => api<{ sent: number }>('/admin/push-test', { method: 'POST' }));
   if (q.isPending) return <Spinner />;
   const h = q.data;
   if (!h) return <Empty>{t.err_generic}</Empty>;
   const rows: { id: string; label: string; ok: string | null; errAt: string | null; err: string | null }[] = [
     { id: 'dataset', label: t.admin_source.dataset, ok: h.dataset.lastError ? null : h.dataset.generatedAt, errAt: h.dataset.lastError ? h.dataset.lastAttemptAt : null, err: h.dataset.lastError },
-    ...(['research', 'promo', 'pvpoke', 'raids', 'feed'] as const).map((id) => ({ id, label: t.admin_source[id], ok: h.sources[id]?.okAt ?? null, errAt: h.sources[id]?.errorAt ?? null, err: h.sources[id]?.error ?? null })),
+    ...(['events', 'research', 'promo', 'pvpoke', 'raids', 'hunts', 'feed'] as const).map((id) => ({ id, label: t.admin_source[id], ok: h.sources[id]?.okAt ?? null, errAt: h.sources[id]?.errorAt ?? null, err: h.sources[id]?.error ?? null })),
   ];
   return (
     <>
-      <section className="card p-3 text-sm">
+      <section className="card space-y-1 p-3 text-sm">
         <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_version}</span><span className="tnum font-semibold">{h.version === 'dev' ? 'dev' : `v${h.version}`}</span></div>
-        <div className="mt-1 flex justify-between gap-2"><span className="text-ink-2">{t.admin_started}</span><span className="tnum font-semibold">{relativeTime(h.startedAt, lang)}</span></div>
-        <div className="mt-1 flex justify-between gap-2"><span className="text-ink-2">{t.data_next}</span><span className="tnum font-semibold">{h.dataset.running ? t.data_running : relativeTime(h.dataset.nextRunAt, lang)}</span></div>
+        <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_started}</span><span className="tnum font-semibold">{relativeTime(h.startedAt, lang)}</span></div>
+        <div className="flex justify-between gap-2"><span className="text-ink-2">{t.data_next}</span><span className="tnum font-semibold">{h.dataset.running ? t.data_running : relativeTime(h.dataset.nextRunAt, lang)}</span></div>
+        {h.runtime && (
+          <>
+            <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_mem}</span><span className="tnum font-semibold">{h.runtime.memoryMb} Mo</span></div>
+            {h.runtime.dbSizeMb !== null && <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_db}</span><span className="tnum font-semibold">{h.runtime.dbSizeMb} Mo</span></div>}
+            <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_sse}</span><span className="tnum font-semibold">{h.runtime.sseConnections}</span></div>
+          </>
+        )}
+        <div className="pt-2">
+          <Button
+            tone="quiet"
+            className="min-h-9 w-full text-xs"
+            disabled={testPush.isPending}
+            onClick={async () => {
+              try {
+                const r = (await testPush.mutateAsync(undefined)) as { sent: number };
+                toast(r.sent > 0 ? t.admin_push_test_ok(r.sent) : t.admin_push_test_none);
+              } catch {
+                toast(t.err_generic);
+              }
+            }}
+          >
+            🔔 {t.admin_push_test}
+          </Button>
+        </div>
       </section>
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {rows.map((r) => {
           const failing = !!r.errAt && (!r.ok || r.errAt > r.ok);
           return (
@@ -139,11 +177,9 @@ function Health() {
               <div className="flex items-center gap-2">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${failing ? 'bg-berry' : r.ok ? 'bg-go' : 'bg-line'}`} aria-hidden="true" />
                 <span className="min-w-0 flex-1 font-semibold">{r.label}</span>
-                {r.id !== 'feed' && (
-                  <Button tone="ghost" className="min-h-8 px-2 text-xs" disabled={refresh.isPending} onClick={async () => { try { await refresh.mutateAsync(r.id); toast(t.admin_refreshed); } catch { toast(t.err_generic); } }}>
-                    {t.admin_refresh}
-                  </Button>
-                )}
+                <Button tone="ghost" className="min-h-8 px-2 text-xs" disabled={refresh.isPending} onClick={async () => { try { await refresh.mutateAsync(r.id); toast(t.admin_refreshed); } catch { toast(t.err_generic); } }}>
+                  {t.admin_refresh}
+                </Button>
               </div>
               <p className="tnum mt-1 text-xs text-ink-3">{failing ? t.admin_failing(relativeTime(r.errAt, lang)) : r.ok ? t.admin_ok(relativeTime(r.ok, lang)) : t.admin_not_yet}</p>
               {failing && r.err && <p className="mt-1 break-words rounded-lg bg-berry/10 p-2 text-xs text-berry">{r.err}</p>}
@@ -155,23 +191,51 @@ function Health() {
   );
 }
 
-function Users() {
+function Users({ onAudit }: { onAudit: (username: string) => void }) {
   const t = useT();
   const { lang } = useLang();
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<AdminUserFilter>('all');
+  const [sort, setSort] = useState<AdminUserSort>('role');
   const [offset, setOffset] = useState(0);
-  const users = useUsers(q, offset, true);
+  const users = useUsers(q, offset, true, filter, sort);
   const [open, setOpen] = useState<string | null>(null);
   return (
     <section>
-      <TextField placeholder={t.admin_search} value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} />
+      <TextField placeholder={t.admin_search_code} value={q} onChange={(e) => { setQ(e.target.value); setOffset(0); }} />
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {(['all', 'staff', 'suspended', 'push'] as AdminUserFilter[]).map((f) => (
+          <Chip key={f} active={filter === f} onClick={() => { setFilter(f); setOffset(0); }} className="min-h-8 px-2.5 text-xs">
+            {t.admin_users_filter[f]}
+          </Chip>
+        ))}
+        <select
+          aria-label={t.sort_title}
+          value={sort}
+          onChange={(e) => { setSort(e.target.value as AdminUserSort); setOffset(0); }}
+          className="ml-auto min-h-8 rounded-full border border-line bg-card px-2.5 text-xs font-semibold text-ink"
+        >
+          {(['role', 'recent', 'created'] as AdminUserSort[]).map((s) => (
+            <option key={s} value={s}>{t.admin_users_sort[s]}</option>
+          ))}
+        </select>
+      </div>
       <p className="tnum mt-2 text-xs text-ink-3">{t.admin_count(users.data?.total ?? 0)}</p>
       <ul className="mt-1 divide-y divide-line">
         {users.data?.users.map((u) => (
           <li key={u.id}>
-            <button type="button" onClick={() => setOpen(u.id)} className="flex w-full items-baseline gap-2 py-3 text-left">
-              <span className="min-w-0 flex-1 truncate font-semibold">{u.username}</span>
-              {u.role !== 'user' && <Badge tone="grass">{t[`role_${u.role}`]}</Badge>}
+            <button type="button" onClick={() => setOpen(u.id)} className="flex w-full items-center gap-2 py-2.5 text-left">
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-1.5 font-semibold">
+                  <span className="truncate">{u.username}</span>
+                  {u.role !== 'user' && <Badge tone="grass">{t[`role_${u.role}`]}</Badge>}
+                  {u.suspendedAt && <Badge tone="muted">{t.admin_suspended}</Badge>}
+                </span>
+                <span className="tnum block text-xs text-ink-3">
+                  {u.listsCount !== undefined ? `${u.listsCount} ${t.admin_stat_lists} · ` : ''}
+                  {u.lastSeenAt ? `${t.admin_last_seen.toLowerCase()} ${relativeTime(u.lastSeenAt, lang)}` : new Date(u.createdAt).toLocaleDateString(lang)}
+                </span>
+              </span>
               <span className="tnum shrink-0 text-xs text-ink-3">{new Date(u.createdAt).toLocaleDateString(lang)}</span>
             </button>
           </li>
@@ -184,14 +248,120 @@ function Users() {
           <Button tone="ghost" className="min-h-9" disabled={offset + 50 >= users.data.total} onClick={() => setOffset(offset + 50)}>›</Button>
         </div>
       )}
-      <UserSheet id={open} onClose={() => setOpen(null)} onOpen={setOpen} />
+      <UserSheet id={open} onClose={() => setOpen(null)} onOpen={setOpen} onAudit={(username) => { setOpen(null); onAudit(username); }} />
       <AccountTrash />
     </section>
   );
 }
 
+/** Active manual Pokédex overrides: filterable list with quick link to the species page, restore for hidden variants, and 1-tap reset. */
+function Overrides() {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const q = useOverrides(true);
+  const dataset = useDataset();
+  const idx = dataset.data;
+  const reset = useAdminAction((key: string) => api(`/overrides/${encodeURIComponent(key)}`, { method: 'DELETE' }));
+  const restore = useAdminAction((keys: string[]) => api('/overrides', { method: 'PATCH', body: { keys, hidden: null } }));
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'hidden'>('all');
+  const norm = normalize(search);
+
+  if (q.isPending) return <Spinner />;
+  const hiddenCount = (q.data ?? []).filter((o) => o.hidden === true).length;
+  const rows = (q.data ?? []).filter((o) => {
+    if (filter === 'hidden' && o.hidden !== true) return false;
+    if (!norm) return true;
+    const v = idx?.variantByKey.get(o.variantKey);
+    const sp = idx?.speciesByDex.get(Number(o.variantKey.split('.')[0]));
+    const hay = normalize(`${o.variantKey} ${sp?.name.en ?? ''} ${sp?.name.fr ?? ''} ${v?.label?.en ?? ''} ${v?.label?.fr ?? ''} ${o.meta?.label?.en ?? ''} ${o.meta?.label?.fr ?? ''} ${o.label?.en ?? ''} ${o.label?.fr ?? ''} ${o.updatedBy ?? ''}`);
+    return hay.includes(norm);
+  });
+
+  return (
+    <section className="space-y-3">
+      <TextField placeholder={t.admin_overrides_search} value={search} onChange={(e) => setSearch(e.target.value)} />
+      {hiddenCount > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <Chip active={filter === 'all'} onClick={() => setFilter('all')} className="min-h-8 px-2.5 text-xs">{t.admin_overrides_filter_all}</Chip>
+          <Chip active={filter === 'hidden'} onClick={() => setFilter('hidden')} className="min-h-8 px-2.5 text-xs">{t.admin_overrides_filter_hidden(hiddenCount)}</Chip>
+        </div>
+      )}
+      {rows.length === 0 && <Empty>{t.admin_overrides_empty}</Empty>}
+      <ul className="space-y-2">
+        {rows.map((o) => {
+          const dex = Number(o.variantKey.split('.')[0]);
+          const v = idx?.variantByKey.get(o.variantKey);
+          const fallbackCover = idx?.coverOf.get(dex);
+          const sp = idx?.speciesByDex.get(dex);
+          const rawImg = !v && o.meta?.img ? (/^https?:\/\//.test(o.meta.img) ? o.meta.img : `${idx?.ds.assetBase ?? ''}${o.meta.img}`) : null;
+          const flags = [
+            o.released !== null && `${t.change_released}: ${o.released ? t.change_yes_plain : t.change_no_plain}`,
+            o.shinyReleased !== null && `${t.shiny_status}: ${o.shinyReleased ? t.change_yes_plain : t.change_no_plain}`,
+            (o.label ?? (o.hidden ? o.meta?.label : null)) && `${(o.label ?? o.meta?.label)?.fr || (o.label ?? o.meta?.label)?.en}`,
+            o.genders && `${t.change_genders}: ${o.genders.length ? o.genders.map((g) => (g === 'm' ? '♂' : '♀')).join('') : t.change_genderless}`,
+            o.kind && (t.kinds[o.kind] ?? o.kind),
+            o.noEvolve !== null && `${t.no_evolve}: ${o.noEvolve ? t.change_yes_plain : t.change_no_plain}`,
+            o.noMega !== null && `${t.no_mega}: ${o.noMega ? t.change_yes_plain : t.change_no_plain}`,
+          ].filter(Boolean) as string[];
+          return (
+            <li key={o.variantKey} className={`card flex items-center gap-2.5 p-2.5 ${o.hidden ? 'border-berry/40' : ''}`}>
+              {rawImg ? (
+                <img src={rawImg} alt="" width={44} height={44} loading="lazy" className="h-11 w-11 shrink-0 object-contain opacity-75" />
+              ) : idx && (v ?? fallbackCover) ? (
+                <Sprite idx={idx} variant={(v ?? fallbackCover)!} size={44} />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <Link to={`/dex/${dex}`} className="block truncate text-sm font-bold text-sky hover:underline">
+                  {sp ? localized(sp.name, lang) : `#${dex}`} · <span className="font-mono text-xs font-normal text-ink-3">{o.variantKey}</span>
+                </Link>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {o.hidden === true && (
+                    <span className="inline-flex items-center rounded-full bg-berry/15 px-2 py-0.5 text-[11px] font-bold text-berry">
+                      {t.variant_hidden_badge}
+                    </span>
+                  )}
+                  {flags.map((fl) => <Badge key={fl} tone="muted">{fl}</Badge>)}
+                </div>
+                <p className="tnum mt-1 text-[11px] text-ink-3">{o.updatedBy ?? '?'} · {relativeTime(o.updatedAt, lang)}</p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-1">
+                {o.hidden === true && (
+                  <Button
+                    tone="quiet"
+                    className="min-h-8 shrink-0 px-2.5 text-xs"
+                    disabled={restore.isPending}
+                    onClick={async () => {
+                      await restore.mutateAsync([o.variantKey]);
+                      toast(t.variant_restored);
+                    }}
+                  >
+                    {t.variant_restore}
+                  </Button>
+                )}
+                <Button
+                  tone="ghost"
+                  className="min-h-8 shrink-0 px-2 text-xs text-berry"
+                  disabled={reset.isPending}
+                  onClick={async () => {
+                    await reset.mutateAsync(o.variantKey);
+                    toast(t.admin_undone);
+                  }}
+                >
+                  {t.admin_overrides_reset}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 /** One account: what it has, when it was last seen, and what an admin can do to it. */
-function UserSheet({ id, onClose, onOpen }: { id: string | null; onClose: () => void; onOpen: (id: string) => void }) {
+function UserSheet({ id, onClose, onOpen, onAudit }: { id: string | null; onClose: () => void; onOpen: (id: string) => void; onAudit: (username: string) => void }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -236,7 +406,11 @@ function UserSheet({ id, onClose, onOpen }: { id: string | null; onClose: () => 
             <dt className="text-ink-3">{t.admin_sessions}</dt><dd className="tnum text-right">{q.data.counts.sessions}</dd>
             <dt className="text-ink-3">{t.admin_devices}</dt><dd className="tnum text-right">{q.data.counts.devices}</dd>
             <dt className="text-ink-3">{t.pvp_mine_title}</dt><dd className="tnum text-right">{q.data.counts.pvp}</dd>
+            {q.data.counts.pvpTeams !== undefined && <><dt className="text-ink-3">{t.admin_pvp_teams}</dt><dd className="tnum text-right">{q.data.counts.pvpTeams}</dd></>}
           </dl>
+          <Button tone="ghost" className="min-h-9 w-full text-xs text-sky" onClick={() => onAudit(u!.username)}>
+            {t.admin_view_audit} ›
+          </Button>
 
           <div>
             <p className="mb-1 text-xs font-medium text-ink-3">{t.admin_role}</p>
@@ -564,7 +738,7 @@ function describe(e: AuditEntry, t: ReturnType<typeof useT>, variant: (key: stri
   }
 }
 
-type Shown = { released?: boolean | null; label?: { en?: string; fr?: string } | null; genders?: string[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: string | null };
+type Shown = { released?: boolean | null; label?: { en?: string; fr?: string } | null; genders?: string[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: string | null; hidden?: boolean | null };
 
 /**
  * What a variant correction changed, one line per field: "Nom FR : « K 2026 A » → « Kanto 2026 A »".
@@ -591,16 +765,19 @@ function variantChanges(d: Record<string, any>, t: ReturnType<typeof useT>): str
   if (touched('noMega') && plain(from.noMega) !== plain(to.noMega)) out.push(`${t.no_mega} : ${plain(from.noMega)} → ${plain(to.noMega)}`);
   const kindName = (k: string | null | undefined) => (k ? (t.kinds[k] ?? k) : t.change_auto);
   if (touched('kind') && kindName(from.kind) !== kindName(to.kind)) out.push(`${t.kind_status} : ${kindName(from.kind)} → ${kindName(to.kind)}`);
+  const vis = (b: boolean | null | undefined) => (b === true ? t.variant_hidden_badge : t.variant_show_short);
+  if (touched('hidden') && !!from.hidden !== !!to.hidden) out.push(`${t.variant_visibility} : ${vis(from.hidden)} → ${vis(to.hidden)}`);
   return out;
 }
 
-function Journal() {
+function Journal({ initialQuery = '' }: { initialQuery?: string }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
   const [offset, setOffset] = useState(0);
   const [kind, setKind] = useState<AuditKind>('all');
-  const q = useAudit(offset, kind);
+  const [search, setSearch] = useState(initialQuery);
+  const q = useAudit(offset, kind, search);
   const undo = useAdminAction((id: string) => api(`/admin/audit/${id}/undo`, { method: 'POST' }));
   const dataset = useDataset();
   /** "Pikachu · Casque de verre" rather than the variant key. */
@@ -610,14 +787,21 @@ function Journal() {
     const v = idx?.variantByKey.get(key);
     return sp ? [localized(sp.name, lang), v?.label ? localized(v.label, lang) : ''].filter(Boolean).join(' · ') : key;
   };
+  const csvParams = new URLSearchParams();
+  if (kind !== 'all') csvParams.set('kind', kind);
+  if (search.trim()) csvParams.set('q', search.trim());
+  const csvHref = `/api/admin/audit.csv${csvParams.toString() ? `?${csvParams}` : ''}`;
   const kinds = (
-    <div className="mb-2 flex items-center gap-2">
-      <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none]">
-        {(['all', 'accounts', 'lists', 'data', 'admin'] as AuditKind[]).map((k) => (
-          <Chip key={k} active={kind === k} onClick={() => { setKind(k); setOffset(0); }}>{t.audit_kind[k]}</Chip>
-        ))}
+    <div className="mb-2 space-y-2">
+      <TextField placeholder={t.admin_audit_search} value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }} />
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+          {(['all', 'accounts', 'lists', 'data', 'admin'] as AuditKind[]).map((k) => (
+            <Chip key={k} active={kind === k} onClick={() => { setKind(k); setOffset(0); }}>{t.audit_kind[k]}</Chip>
+          ))}
+        </div>
+        <a href={csvHref} download className="shrink-0 rounded-full bg-paper-2 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-line">{t.audit_export}</a>
       </div>
-      <a href={`/api/admin/audit.csv${kind === 'all' ? '' : `?kind=${kind}`}`} download className="shrink-0 rounded-full bg-paper-2 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-line">{t.audit_export}</a>
     </div>
   );
   if (!q.data) return <section>{kinds}<Spinner /></section>;

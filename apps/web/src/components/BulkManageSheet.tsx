@@ -20,8 +20,9 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
   const [noEvolve, setNoEvolve] = useState<Choice>('keep');
   const [noMega, setNoMega] = useState<Choice>('keep');
   const [kind, setKind] = useState<VariantKind | null | 'keep'>('keep');
+  const [hidden, setHidden] = useState<Choice>('keep');
   const keys = groups.flatMap((g) => g.variants.map((v) => v.key));
-  const nothing = released === 'keep' && shiny === 'keep' && noEvolve === 'keep' && noMega === 'keep' && kind === 'keep';
+  const nothing = released === 'keep' && shiny === 'keep' && noEvolve === 'keep' && noMega === 'keep' && kind === 'keep' && hidden === 'keep';
 
   const row = (title: string, value: Choice, set: (c: Choice) => void, labels: [string, string]) => (
     <div>
@@ -38,13 +39,14 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
   const save = async () => {
     // Left out of the request (undefined) = not touched.
     const field = (c: Choice) => (c === 'keep' ? undefined : c);
-    await bulk.mutateAsync({ keys, released: field(released), shinyReleased: field(shiny), noEvolve: field(noEvolve), noMega: field(noMega), kind: kind === 'keep' ? undefined : kind });
+    await bulk.mutateAsync({ keys, released: field(released), shinyReleased: field(shiny), noEvolve: field(noEvolve), noMega: field(noMega), kind: kind === 'keep' ? undefined : kind, hidden: field(hidden) });
     toast(t.bulk_managed(groups.length));
     setReleased('keep');
     setShiny('keep');
     setNoEvolve('keep');
     setNoMega('keep');
     setKind('keep');
+    setHidden('keep');
     onDone();
     onClose();
   };
@@ -65,6 +67,7 @@ export function BulkManageSheet({ open, groups, onClose, onDone }: { open: boole
             <Chip active={kind === null} onClick={() => setKind(null)}>{t.mark_auto}</Chip>
           </div>
         </div>
+        {row(t.variant_visibility, hidden, setHidden, [t.variant_hide_short, t.variant_show_short])}
         <Button tone="primary" className="w-full" disabled={nothing || bulk.isPending} onClick={save}>{t.save}</Button>
         <p className="text-xs text-ink-3">{t.bulk_manage_hint}</p>
       </div>

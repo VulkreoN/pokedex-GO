@@ -327,6 +327,41 @@ export interface TradeMatch {
   offered?: boolean;
 }
 
+/** Aggregated trade matches for one friend in the global multi-friend trade view. */
+export interface FriendTradeGroup {
+  friend: PublicUser & { favorite?: boolean; lucky?: boolean };
+  theyHaveForMe: TradeMatch[];
+  iHaveForThem: TradeMatch[];
+}
+
+/** One regional Vivillon postcard pattern a trainer can send (quantity null = home region / unlimited). */
+export interface UserPostcard {
+  pattern: import('./vivillon.js').VivillonPattern;
+  quantity: number | null;
+}
+
+/** A suggested trainer to add as a friend for Vivillon regional postcards. */
+export interface PostcardFriendSuggestion {
+  user: Pick<PublicUser, 'id' | 'username' | 'friendCode'>;
+  postcards: UserPostcard[];
+  matchedPatterns: import('./vivillon.js').VivillonPattern[];
+  requestStatus: 'none' | 'outgoing' | 'incoming';
+  requestId?: string;
+}
+
+export type PvpLeague = 'great' | 'ultra' | 'master';
+
+/** A player's saved team of up to 3 PvP Pokémon for a given league. */
+export interface PvpTeam {
+  id: string;
+  name: string;
+  league: PvpLeague;
+  members: string[];
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** 'account': changes made to your account by an admin; always sent, cannot be switched off. */
 export type NotificationType = 'friend_request' | 'friend_accepted' | 'offer' | 'offer_caught' | 'raid' | 'spawn' | 'quest' | 'announcement' | 'account' | 'admin';
 
@@ -369,4 +404,73 @@ export interface FriendRequest {
   to: PublicUser;
   status: FriendRequestStatus;
   createdAt: string;
+}
+
+export type EventTemplateKind = 'max' | 'community_day' | 'spotlight' | 'raid_day' | 'event';
+
+export interface EventDetailMon {
+  name: string;
+  image: string;
+  canBeShiny: boolean;
+  newShiny?: boolean;
+  debut?: boolean;
+}
+
+export interface EventBonusItem {
+  text: string;
+  image?: string;
+  group?: string;
+  paid?: boolean;
+}
+
+export interface EventMonGroup {
+  label: string;
+  mons: EventDetailMon[];
+}
+
+export interface EventHighlight {
+  kind: 'debut' | 'shiny' | 'background' | 'move' | 'super_max' | 'evolution' | 'info';
+  title: string;
+  text: string;
+  mons?: EventDetailMon[];
+}
+
+export interface EventPaidOffer {
+  title: string;
+  price?: string;
+  rewards: string[];
+  bonuses: EventBonusItem[];
+}
+
+export interface EventMoveEntry {
+  pokemon: string;
+  move: string;
+  mons: EventDetailMon[];
+}
+
+export interface RichGameEvent {
+  eventID: string;
+  name: string;
+  eventType: string;
+  heading: string;
+  template: EventTemplateKind;
+  link: string;
+  image: string;
+  start: string | null;
+  end: string | null;
+  summary: string | null;
+  bonuses: EventBonusItem[];
+  highlights: EventHighlight[];
+  featured: EventDetailMon[];
+  spawnGroups: EventMonGroup[];
+  raidGroups: EventMonGroup[];
+  eggGroups: EventMonGroup[];
+  research: EventDetailMon[];
+  researchNote: string | null;
+  rocket: EventDetailMon[];
+  newShinies: EventDetailMon[];
+  moves: EventMoveEntry[];
+  goPass?: { title: string; freeRewards: string[]; deluxeRewards: string[]; price?: string };
+  ticket?: EventPaidOffer;
+  graphicUrl?: string | null;
 }

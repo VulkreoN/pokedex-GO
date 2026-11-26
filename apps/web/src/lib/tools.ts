@@ -77,11 +77,35 @@ export function moveLabel(tools: Pick<ToolsData, 'moveNames'>, id: string, lang:
   return local(tools.moveNames[id], lang, id.replace(/_FAST$/, '').toLowerCase().replace(/_/g, ' '));
 }
 
-/** Leek Duck's Rocket names in French. */
+/** Leek Duck's Rocket names in French (handles typed, untyped, gendered, genderless, decoy & leaders). */
 export function rocketName(name: string, lang: string, typeName: (type: string) => string): string {
   if (lang !== 'fr') return name;
-  const m = /^(?:(\w+)-type )?(Male|Female) Grunt$/.exec(name);
-  if (m) return `Sbire ${m[2] === 'Male' ? '♂' : '♀'}${m[1] ? ` · ${typeName(m[1].toLowerCase())}` : ''}`;
-  if (/^Decoy/.test(name)) return 'Faux sbire ♀';
-  return name;
+  const s = name.trim();
+  if (/^Decoy/i.test(s)) return 'Faux sbire ♀';
+  const leader = /^Leader\s+(.+)$/i.exec(s);
+  if (leader) return `Chef ${leader[1]}`;
+  // "Grass-type Male Grunt", "Male Grunt", "Typeless Female Grunt"
+  const gendered = /^(?:(\w+)(?:-type)? )?(Male|Female) Grunt$/i.exec(s);
+  if (gendered) {
+    const rawType = gendered[1]?.toLowerCase();
+    const ty = rawType && rawType !== 'typeless' ? ` · ${typeName(rawType)}` : '';
+    return `Sbire ${gendered[2]!.toLowerCase() === 'male' ? '♂' : '♀'}${ty}`;
+  }
+  // "Male Grass Grunt", "Female Fire Grunt"
+  const revGendered = /^(Male|Female) (\w+)(?:-type)? Grunt$/i.exec(s);
+  if (revGendered) {
+    const rawType = revGendered[2]!.toLowerCase();
+    const ty = rawType !== 'typeless' ? ` · ${typeName(rawType)}` : '';
+    return `Sbire ${revGendered[1]!.toLowerCase() === 'male' ? '♂' : '♀'}${ty}`;
+  }
+  // "Grass Grunt", "Grass-type Grunt", "Typeless Grunt"
+  const typed = /^(\w+)(?:-type)? Grunt$/i.exec(s);
+  if (typed) {
+    const rawType = typed[1]!.toLowerCase();
+    if (rawType === 'typeless' || rawType === 'rocket') return 'Sbire';
+    return `Sbire · ${typeName(rawType)}`;
+  }
+  if (/^Team GO Rocket Grunt$/i.test(s)) return 'Sbire Team GO Rocket';
+  if (/^Grunt$/i.test(s)) return 'Sbire';
+  return s;
 }

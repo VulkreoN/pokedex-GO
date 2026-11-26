@@ -351,47 +351,133 @@ export const listRoutes = new Hono<AuthEnv>()
     return c.json({ list: await listDetail(list.id, true, me.id) });
   })
   /** A friend says they have (or no longer have) one of the entries. */
-  .post('/:id/offers', zValidator('json', z.object({ variantKey: z.string().refine(isValidVariantKey), gender: gender.default(''), shiny: z.boolean(), tag: z.string().refine(isEntryTag).default(''), on: z.boolean() })), async (c) => {
-    const me = c.get('user');
-    const list = await getList(c.req.param('id'));
-    if (!list) return c.json({ error: 'not_found' }, 404);
-    if ((await accessOf(list, me)) !== 'friend') return c.json({ error: 'forbidden' }, 403);
-    const b = c.req.valid('json');
-    const [entry] = await db
-      .select()
-      .from(schema.listEntries)
-      .where(and(eq(schema.listEntries.listId, list.id), eq(schema.listEntries.variantKey, b.variantKey), eq(schema.listEntries.gender, b.gender), eq(schema.listEntries.shiny, b.shiny), eq(schema.listEntries.tag, b.tag)))
-      .limit(1);
-    if (!entry) return c.json({ error: 'not_found' }, 404);
-    if (b.on && entry.done) return c.json({ error: 'already_caught' }, 409);
-    const key = { listId: list.id, variantKey: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag, userId: me.id };
-    if (b.on) {
-      const inserted = await db.insert(schema.listOffers).values(key).onConflictDoNothing().returning();
-      if (inserted.length) {
-        await recordListEvent(list.id, me.id, 'offer', [{ variantKey: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag }]);
-        const variant = { key: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag };
-        await notify({
-          userId: list.ownerId,
-          type: 'offer',
-          actorId: me.id,
-          listId: list.id,
-          data: { count: 1, variants: [variant] },
-          // A friend ticking several entries in a row makes one notification, not one per tick.
-          merge: (prev) => {
-            const variants = [...((prev.variants as unknown[]) ?? []), variant].slice(-20);
-            return { count: Number(prev.count ?? 1) + 1, variants };
-          },
-          push: () => ({ title: `${me.username} a un Pokémon pour toi`, body: `Dans ta collection « ${list.name} »`, url: `/lists/${list.id}`, tag: `offer-${list.id}-${me.id}` }),
-        });
+  .post(
+    '/:id/offers',
+    zValidator(
+      'json',
+      z.object({
+        variantKey: z.string().refine(isValidVariantKey),
+        gender: gender.default(''),
+        shiny: z.boolean(),
+        tag: z.string().refine(isEntryTag).default(''),
+        on: z.boolean(),
+        /** When true, saves the mark & broadcasts live UI updates without notifying the owner yet (flushed on page leave). */
+        deferNotify: z.boolean().default(false),
+      }),
+    ),
+    async (c) => {
+      const me = c.get('user');
+      const list = await getList(c.req.param('id'));
+      if (!list) return c.json({ error: 'not_found' }, 404);
+      if ((await accessOf(list, me)) !== 'friend') return c.json({ error: 'forbidden' }, 403);
+      const b = c.req.valid('json');
+      const [entry] = await db
+        .select()
+        .from(schema.listEntries)
+        .where(and(eq(schema.listEntries.listId, list.id), eq(schema.listEntries.variantKey, b.variantKey), eq(schema.listEntries.gender, b.gender), eq(schema.listEntries.shiny, b.shiny), eq(schema.listEntries.tag, b.tag)))
+        .limit(1);
+      if (!entry) return c.json({ error: 'not_found' }, 404);
+      if (b.on && entry.done) return c.json({ error: 'already_caught' }, 409);
+      const key = { listId: list.id, variantKey: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag, userId: me.id };
+      if (b.on) {
+        const inserted = await db.insert(schema.listOffers).values(key).onConflictDoNothing().returning();
+        if (inserted.length && !b.deferNotify) {
+          await recordListEvent(list.id, me.id, 'offer', [{ variantKey: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag }]);
+          const variant = { key: b.variantKey, gender: b.gender, shiny: b.shiny, tag: b.tag };
+          await notify({
+            userId: list.ownerId,
+            type: 'offer',
+            actorId: me.id,
+            listId: list.id,
+            data: { count: 1, variants: [variant] },
+            // A friend ticking several entries in a row makes one notification, not one per tick.
+            merge: (prev) => {
+              const variants = [...((prev.variants as unknown[]) ?? []), variant].slice(-20);
+              return { count: Number(prev.count ?? 1) + 1, variants };
+            },
+            push: () => ({ title: `${me.username} a un Pokémon pour toi`, body: `Dans ta collection « ${list.name} »`, url: `/lists/${list.id}`, tag: `offer-${list.id}-${me.id}` }),
+          });
+        }
+      } else {
+        await db
+          .delete(schema.listOffers)
+          .where(and(eq(schema.listOffers.listId, list.id), eq(schema.listOffers.variantKey, b.variantKey), eq(schema.listOffers.gender, b.gender), eq(schema.listOffers.shiny, b.shiny), eq(schema.listOffers.tag, b.tag), eq(schema.listOffers.userId, me.id)));
       }
-    } else {
-      await db
-        .delete(schema.listOffers)
-        .where(and(eq(schema.listOffers.listId, list.id), eq(schema.listOffers.variantKey, b.variantKey), eq(schema.listOffers.gender, b.gender), eq(schema.listOffers.shiny, b.shiny), eq(schema.listOffers.tag, b.tag), eq(schema.listOffers.userId, me.id)));
-    }
-    hub.emit([list.ownerId, me.id], { type: 'list', listId: list.id, ownerId: list.ownerId });
-    return c.json({ list: await listDetail(list.id, false, me.id) });
-  })
+      hub.emit([list.ownerId, me.id], { type: 'list', listId: list.id, ownerId: list.ownerId });
+      return c.json({ list: await listDetail(list.id, false, me.id) });
+    },
+  )
+  /** Sends a single batched notification for deferred "I have it" marks still active when the friend leaves the list page. */
+  .post(
+    '/:id/offers/notify',
+    zValidator(
+      'json',
+      z.object({
+        variants: z
+          .array(
+            z.object({
+              variantKey: z.string().refine(isValidVariantKey),
+              gender: gender.default(''),
+              shiny: z.boolean(),
+              tag: z.string().refine(isEntryTag).default(''),
+            }),
+          )
+          .min(1)
+          .max(1000),
+      }),
+    ),
+    async (c) => {
+      const me = c.get('user');
+      const list = await getList(c.req.param('id'));
+      if (!list) return c.json({ error: 'not_found' }, 404);
+      if ((await accessOf(list, me)) !== 'friend') return c.json({ error: 'forbidden' }, 403);
+      const b = c.req.valid('json');
+      const currentOffers = await db
+        .select({
+          variantKey: schema.listOffers.variantKey,
+          gender: schema.listOffers.gender,
+          shiny: schema.listOffers.shiny,
+          tag: schema.listOffers.tag,
+        })
+        .from(schema.listOffers)
+        .where(and(eq(schema.listOffers.listId, list.id), eq(schema.listOffers.userId, me.id)));
+      const activeSet = new Set(currentOffers.map(entryId));
+      const seen = new Set<string>();
+      const active: { variantKey: string; gender: EntryGender; shiny: boolean; tag: EntryTag }[] = [];
+      for (const v of b.variants) {
+        const k = entryId(v);
+        if (seen.has(k) || !activeSet.has(k)) continue;
+        seen.add(k);
+        active.push({ variantKey: v.variantKey, gender: v.gender, shiny: v.shiny, tag: v.tag as EntryTag });
+      }
+      if (!active.length) return c.json({ ok: true, notified: 0 });
+      await recordListEvent(list.id, me.id, 'offer', active);
+      type NotifVariant = { key: string; gender: string; shiny: boolean; tag: string };
+      const notifVariants: NotifVariant[] = active.map((v) => ({ key: v.variantKey, gender: v.gender, shiny: v.shiny, tag: v.tag }));
+      const nvKey = (v: NotifVariant) => `${v.key}|${v.gender}|${v.shiny}|${v.tag}`;
+      await notify({
+        userId: list.ownerId,
+        type: 'offer',
+        actorId: me.id,
+        listId: list.id,
+        data: { count: notifVariants.length, variants: notifVariants.slice(-20) },
+        merge: (prev) => {
+          const prevList = Array.isArray(prev.variants) ? (prev.variants as NotifVariant[]) : [];
+          const prevSeen = new Set(prevList.map(nvKey));
+          const added = notifVariants.filter((v) => !prevSeen.has(nvKey(v)));
+          const variants = [...prevList, ...added].slice(-20);
+          return { count: Number(prev.count ?? prevList.length) + added.length, variants };
+        },
+        push: () => ({
+          title: notifVariants.length === 1 ? `${me.username} a un Pokémon pour toi` : `${me.username} a ${notifVariants.length} Pokémon pour toi`,
+          body: `Dans ta collection « ${list.name} »`,
+          url: `/lists/${list.id}`,
+          tag: `offer-${list.id}-${me.id}`,
+        }),
+      });
+      return c.json({ ok: true, notified: active.length });
+    },
+  )
   .post('/:id/share', async (c) => {
     const me = c.get('user');
     const list = await getList(c.req.param('id'));

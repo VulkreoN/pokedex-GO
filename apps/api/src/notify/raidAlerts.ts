@@ -159,7 +159,7 @@ async function alertOnce(): Promise<number> {
       push: () => ({
         title: bossNames.length > 1 ? `${bossNames.length} Pokémon de tes collections sont en raid` : `${bossNames[0]} est en raid`,
         body: bossNames.length > 1 ? bossNames.join(', ') : 'Il manque dans une de tes collections.',
-        url: '/game',
+        url: '/game?tab=raids',
         tag: 'raid',
       }),
     });

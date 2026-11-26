@@ -1,14 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { TYPES, effectiveness, type PokemonType, type PvpPokemon } from '@mydexpogo/shared';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { Sprite } from '../components/Sprite.js';
+import { useToast } from '../components/toast.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
+import { Button, Chip, Empty, IconButton, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { useMe } from '../lib/auth.js';
 import { normalize } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { useMyPvp } from '../lib/myPvp.js';
+import { useDeletePvpTeam, useMyPvp, usePvpTeams, useSavePvpTeam } from '../lib/myPvp.js';
 import { LEAGUE_LIST, formOf, leagueName, usePopularTeams, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
 import { picture, usePvp } from './PvpPage.js';
 
@@ -18,12 +20,17 @@ const SLOTS = 3;
 export function PvpTeamPage() {
   const t = useT();
   const { lang } = useLang();
+  const toast = useToast();
+  const me = useMe();
   const { ds, pvp, byKey } = usePvp();
+  const saveTeam = useSavePvpTeam();
   const [params, setParams] = useSearchParams();
   const league: League = LEAGUE_LIST.find((l) => l === params.get('l')) ?? 'great';
   const keys = (params.get('p') ?? '').split(',').slice(0, SLOTS);
   const team = keys.map((k) => (k ? byKey.get(k) : undefined));
   const [picking, setPicking] = useState<number | null>(null);
+  const [savingOpen, setSavingOpen] = useState(false);
+  const [teamName, setTeamName] = useState('');
   const setTeam = (next: (string | undefined)[]) =>
     setParams((prev) => {
       const n = new URLSearchParams(prev);
@@ -71,7 +78,7 @@ export function PvpTeamPage() {
   return (
     <>
       <TopBar title={t.team_title} back />
-      <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
+      <main className="mx-auto max-w-6xl px-3 pb-24 pt-3 sm:px-5">
         <div className="mb-3 flex flex-wrap gap-2">
           {LEAGUE_LIST.map((l) => (
             <Chip key={l} active={league === l} onClick={() => setParams((prev) => { const n = new URLSearchParams(prev); n.set('l', l); return n; }, { replace: true })}>
@@ -99,7 +106,21 @@ export function PvpTeamPage() {
 
         {members.length === 0 && <p className="mt-6 text-center text-sm text-ink-2">{t.team_intro}</p>}
         {members.length > 0 && (
-          <Link to={`/pvp/battle?l=${league}&a=${encodeURIComponent(members[0]!.key)}`} className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-paper-2 text-sm font-semibold hover:brightness-95">{t.battle_open}</Link>
+          <div className="mt-3 flex gap-2">
+            <Link to={`/pvp/battle?l=${league}&a=${encodeURIComponent(members[0]!.key)}`} className="flex min-h-11 flex-1 items-center justify-center rounded-xl bg-paper-2 px-3 text-sm font-semibold hover:brightness-95">{t.battle_open}</Link>
+            {me.data && (
+              <Button
+                tone="primary"
+                className="shrink-0"
+                onClick={() => {
+                  setTeamName(members.map((m) => localized(m.name, lang).replace(/ \(.*\)$/, '')).join(' · ').slice(0, 60));
+                  setSavingOpen(true);
+                }}
+              >
+                {t.pvp_save_team}
+              </Button>
+            )}
+          </div>
         )}
 
         {members.length > 0 && (
@@ -127,9 +148,37 @@ export function PvpTeamPage() {
             <Matchups title={t.team_beats} hint={t.team_beats_hint} list={beats} tone="go" />
           </>
         )}
+        {me.data && <SavedTeams league={league} onLoad={(loaded) => setTeam(loaded)} />}
         <PopularTeams league={league} onLoad={(keys) => setTeam(keys)} />
       </main>
       <PickSheet open={picking !== null} league={league} onClose={() => setPicking(null)} onPick={(k) => { const next = [...team.map((m) => m?.key)]; next[picking!] = k; setTeam(next); setPicking(null); }} onClear={team[picking ?? -1] ? () => { const next = [...team.map((m) => m?.key)]; next[picking!] = undefined; setTeam(next); setPicking(null); } : undefined} />
+      <Sheet open={savingOpen} onClose={() => setSavingOpen(false)} title={t.pvp_save_team}>
+        {savingOpen && (
+          <form
+            className="space-y-3"
+            onSubmit={async (e: FormEvent) => {
+              e.preventDefault();
+              const clean = teamName.trim();
+              if (!clean || !members.length) return;
+              await saveTeam.mutateAsync({ name: clean, league, members: members.map((m) => m.key) });
+              toast(t.pvp_team_saved);
+              setSavingOpen(false);
+            }}
+          >
+            <TextField
+              label={t.pvp_team_name}
+              placeholder={t.pvp_team_name_placeholder}
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              maxLength={60}
+              autoFocus
+            />
+            <Button tone="primary" type="submit" className="w-full" disabled={saveTeam.isPending || !teamName.trim()}>
+              {t.save}
+            </Button>
+          </form>
+        )}
+      </Sheet>
     </>
   );
 
@@ -218,6 +267,65 @@ export function PickSheet({ open, league, onClose, onPick, onClear }: { open: bo
   );
 }
 
+/** The player's own saved teams for this league, ready to load in one tap or delete. */
+function SavedTeams({ league, onLoad }: { league: League; onLoad: (keys: string[]) => void }) {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const { ds, byKey } = usePvp();
+  const teams = usePvpTeams();
+  const remove = useDeletePvpTeam();
+  const list = (teams.data ?? []).filter((x) => x.league === league);
+  if (!ds.data || list.length === 0) return null;
+  const idx = ds.data;
+  return (
+    <section className="mt-5">
+      <h2 className="mb-2 text-base font-bold">
+        {t.pvp_saved_teams} <span className="tnum font-normal text-ink-3">{list.length}</span>
+      </h2>
+      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {list.map((saved) => (
+          <li key={saved.id} className="card flex items-center gap-2 p-2">
+            <button
+              type="button"
+              onClick={() => onLoad(saved.members)}
+              className="min-w-0 flex-1 text-left"
+              aria-label={`${t.pvp_team_load} ${saved.name}`}
+            >
+              <div className="mb-1 truncate px-1 text-sm font-bold">{saved.name}</div>
+              <div className="grid grid-cols-3 gap-1">
+                {saved.members.map((key, i) => {
+                  const p = byKey.get(key);
+                  const v = p && picture(idx, p);
+                  return (
+                    <span key={`${key}-${i}`} className="flex min-w-0 flex-col items-center">
+                      {v && <Sprite idx={idx} variant={v} size={40} />}
+                      <span className="w-full truncate text-center text-[11px] font-semibold leading-tight">
+                        {p ? localized(p.name, lang).replace(/ \(.*\)$/, '') : key}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            </button>
+            <IconButton
+              label={`${t.delete} ${saved.name}`}
+              disabled={remove.isPending}
+              onClick={async () => {
+                await remove.mutateAsync(saved.id);
+                toast(t.pvp_team_deleted);
+              }}
+              className="shrink-0 text-berry"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
+            </IconButton>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** The most played teams of the league on PvPoke's training mode, ready to load. */
 function PopularTeams({ league, onLoad }: { league: League; onLoad: (keys: string[]) => void }) {
   const t = useT();
@@ -266,7 +374,7 @@ function PopularTeams({ league, onLoad }: { league: League; onLoad: (keys: strin
         )}
       </div>
       {resolved.length === 0 && <p className="mt-3 text-center text-sm text-ink-3">{t.nothing_here}</p>}
-      <ul className="mt-2 space-y-2">
+      <ul className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         {resolved.map(({ team, forms }, i) => (
           <li key={i}>
             <button type="button" onClick={() => onLoad(forms.map((x) => x.p!.key))} className="card flex w-full items-center gap-2 p-2 text-left hover:brightness-[0.98]">

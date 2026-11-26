@@ -6,12 +6,13 @@ import { FriendQr } from '../components/FriendQr.js';
 import { InstallBanner } from '../components/InstallBanner.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { useToast } from '../components/toast.js';
-import { Button, Chip, CopyButton, Spinner } from '../components/ui.js';
+import { Button, Chip, CopyButton, Spinner, SwitchThumb } from '../components/ui.js';
 import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { useCreateList } from '../lib/lists.js';
 import { saveGameLang, savedGameLang } from '../lib/searchString.js';
+import { enableGuidedTours } from '../lib/tour.js';
 import { FriendCodeForm, fmtCode } from './FriendsPage.js';
 
 const STEPS = ['hello', 'game', 'list', 'friends', 'notify'] as const;
@@ -32,6 +33,7 @@ export function WelcomePage() {
   const [template, setTemplate] = useState<(typeof TEMPLATES)[number] | null>('shiny');
   const [listId, setListId] = useState<string | null>(null);
   const [codeSaved, setCodeSaved] = useState(false);
+  const [guidesOn, setGuidesOn] = useState(true);
 
   if (me.isPending) return <Spinner />;
   if (!me.data) return <Navigate to="/login" replace />;
@@ -40,10 +42,11 @@ export function WelcomePage() {
   const back = () => setStep(STEPS[Math.max(i - 1, 0)]!);
 
   /** Done or skipped: not shown again; the new list if one was made, the Pokédex otherwise. */
-  const finish = async (to?: string) => {
+  const finish = async (opts?: { to?: string; skipped?: boolean }) => {
+    if (!opts?.skipped && guidesOn) enableGuidedTours(true);
     await api('/auth/onboarded', { method: 'POST' }).catch(() => {});
     qc.setQueryData(['me'], { ...me.data, onboarded: true });
-    navigate(to ?? (listId ? `/lists/${listId}` : '/dex'), { replace: true });
+    navigate(opts?.to ?? (listId ? `/lists/${listId}` : '/dex'), { replace: true });
   };
 
   const makeList = async () => {
@@ -73,25 +76,25 @@ export function WelcomePage() {
   );
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-4 pb-28 pt-10">
+    <main className="mx-auto flex min-h-[100dvh] max-w-xl flex-col px-4 pb-28 pt-10">
       <div className="mb-8 flex items-center gap-3">
         <ol className="flex flex-1 gap-1.5" aria-label={t.welcome_progress(i + 1, STEPS.length)}>
           {STEPS.map((s, k) => <li key={s} className={`h-1.5 flex-1 rounded-full ${k <= i ? 'bg-go' : 'bg-paper-2'}`} />)}
         </ol>
-        <button type="button" onClick={() => finish()} className="text-sm font-semibold text-ink-3 hover:text-ink">{t.welcome_skip}</button>
+        <button type="button" onClick={() => finish({ skipped: true })} className="text-sm font-semibold text-ink-3 hover:text-ink">{t.welcome_skip}</button>
       </div>
 
       {step === 'hello' &&
         page(
           t.welcome_hello(me.data.username),
           t.welcome_hello_text,
-          <ul className="space-y-3">
-            {(['dex', 'lists', 'friends'] as const).map((k) => (
+          <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {(['dex', 'lists', 'game', 'pvp', 'friends', 'me'] as const).map((k) => (
               <li key={k} className="card flex items-start gap-3 p-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-go-soft text-lg" aria-hidden="true">{{ dex: '📖', lists: '✅', friends: '🤝' }[k]}</span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-go-soft text-lg" aria-hidden="true">{{ dex: '📖', lists: '✅', game: '🗓️', pvp: '⚔️', friends: '🤝', me: '🏅' }[k]}</span>
                 <span>
                   <span className="block font-semibold">{t.welcome_points[k].title}</span>
-                  <span className="block text-sm text-ink-2">{t.welcome_points[k].text}</span>
+                  <span className="block text-xs leading-snug text-ink-2">{t.welcome_points[k].text}</span>
                 </span>
               </li>
             ))}
@@ -158,6 +161,16 @@ export function WelcomePage() {
           t.welcome_notify_title,
           t.welcome_notify_text,
           <div className="space-y-3">
+            <button
+              type="button"
+              aria-pressed={guidesOn}
+              onClick={() => setGuidesOn((v) => !v)}
+              className="card flex w-full items-center gap-3 p-3 text-left"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-go-soft text-lg" aria-hidden="true">🧭</span>
+              <span className="min-w-0 flex-1 text-sm font-semibold">{t.welcome_enable_guides}</span>
+              <SwitchThumb on={guidesOn} />
+            </button>
             <PushSettings />
             <InstallBanner dismissible={false} />
           </div>,

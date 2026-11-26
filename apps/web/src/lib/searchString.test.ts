@@ -167,7 +167,7 @@ describe('formBlind and listSearch warnings', () => {
     expect(res.blind.map((v) => v.key)).toEqual(['931.fBLUE']);
   });
 
-  it('preEvolutions excludes Gigantamax and Mega forms safely', () => {
+  it('preEvolutions excludes Gigantamax safely and expands Megas to their Mega-capable base line', () => {
     const withParents = buildIndex({
       ...ds,
       species: [
@@ -181,6 +181,6 @@ describe('formBlind and listSearch warnings', () => {
     });
     expect(preEvolutions(withParents, withParents.variantByKey.get('6')!).map((v) => v.key)).toEqual(['4']);
     expect(preEvolutions(withParents, withParents.variantByKey.get('6.fGIGANTAMAX')!)).toEqual([]);
-    expect(preEvolutions(withParents, withParents.variantByKey.get('6.fMEGA_X')!)).toEqual([]);
+    expect(preEvolutions(withParents, withParents.variantByKey.get('6.fMEGA_X')!).map((v) => v.key)).toEqual(['6', '4']);
   });
 });

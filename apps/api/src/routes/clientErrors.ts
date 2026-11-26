@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { desc, lt, sql } from 'drizzle-orm';
+import { desc, eq, lt, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -50,6 +50,10 @@ export const clientErrorRoutes = new Hono<AuthEnv>()
     await db.delete(schema.clientErrors).where(lt(schema.clientErrors.lastSeen, new Date(Date.now() - KEEP_DAYS * 86_400_000)));
     const rows = await db.select().from(schema.clientErrors).orderBy(desc(schema.clientErrors.lastSeen)).limit(50);
     return c.json({ errors: rows.map((e) => ({ ...e, firstSeen: e.firstSeen.toISOString(), lastSeen: e.lastSeen.toISOString() })) });
+  })
+  .delete('/:id', requireRole('admin'), async (c) => {
+    await db.delete(schema.clientErrors).where(eq(schema.clientErrors.id, c.req.param('id')));
+    return c.json({ ok: true });
   })
   .delete('/', requireRole('admin'), async (c) => {
     await db.delete(schema.clientErrors);

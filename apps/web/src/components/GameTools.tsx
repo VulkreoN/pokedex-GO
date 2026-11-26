@@ -1,7 +1,7 @@
 /** The Game tab's tools: best counters (raids, Team GO Rocket, any Pokémon), costs, buddy distances, the GO Battle League. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { buildHuntMatcher, nextFullMoons, powerUpCost, rankCounters, weaknesses, type HuntMatcher, type PokemonType, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
+import { buildHuntMatcher, cupNameFr, gblSeasonFr, nextFullMoons, powerUpCost, rankCounters, weaknesses, type HuntMatcher, type PokemonType, type PowerUpKind, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
 import { TYPE_COLORS, TypeBadge } from './TypeBadge.js';
 import { Badge, Button, Chip, Empty, Sheet, Spinner } from './ui.js';
@@ -306,13 +306,13 @@ export function RocketTab() {
       {leaders.length > 0 && (
         <section>
           <h2 className="mb-2 text-base font-bold">{t.rocket_leaders}</h2>
-          <ul className="space-y-2">{leaders.map(card)}</ul>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{leaders.map(card)}</ul>
         </section>
       )}
       {grunts.length > 0 && (
         <section>
           <h2 className="mb-2 text-base font-bold">{t.rocket_grunts}</h2>
-          <ul className="space-y-2">{grunts.map(card)}</ul>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{grunts.map(card)}</ul>
         </section>
       )}
       <CountersSheet target={target} onClose={() => setTarget(null)} />
@@ -401,17 +401,24 @@ export function CostsTool() {
   const [pokemon, setPokemon] = useState<ToolPokemon | null>(null);
   const [from, setFrom] = useState(20);
   const [to, setTo] = useState(40);
-  const [kind, setKind] = useState<'normal' | 'shadow' | 'purified' | 'lucky'>('normal');
+  const [kind, setKind] = useState<PowerUpKind>('normal');
   if (typeof data === 'string') return <Loading state={data} />;
   const { idx, tools } = data;
   const pvp = idx.ds.pvp;
   const byKey = new Map(tools.pokemon.map((p) => [p.key, p]));
   const fmt = (n: number) => n.toLocaleString(lang);
   const levels = pvp ? Array.from({ length: (pvp.maxLevel - 1) * 2 + 1 }, (_, i) => 1 + i / 2) : [];
-  const raw = pvp ? powerUpCost(pvp, Math.min(from, to), Math.max(from, to)) : null;
-  // Shadows cost 20 % more, purified 10 % less; a lucky Pokémon half the Stardust.
-  const factor = { normal: [1, 1], shadow: [1.2, 1.2], purified: [0.9, 0.9], lucky: [0.5, 1] }[kind];
-  const cost = raw && { stardust: Math.round(raw.stardust * factor[0]!), candy: Math.ceil(raw.candy * factor[1]!), xl: Math.ceil(raw.xlCandy * factor[1]!) };
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  const cost = pvp ? powerUpCost(pvp, lo, hi, kind) : null;
+  const presets: [number, number][] = [
+    [15, 40],
+    [20, 40],
+    [20, 50],
+    [25, 40],
+    [25, 50],
+    [40, 50],
+  ];
 
   return (
     <div className="space-y-5">
@@ -419,21 +426,63 @@ export function CostsTool() {
         <h3 className="font-bold">{t.costs_powerup}</h3>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <label className="flex items-center gap-1">{t.costs_from}
-            <select value={from} onChange={(e) => setFrom(Number(e.target.value))} className="min-h-9 rounded-lg border border-line bg-card px-2">{levels.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+            <select
+              value={from}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setFrom(next);
+                if (next > to) setTo(next);
+              }}
+              className="min-h-9 rounded-lg border border-line bg-card px-2"
+            >
+              {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
           </label>
           <label className="flex items-center gap-1">{t.costs_to}
-            <select value={to} onChange={(e) => setTo(Number(e.target.value))} className="min-h-9 rounded-lg border border-line bg-card px-2">{levels.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+            <select
+              value={to}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setTo(next);
+                if (next < from) setFrom(next);
+              }}
+              className="min-h-9 rounded-lg border border-line bg-card px-2"
+            >
+              {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
           </label>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {(['normal', 'shadow', 'purified', 'lucky'] as const).map((k) => <Chip key={k} active={kind === k} onClick={() => setKind(k)} className="min-h-8 px-2.5 text-xs">{t.costs_kind[k]}</Chip>)}
+          {presets.map(([a, b]) => (
+            <button
+              key={`${a}-${b}`}
+              type="button"
+              onClick={() => { setFrom(a); setTo(b); }}
+              className={`tnum rounded-lg border px-2 py-1 text-xs font-semibold transition ${from === a && to === b ? 'border-sky bg-sky/10 text-sky' : 'border-line bg-card text-ink-2 hover:border-ink-3'}`}
+            >
+              {a} → {b}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {(['normal', 'shadow', 'purified', 'lucky', 'luckyPurified'] as const).map((k) => (
+            <Chip key={k} active={kind === k} onClick={() => setKind(k)} className="min-h-8 px-2.5 text-xs">
+              {t.costs_kind[k]}
+            </Chip>
+          ))}
         </div>
         {cost && (
           <dl className="card grid grid-cols-3 gap-2 p-3 text-center">
             <div><dt className="text-xs text-ink-3">{t.costs_stardust}</dt><dd className="tnum font-bold">{fmt(cost.stardust)}</dd></div>
             <div><dt className="text-xs text-ink-3">{t.costs_candy}</dt><dd className="tnum font-bold">{fmt(cost.candy)}</dd></div>
-            <div><dt className="text-xs text-ink-3">{t.costs_xl}</dt><dd className="tnum font-bold">{fmt(cost.xl)}</dd></div>
+            <div><dt className="text-xs text-ink-3">{t.costs_xl}</dt><dd className="tnum font-bold">{fmt(cost.xlCandy)}</dd></div>
           </dl>
+        )}
+        {kind !== 'normal' && (
+          <p className="text-xs text-ink-3">
+            {t.costs_rounding_note}
+            {(kind === 'purified' || kind === 'luckyPurified') && from < 25 ? ` ${t.costs_purified_note}` : ''}
+          </p>
         )}
       </section>
 
@@ -542,15 +591,9 @@ export function cupsOf(name: string): string[] {
   return name.split(' | ')[0]!.split(/,\s*(?:and\s+)?|\s+and\s+/).map((s) => s.trim()).filter(Boolean);
 }
 
-/** "Great League: Mega Edition" -> "Ligue Super : édition Méga", "Holiday Cup: Great League Edition" -> "Coupe Holiday : édition Ligue Super". */
+/** "Great League: Mega Edition" -> "Ligue Super : édition Méga", "Holiday Cup: Great League Edition" -> "Coupe Fêtes : édition Ligue Super". */
 export function cupName(cup: string, lang: string): string {
-  if (lang !== 'fr') return cup;
-  const league = (s: string) => s.replace(/Great League/g, 'Ligue Super').replace(/Ultra League/g, 'Ligue Hyper').replace(/Master League/g, 'Ligue Master');
-  const [name, edition] = cup.split(/:\s*/);
-  const head = league(name!).replace(/^(.+) Cup$/, 'Coupe $1');
-  if (!edition) return head;
-  const ed = league(edition.replace(/ Edition$/, '')).replace(/^Mega$/, 'Méga');
-  return `${head} : édition ${ed}`;
+  return cupNameFr(cup, lang);
 }
 
 export function LeagueTool() {
@@ -566,7 +609,7 @@ export function LeagueTool() {
   const season = weeks[0]?.name.split(' | ')[1];
   return (
     <div className="space-y-3">
-      {season && <p className="text-sm text-ink-2">{t.league_season(season)}</p>}
+      {season && <p className="text-sm text-ink-2">{t.league_season(gblSeasonFr(season, lang))}</p>}
       {weeks.length === 0 && <Empty>{t.nothing_here}</Empty>}
       <ul className="space-y-2">
         {weeks.map((w) => {
@@ -722,6 +765,7 @@ export function EvolutionsTool() {
  */
 export function EvolutionCard({ dex }: { dex: number }) {
   const t = useT();
+  const { lang } = useLang();
   const tools = useTools();
   const dataset = useDataset();
   const notesOf = useEvoNotes();
@@ -734,7 +778,7 @@ export function EvolutionCard({ dex }: { dex: number }) {
       <ul className="space-y-2">
         {links.map(({ from, to, e }) => <EvoRow key={`${from.key}>${to.key}`} idx={dataset.data!} from={from} to={to} notes={notesOf(tools.data!, e)} />)}
       </ul>
-      {moon && <p className="mt-2 text-xs text-ink-2">🌕 {t.evo_next_moon(moon.toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>}
+      {moon && <p className="mt-2 text-xs text-ink-2">🌕 {t.evo_next_moon(moon.toLocaleString(lang, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p>}
     </section>
   );
 }

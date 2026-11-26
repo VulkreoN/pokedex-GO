@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildHuntIndex, type Dataset, type Species, type Variant } from '@mydexpogo/shared';
-import { keyOfPicture, matchHunt, type Found, type MissingEntry } from './huntAlerts.js';
+import { keyOfPicture, matchHunt, maxBattleFound, type Found, type MissingEntry } from './huntAlerts.js';
 
 const sp = (dex: number, en: string, parent?: number): Species => ({
   dex,
@@ -47,6 +47,7 @@ const ds: Dataset = {
     vr({ key: '4', dex: 4, kind: 'base' }),
     vr({ key: '5', dex: 5, kind: 'base' }),
     vr({ key: '6', dex: 6, kind: 'base' }),
+    vr({ key: '6.fMEGA_X', dex: 6, kind: 'mega', form: 'MEGA_X' }),
     vr({ key: '25', dex: 25, kind: 'base' }),
     vr({ key: '25.cPARTY_HAT', dex: 25, kind: 'costume', costume: 'PARTY_HAT' }),
     vr({ key: '26', dex: 26, kind: 'base' }),
@@ -90,7 +91,7 @@ describe('event and quest alerts', () => {
     expect(out.get('a')!.map((h) => [h.mon.key, h.listIds])).toEqual([['35', ['l1']], ['546.cSPRING_2024', ['l1']]]);
   });
 
-  it('respects per-list pre-evolution toggle, keeps Rocket Shadow apart, and blocks Gigantamax / wrong costumes', () => {
+  it('respects per-list pre-evolution toggle, matches plain & Shadow on Rocket, expands Megas safely, and blocks Gigantamax / wrong costumes', () => {
     const found: Found[] = [
       { key: '143', source: 'wild', canBeShiny: true, where: 'Tropical Paradise' },
       { key: '4', source: 'wild', canBeShiny: true, where: 'Fire Event' },
@@ -102,14 +103,46 @@ describe('event and quest alerts', () => {
       { userId: 'gmax', listId: 'l1', variantKey: '143.fGIGANTAMAX', shiny: false, tag: '', alertPreEvolutions: true },
       { userId: 'charOptIn', listId: 'l2', variantKey: '6', shiny: false, tag: '', alertPreEvolutions: true },
       { userId: 'charOptOut', listId: 'l3', variantKey: '6', shiny: false, tag: '', alertPreEvolutions: false },
+      { userId: 'megaOptIn', listId: 'l6', variantKey: '6.fMEGA_X', shiny: false, tag: '', alertPreEvolutions: true },
       { userId: 'costRaichu', listId: 'l4', variantKey: '26.cPARTY_HAT', shiny: false, tag: '', alertPreEvolutions: true },
       { userId: 'shadowChar', listId: 'l5', variantKey: '6', shiny: false, tag: 'shadow', alertPreEvolutions: true },
     ];
     const out = matchHunt(found, missing, new Set(), 'remind', huntIndex);
     expect(out.has('gmax')).toBe(false);
-    expect(out.get('charOptIn')?.map((h) => h.mon.key)).toEqual(['4']);
+    expect(out.get('charOptIn')?.map((h) => [h.mon.key, h.mon.source])).toEqual([['4', 'wild'], ['4', 'rocket']]);
     expect(out.has('charOptOut')).toBe(false);
+    expect(out.get('megaOptIn')?.map((h) => [h.mon.key, h.mon.source])).toEqual([['4', 'wild'], ['4', 'rocket']]);
     expect(out.get('costRaichu')?.map((h) => h.mon.key)).toEqual(['25.cPARTY_HAT']);
     expect(out.get('shadowChar')?.map((h) => [h.mon.key, h.mon.source])).toEqual([['4', 'rocket']]);
+  });
+
+  it('extracts active/upcoming Gigantamax & Dynamax Max Battle targets with strict matching', () => {
+    const now = new Date('2026-11-20T12:00:00Z').getTime();
+    const names = new Map(ds.species.map((s) => [s.dex, s.name]));
+    const found = maxBattleFound(
+      [
+        { eventID: 'gmax-snorlax', name: 'Gigantamax Snorlax Max Battle Day', eventType: 'max-battles', start: '2026-11-20T10:00:00Z', end: '2026-11-20T18:00:00Z' },
+        { eventID: 'dmax-charmander', name: 'Dynamax Charmander Max Monday', eventType: 'max-mondays', start: '2026-11-23T18:00:00Z', end: '2026-11-23T19:00:00Z' },
+        { eventID: 'past-max', name: 'Gigantamax Snorlax Old', eventType: 'max-battles', start: '2026-11-01T10:00:00Z', end: '2026-11-01T18:00:00Z' },
+        { eventID: 'non-max', name: 'Charmander Community Day', eventType: 'community-day', start: '2026-11-21T10:00:00Z', end: '2026-11-21T18:00:00Z' },
+      ],
+      huntIndex,
+      names,
+      now,
+    );
+    expect(found.map((f) => [f.key, f.source, f.from])).toEqual([
+      ['143.fGIGANTAMAX', 'gmax', null],
+      ['4', 'max', '2026-11-23T18:00:00Z'],
+    ]);
+
+    const missing: MissingEntry[] = [
+      { userId: 'uGmax', listId: 'l1', variantKey: '143.fGIGANTAMAX', shiny: false, tag: '' },
+      { userId: 'uPlainSnorlax', listId: 'l2', variantKey: '143', shiny: false, tag: '' },
+      { userId: 'uDmax', listId: 'l3', variantKey: '4', shiny: false, tag: 'dynamax' },
+    ];
+    const hits = matchHunt(found, missing, new Set(), 'spawn', huntIndex);
+    expect(hits.get('uGmax')?.map((h) => h.mon.key)).toEqual(['143.fGIGANTAMAX']);
+    expect(hits.has('uPlainSnorlax')).toBe(false);
+    expect(hits.get('uDmax')?.map((h) => h.mon.key)).toEqual(['4']);
   });
 });

@@ -43,10 +43,25 @@ describe('pvp maths', () => {
     expect(rankTable(data, azumarill, 1500, 51, 10)).toHaveLength(216);
   });
 
-  it('prices power-ups like the game', () => {
+  it('prices power-ups like the game (including per-step rounding for Shadow, Purified & Lucky)', () => {
+    expect(powerUpCost(data, 1, 40)).toEqual({ stardust: 270000, candy: 304, xlCandy: 0 });
+    expect(powerUpCost(data, 20, 40)).toEqual({ stardust: 225000, candy: 248, xlCandy: 0 });
+    expect(powerUpCost(data, 25, 40)).toEqual({ stardust: 194000, candy: 220, xlCandy: 0 });
     expect(powerUpCost(data, 40, 50)).toEqual({ stardust: 250000, candy: 0, xlCandy: 296 });
+    expect(powerUpCost(data, 20, 50)).toEqual({ stardust: 475000, candy: 248, xlCandy: 296 });
     expect(powerUpCost(data, 50, 51)).toEqual({ stardust: 0, candy: 0, xlCandy: 0 });
     expect(powerUpCost(data, 20, 20.5).stardust).toBe(2500);
+    // Shadow (+20 % rounded up per power-up step)
+    expect(powerUpCost(data, 1, 40, 'shadow')).toEqual({ stardust: 324000, candy: 406, xlCandy: 0 });
+    expect(powerUpCost(data, 20, 40, 'shadow')).toEqual({ stardust: 270000, candy: 312, xlCandy: 0 });
+    expect(powerUpCost(data, 40, 50, 'shadow')).toEqual({ stardust: 300000, candy: 0, xlCandy: 360 });
+    // Purified (−10 % rounded up per power-up step)
+    expect(powerUpCost(data, 25, 40, 'purified')).toEqual({ stardust: 174600, candy: 210, xlCandy: 0 });
+    expect(powerUpCost(data, 40, 50, 'purified')).toEqual({ stardust: 225000, candy: 0, xlCandy: 272 });
+    // Lucky (−50 % stardust, normal candy/XL) & Lucky + Purified
+    expect(powerUpCost(data, 20, 40, 'lucky')).toEqual({ stardust: 112500, candy: 248, xlCandy: 0 });
+    expect(powerUpCost(data, 40, 50, 'lucky')).toEqual({ stardust: 125000, candy: 0, xlCandy: 296 });
+    expect(powerUpCost(data, 40, 50, 'luckyPurified')).toEqual({ stardust: 112500, candy: 0, xlCandy: 272 });
   });
 
   it('recovers the level from CP', () => {

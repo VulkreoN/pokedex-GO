@@ -5,20 +5,22 @@ import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSh
 import { BulkManageSheet } from '../components/BulkManageSheet.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
 import { useMe } from '../lib/auth.js';
+import { useBulkOverride, useOverrides, type Override } from '../lib/admin.js';
 import { Sparkle } from '../components/Sprite.js';
 import { VariantCard, type GenderFilter } from '../components/VariantCard.js';
 import { Badge, Button, Chip, Empty, Sheet, Spinner, TopBar } from '../components/ui.js';
+import { PageTourButton } from '../components/PageTour.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
-import { neutralKey } from '@mydexpogo/shared';
+import { eventTitle, neutralKey } from '@mydexpogo/shared';
 import { normalize, useDataset } from '../lib/dataset.js';
 import { liveAppearancesOf, suggestListTag } from '../lib/dexSearch.js';
 import { LeagueIcon } from '../components/PvpTops.js';
-import { localized, useLang, useT } from '../lib/i18n.js';
+import { localized, typeName, useLang, useT } from '../lib/i18n.js';
 import { useList, useMembership } from '../lib/lists.js';
 import { useEggs, useEvents, useRaids, useResearch } from '../lib/live.js';
 import { useSelection } from '../lib/selection.js';
-import { useRockets } from '../lib/tools.js';
+import { rocketName, useRockets } from '../lib/tools.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { EvolutionCard, useEventSpawns } from '../components/GameTools.js';
 import { feedback, useFeedbackPref } from '../lib/feedback.js';
@@ -42,10 +44,26 @@ export function SpeciesPage() {
   const [reporting, setReporting] = useState(false);
   const me = useMe();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
+  const toast = useToast();
+  const overrides = useOverrides(isManager);
+  const bulkOverride = useBulkOverride();
   const basketCount = useSelection().length;
   const idx = dataset.data;
   const species = idx?.speciesByDex.get(dex);
   const variants = useMemo(() => idx?.variantsByDex.get(dex) ?? [], [idx, dex]);
+  const hiddenGroups = useMemo(() => {
+    if (!isManager) return [];
+    const grouped = new Map<string, { keys: string[]; sample: Override }>();
+    for (const o of overrides.data ?? []) {
+      if (o.hidden !== true) continue;
+      if (Number(o.variantKey.split('.')[0]) !== dex) continue;
+      const nk = neutralKey(o.variantKey);
+      const cur = grouped.get(nk);
+      if (cur) cur.keys.push(o.variantKey);
+      else grouped.set(nk, { keys: [o.variantKey], sample: o });
+    }
+    return [...grouped.entries()].map(([key, v]) => ({ key, ...v }));
+  }, [isManager, overrides.data, dex]);
 
   const targetQuery = useList(targetListId ?? '', !!targetListId && !!me.data);
   const targetList = targetQuery.data?.access === 'owner' ? targetQuery.data.list : undefined;
@@ -110,13 +128,14 @@ export function SpeciesPage() {
         title={<span><span className="tnum mr-2 opacity-60">#{dex}</span>{' '}{localized(species.name, lang)}</span>}
         back
         actions={
-          <div className="flex">
+          <div className="flex items-center">
             {prev && <Link to={`/dex/${prev.dex}${suffix}`} className="tnum px-2 py-2 text-sm font-semibold text-ink-2" aria-label={localized(prev.name, lang)}>‹ {prev.dex}</Link>}
             {next && <Link to={`/dex/${next.dex}${suffix}`} className="tnum px-2 py-2 text-sm font-semibold text-ink-2" aria-label={localized(next.name, lang)}>{next.dex} ›</Link>}
+            <PageTourButton page="dex" />
           </div>
         }
       />
-      <main className={`mx-auto max-w-3xl px-3 ${multi && basketCount > 0 ? 'pb-44' : 'pb-24'}`}>
+      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${multi && basketCount > 0 ? 'pb-44' : 'pb-24'}`}>
         {targetList && (
           <div className="mb-3 flex items-center gap-2 rounded-xl bg-go-soft px-3 py-1.5 text-xs font-semibold text-go-ink">
             <span className="min-w-0 flex-1 truncate">{t.adding_to_banner(targetList.name)}</span>
@@ -208,7 +227,7 @@ export function SpeciesPage() {
               onChange={(e) => setQuery(e.target.value)}
               className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:border-sky"
             />
-            <nav className="flex gap-2 overflow-x-auto [scrollbar-width:none]" aria-label={t.sections}>
+            <nav className="flex gap-2 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible" aria-label={t.sections}>
               {shown.map(([title, groups], i) =>
                 groups.length ? (
                   <a key={title} href={`#section-${i}`} className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border border-line bg-card px-3 text-sm font-semibold text-ink-2">
@@ -224,7 +243,7 @@ export function SpeciesPage() {
           groups.length ? (
             <section key={title} id={`section-${i}`} className="mb-5 scroll-mt-20">
               <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-ink-3">{groups.length}</span></h2>
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {groups.map((g) => {
                   const id = `${dex}-${g.id}`;
                   const baseKey = neutralKey((g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!).key);
@@ -252,6 +271,40 @@ export function SpeciesPage() {
           ) : null,
         )}
         {variants.some((v) => v.datamined) && <p className="text-xs text-ink-3">{t.datamined_hint}</p>}
+        {isManager && hiddenGroups.length > 0 && (
+          <details className="card mt-4 border-berry/35 p-3">
+            <summary className="cursor-pointer text-sm font-bold text-berry">
+              {t.variant_hidden_title(hiddenGroups.length)}
+            </summary>
+            <ul className="mt-2.5 space-y-2">
+              {hiddenGroups.map(({ key, keys, sample }) => {
+                const img = sample.meta?.img;
+                const src = img ? (/^https?:\/\//.test(img) ? img : `${idx.ds.assetBase}${img}`) : null;
+                const label = localized(sample.label ?? sample.meta?.label, lang) || t.normal;
+                return (
+                  <li key={key} className="flex items-center gap-2.5 rounded-xl border border-line bg-paper/60 p-2">
+                    {src && <img src={src} alt="" width={40} height={40} loading="lazy" className="h-10 w-10 shrink-0 object-contain opacity-75" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{label}</p>
+                      <p className="truncate font-mono text-[11px] text-ink-3">{key}</p>
+                    </div>
+                    <Button
+                      tone="quiet"
+                      className="min-h-8 shrink-0 px-2.5 text-xs"
+                      disabled={bulkOverride.isPending}
+                      onClick={async () => {
+                        await bulkOverride.mutateAsync({ keys, hidden: null });
+                        toast(t.variant_restored);
+                      }}
+                    >
+                      {t.variant_restore}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        )}
         {me.data && (
           <button type="button" onClick={() => setReporting(true)} className="mt-4 text-sm font-semibold text-ink-3 underline hover:text-ink-2">{t.report_button}</button>
         )}
@@ -259,7 +312,7 @@ export function SpeciesPage() {
 
       {multi && ticked.size > 0 && (
         <div className={`pb-safe fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
             <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
             {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}
             <Button tone="ghost" className="min-h-9 bg-white px-3 text-sm text-go-ink hover:bg-white" onClick={() => setBulkOpen(true)}>{t.add}</Button>
@@ -295,6 +348,8 @@ export function SpeciesPage() {
 /** Shows where this Pokémon is currently obtainable in Pokémon GO (raids, eggs, research, Team GO Rocket, active events). */
 function LiveNowCard({ dex }: { dex: number }) {
   const t = useT();
+  const { lang } = useLang();
+  const idx = useDataset().data;
   const raids = useRaids();
   const events = useEvents();
   const eggs = useEggs();
@@ -320,8 +375,8 @@ function LiveNowCard({ dex }: { dex: number }) {
     if (a.kind === 'raid') return t.live_raid(a.detail);
     if (a.kind === 'egg') return t.live_egg(a.detail);
     if (a.kind === 'research') return t.live_research;
-    if (a.kind === 'rocket') return t.live_rocket(a.detail);
-    return t.live_event(a.detail);
+    if (a.kind === 'rocket') return t.live_rocket(rocketName(a.detail, lang, (ty) => typeName(ty, lang)));
+    return t.live_event(eventTitle(a.detail, idx?.speciesByDex, lang));
   };
 
   return (

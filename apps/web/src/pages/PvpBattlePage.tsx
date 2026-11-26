@@ -105,7 +105,7 @@ export function PvpBattlePage() {
   return (
     <>
       <TopBar title={t.battle_title} back />
-      <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
+      <main className="mx-auto max-w-6xl px-3 pb-24 pt-3 sm:px-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {LEAGUE_LIST.map((l) => (
             <Chip key={l} active={league === l} onClick={() => setParams((prev) => { const n = new URLSearchParams(prev); n.set('l', l); return n; }, { replace: true })}>
@@ -132,8 +132,10 @@ export function PvpBattlePage() {
 
         {result && a.built && b.built && (
           <>
-            <ResultCard r={result} names={[nameOf(a), nameOf(b)]} pvp={pvp} fighters={[a.built.fighter, b.built.fighter]} />
-            {matrix && <Matrix m={matrix} names={[nameOf(a), nameOf(b)]} />}
+            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)] lg:items-start lg:gap-4">
+              <ResultCard r={result} names={[nameOf(a), nameOf(b)]} pvp={pvp} fighters={[a.built.fighter, b.built.fighter]} />
+              {matrix && <Matrix m={matrix} names={[nameOf(a), nameOf(b)]} />}
+            </div>
             <p className="mt-3 text-xs text-ink-3">
               {t.battle_disclaimer}{' '}
               {pvpokeLink && <a href={pvpokeLink} target="_blank" rel="noreferrer" className="font-semibold text-sky">{t.battle_check_pvpoke}</a>}

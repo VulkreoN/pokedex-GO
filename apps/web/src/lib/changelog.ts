@@ -1,9 +1,11 @@
 /**
- * What's new, in players' words: the newest first. Add an entry (with a new id) for each update worth telling;
- * players see the ones they have not seen yet in a banner, and all of them in About.
+ * What's new, in players' words: the newest first. Add an entry (with a new id and version) for each update worth
+ * telling; players see the ones they have not seen yet in a banner, and all of them in About (by version or by date).
  */
 export interface ChangelogEntry {
   id: string;
+  /** Release version shown alongside the date (e.g. "1.3", "1.2.1"). */
+  version: string;
   /** Day of the update (YYYY-MM-DD). */
   date: string;
   fr: string[];
@@ -12,7 +14,29 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-26-v1-3',
+    version: '1.3',
+    date: '2026-11-27',
+    fr: [
+      'Onglet Jeu repensé : « Événements » en premier avec le calendrier automatique « Ma semaine » (Lundi → Dimanche), des fiches visuelles traduites en français par type d’événement (Gigamax, Journée Communauté, Heure vedette, Journée Raids, Événements longs) exportables en image PNG ou PDF avec les vraies icônes de bonus, et les codes promo repliés en menu déroulant masquable.',
+      'Nouvel onglet « Pour moi » : toutes tes chasses actives sur un seul écran, comptes à rebours en direct, alertes Gigamax/Dynamax, chasses Rocket & Raids obscurs unifiées et pré-évolutions des Méga prises en compte quand l’option pré-évolutions est cochée.',
+      'Amis & Prismillon : indique tes cartes postales Prismillon dans Moi, retrouve-les directement sur la liste d’amis et ouvre le profil complet d’un ami (collections partagées, badges & médailles, cartes postales, Ami Chanceux ✨) + onglet « Ajout d’amis · Prismillon » pour trouver des dresseurs ayant les motifs qu’il te manque.',
+      'Médailles de dresseur à paliers (Bronze → Platine) dans Moi, stats par collection, filtre « Sorties récentes » et notification « Je l’ai » groupée envoyée uniquement en quittant la collection.',
+      'PvP & Outils : enregistre tes équipes de 3 par ligue, calcul exact des coûts poussières / bonbons / XL (Normal, Obscur, Purifié, Chanceux, Chanceux purifié) et Quoi de neuf classable par version ou par date.',
+      'Version web / grand écran retravaillée (plus d’onglets ou filtres coupés, grilles plus larges) et guides interactifs passables sur chaque page (bouton « ? » en haut).',
+    ],
+    en: [
+      'Reworked Game tab: “Events” now comes first with the automatic “This week” Monday → Sunday schedule, tailored localized infographics per event type (Max Battles, Community Day, Spotlight, Raid Day, Long Events) exportable as PNG image or PDF with real bonus icons, and a collapsible/hideable promo codes menu.',
+      'New “For me” overview: every active hunt on one screen, live countdowns, Gigantamax/Dynamax alerts, unified Rocket & Shadow Raid hunts and Mega pre-evolutions included when pre-evolution alerts are checked.',
+      'Friends & Vivillon: set your available Vivillon postcards in Me, see them right on your friends list and open any friend’s full profile (shared collections, medals, postcards, Lucky Friend ✨) + “Add friends · Vivillon” tab matching trainers who have your missing patterns.',
+      'Tiered trainer medals (Bronze → Platinum) in Me, collection stats, “Recent releases” filter, and batched “I have it” notification sent only when leaving the collection.',
+      'PvP & Tools: save your teams of 3 per league, exact Stardust / Candy / XL power-up costs (Normal, Shadow, Purified, Lucky, Lucky Purified), and What’s new sortable by version or by date.',
+      'Improved desktop responsive layout (no more clipped tabs or filters, wider multi-column grids) and skippable interactive guides on every page (“?” button at top).',
+    ],
+  },
+  {
     id: '2026-11-26-hunts-startup',
+    version: '1.2.1',
     date: '2026-11-26',
     fr: [
       'Page au démarrage au choix dans Moi : ouvre directement l’appli sur le Pokédex, tes Collections, ta Dernière collection, Jeu, PvP ou Amis.',
@@ -27,6 +51,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-26-ux',
+    version: '1.2',
     date: '2026-11-26',
     fr: [
       'Collections & Pokédex : ajout direct depuis une liste, modèles prêts à l’emploi (Living Dex, Shiny, Costumes, Gen 1 à 9…), notes perso, filtres Type / Rareté / Shiny / Fonds spéciaux, recherche +famille et 1-151, et export image/PDF fiabilisé sur les grandes listes.',
@@ -43,6 +68,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-26-styles',
+    version: '1.1',
     date: '2026-11-26',
     fr: [
       'Partage en image et PDF : choisis un style (Shiny, Chanceux, Obscur, Mâle, Femelle, Nuit, Papier) ou laisse l’appli l’adapter toute seule, avec aperçu en direct, message perso et ton code ami.',
@@ -57,6 +83,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-25-dex',
+    version: '1.0.2',
     date: '2026-11-25',
     fr: [
       'Pokédex : en revenant d’une fiche, tu retrouves exactement ta recherche, tes filtres et ta position.',
@@ -71,6 +98,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-25-events',
+    version: '1.0.1',
     date: '2026-11-25',
     fr: [
       'Événements : les Pokémon d’un événement en cours ressortent en bleu dans Raids, Œufs, Études et Rocket.',
@@ -83,6 +111,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-25',
+    version: '1.0',
     date: '2026-11-25',
     fr: [
       'Raids repensés avec PC, types, meilleurs contres et prochains boss.',
@@ -99,6 +128,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     id: '2026-11-24',
+    version: '0.9',
     date: '2026-11-24',
     fr: [
       'Ouverture instantanée même avec peu de réseau, et bouton Annuler après une action.',

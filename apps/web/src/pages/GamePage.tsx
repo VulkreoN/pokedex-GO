@@ -1,41 +1,71 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { XEmbed } from '../components/XEmbed.js';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { BottleCaps } from '../components/BottleCaps.js';
-import { useToast } from '../components/toast.js';
-import { api } from '../lib/api.js';
+import { EventFeed } from '../components/EventInfographic.js';
+import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
+import { WhatsNewBanner } from '../components/WhatsNew.js';
 import { useMe } from '../lib/auth.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
-import { useTheme } from '../lib/theme.js';
-import { Button, CopyButton, TextField } from '../components/ui.js';
+import { Button, CopyButton } from '../components/ui.js';
 import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
-import { localized, useLang, useT } from '../lib/i18n.js';
+import { localized, typeName, useLang, useT } from '../lib/i18n.js';
 import { BuddyTool, CostsTool, CountersSheet, CountersTool, EVENT_MARK, EventLegend, EvolutionsTool, LeagueTool, RocketTab, useEventMarks, useEventSpawns, useFromImage, useKnownPokemon, useMissingHunts, type EventSpawns } from '../components/GameTools.js';
-import { liveKey, useTools } from '../lib/tools.js';
-import { cpmAt, cpOf, type HuntSource, type ToolPokemon } from '@mydexpogo/shared';
+import { liveKey, rocketName, useRockets, useTools } from '../lib/tools.js';
+import { cpmAt, cpOf, eventLabelFr, promoTextFr, researchTaskFr, weatherFr, type HuntSource, type ToolPokemon } from '@mydexpogo/shared';
 import { TYPE_COLORS, TypeBadge } from '../components/TypeBadge.js';
-import { RAID_TIERS, currentRaidBosses, raidSchedule, type CurrentBoss, type RaidTier, dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, linkify, useEggs, useEvents, usePosts, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
+import { RAID_TIERS, countdownOf, currentRaidBosses, raidSchedule, type CurrentBoss, type RaidTier, dexFromImage, eventStatus, eventTitle, liveName, formatRange, formatUntil, isMaxEvent, useEggs, useEvents, usePromoCodes, useRaids, useResearch, type GameEvent, type LivePokemon, type ResearchCategory, type ResearchReward } from '../lib/live.js';
 
-const X_HANDLE = 'g47ix';
+type Tab = 'events' | 'hunts' | 'raids' | 'spawns' | 'max' | 'rocket' | 'research' | 'eggs' | 'tools';
 
-type Tab = 'raids' | 'spawns' | 'max' | 'rocket' | 'events' | 'research' | 'eggs' | 'tools';
+const TABS: Tab[] = ['events', 'hunts', 'raids', 'spawns', 'max', 'rocket', 'research', 'eggs', 'tools'];
 
-const TABS: Tab[] = ['raids', 'spawns', 'max', 'rocket', 'events', 'research', 'eggs', 'tools'];
+const raidSource = (b: { tier: RaidTier }): HuntSource => (b.tier === 'mega' ? 'megaRaid' : b.tier.startsWith('shadow') ? 'shadowRaid' : 'raid');
+
+/** Ticks every 60 s so live countdown badges stay fresh while the Game tab stays open. */
+function useNowMinute(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function CountdownBadge({ e, now }: { e: { start?: string | null; end?: string | null }; now: number }) {
+  const t = useT();
+  const { lang } = useLang();
+  const cd = countdownOf(e, lang, now);
+  if (!cd) return null;
+  return (
+    <Badge tone={cd.kind === 'ends' ? 'grass' : 'datamined'}>
+      {cd.kind === 'ends' ? t.countdown_ends_in(cd.text) : t.countdown_starts_in(cd.text)}
+    </Badge>
+  );
+}
 
 export function GamePage() {
   const t = useT();
   // The tab lives in the URL: coming back from a Pokémon page lands on the same tab.
   const [params, setParams] = useSearchParams();
-  const tab = TABS.find((x) => x === params.get('tab')) ?? 'raids';
-  const setTab = (id: Tab) => setParams(id === 'raids' ? {} : { tab: id }, { replace: true });
-  const labels: Record<Tab, string> = { raids: t.tab_raids, spawns: t.tab_spawns, max: t.tab_max, rocket: t.tab_rocket, events: t.tab_events, research: t.tab_research, eggs: t.tab_eggs, tools: t.tab_tools };
+  const tab = TABS.find((x) => x === params.get('tab')) ?? 'events';
+  const setTab = (id: Tab) => setParams(id === 'events' ? {} : { tab: id }, { replace: true });
+  const labels: Record<Tab, string> = {
+    events: t.tab_events,
+    hunts: t.tab_hunts,
+    raids: t.tab_raids,
+    spawns: t.tab_spawns,
+    max: t.tab_max,
+    rocket: t.tab_rocket,
+    research: t.tab_research,
+    eggs: t.tab_eggs,
+    tools: t.tab_tools,
+  };
   return (
     <>
-      <TopBar title={t.nav_game}>
-        {/* Eight tabs do not fit a phone: the row scrolls, fades out on the right, and keeps the current one in view. */}
-        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none]" role="tablist">
+      <TopBar title={t.nav_game} actions={<PageTourButton page="game" />}>
+        {/* Nine tabs scroll on phones, and wrap cleanly on desktop so every tab stays visible and clickable. */}
+        <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-2 [mask-image:linear-gradient(to_right,#000_88%,transparent)] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:px-5 sm:[mask-image:none]" role="tablist">
           {TABS.map((id) => (
             <Chip
               key={id}
@@ -50,12 +80,15 @@ export function GamePage() {
           ))}
         </div>
       </TopBar>
-      <main className="mx-auto max-w-3xl px-3 pb-24">
+      <main className="mx-auto max-w-6xl px-3 pb-24 sm:px-5">
+        <WhatsNewBanner />
+        <PageTourBanner page="game" />
+        {tab === 'events' && <Events />}
+        {tab === 'hunts' && <MyHuntsOverview onGoTab={setTab} />}
         {tab === 'raids' && <Raids />}
         {tab === 'spawns' && <EventSpawnsTab />}
         {tab === 'max' && <MaxBattles />}
         {tab === 'rocket' && <RocketTab />}
-        {tab === 'events' && <Events />}
         {tab === 'research' && <Research />}
         {tab === 'eggs' && <Eggs />}
         {tab === 'tools' && <Tools />}
@@ -128,7 +161,7 @@ function Mon({ p, size = 56, caption = true, event, wanted = false, regional = f
           </span>
         )}
       </span>
-      {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{liveName(p.name, p.image, idx?.speciesByDex, lang)}</span>}
+      {caption && <span className="mt-0.5 line-clamp-2 w-[4.5rem] text-[11px] font-semibold leading-tight">{liveName(p.name, p.image, idx, lang)}</span>}
       {sub && <span className="tnum w-[4.5rem] truncate text-[10px] font-semibold leading-tight text-ink-3">{sub}</span>}
     </span>
   );
@@ -141,21 +174,265 @@ function Mon({ p, size = 56, caption = true, event, wanted = false, regional = f
   );
 }
 
-function Section({ title, count, subtitle, children }: { title: ReactNode; count?: number; subtitle?: string; children: ReactNode }) {
+function Section({ title, count, subtitle, action, children }: { title: ReactNode; count?: number; subtitle?: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="mb-6">
-      <h2 className={`${subtitle ? 'mb-0.5' : 'mb-2'} text-base font-bold`}>
-        {title} {count !== undefined && <span className="tnum font-normal text-ink-3">{count}</span>}
-      </h2>
+      <div className={`${subtitle ? 'mb-0.5' : 'mb-2'} flex items-baseline gap-2`}>
+        <h2 className="min-w-0 flex-1 text-base font-bold">
+          {title} {count !== undefined && <span className="tnum font-normal text-ink-3">{count}</span>}
+        </h2>
+        {action}
+      </div>
       {subtitle && <p className="mb-2 text-xs text-ink-3">{subtitle}</p>}
       {children}
     </section>
   );
 }
 
+/** Aggregated "For me" summary of everything currently active in the game that matches the player's missing hunts. */
+function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
+  const t = useT();
+  const { lang } = useLang();
+  const now = useNowMinute();
+  const me = useMe();
+  const dataset = useDataset();
+  const idx = dataset.data;
+  const { hasMissing, isWanted, isWantedKey } = useMissingHunts();
+  const raids = useRaids();
+  const events = useEvents();
+  const spawns = useEventSpawns();
+  const rockets = useRockets();
+  const research = useResearch();
+  const eggs = useEggs();
+  const tools = useTools();
+  const fromImage = useFromImage(tools.data);
+  const [target, setTarget] = useState<ToolPokemon | null>(null);
+
+  const wantedRaids = useMemo(
+    () => currentRaidBosses(raids.data ?? [], events.data ?? []).filter((b) => isWanted(b.image, b.name, raidSource(b), b.canBeShiny)),
+    [raids.data, events.data, isWanted],
+  );
+
+  const wantedSpawns = useMemo(() => {
+    const out = new Map<string, { m: LivePokemon; event: string }>();
+    for (const e of spawns.data ?? []) {
+      if (eventStatus(e, now) !== 'current') continue;
+      const evTitle = eventTitle(e.name, idx?.speciesByDex, lang);
+      for (const m of [...e.featured, ...e.spawns]) {
+        if (!out.has(m.image) && isWanted(m.image, m.name, 'wild', m.canBeShiny)) {
+          out.set(m.image, { m, event: evTitle });
+        }
+      }
+    }
+    return [...out.values()].sort((a, b) => (dexFromImage(a.m.image) ?? 9999) - (dexFromImage(b.m.image) ?? 9999));
+  }, [spawns.data, now, idx, lang, isWanted]);
+
+  const wantedMax = useMemo(() => {
+    if (!idx) return [];
+    const list = (events.data ?? [])
+      .filter((e) => isMaxEvent(e) && eventStatus(e, now) !== 'past')
+      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    const out: { event: GameEvent; gmax: boolean; species: typeof idx.ds.species }[] = [];
+    for (const e of list) {
+      const gmax = /gigantamax/i.test(e.name);
+      const hay = ` ${e.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+      const matched = idx.ds.species.filter((sp) => {
+        if (sp.name.en.length < 3 || !hay.includes(` ${sp.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `)) return false;
+        const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') : undefined;
+        return isWantedKey(gmax ? (v?.key ?? `${sp.dex}.fGIGANTAMAX`) : String(sp.dex), gmax ? 'gmax' : 'max');
+      });
+      if (matched.length) out.push({ event: e, gmax, species: matched });
+    }
+    return out;
+  }, [events.data, idx, now, isWantedKey]);
+
+  const wantedRockets = useMemo(() => {
+    const out: { trainer: string; mons: LivePokemon[] }[] = [];
+    for (const r of rockets.data ?? []) {
+      const mons = [r.firstPokemon, r.secondPokemon, r.thirdPokemon]
+        .flat()
+        .filter((m) => m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny));
+      if (mons.length) out.push({ trainer: rocketName(r.name, lang, (ty) => typeName(ty, lang)), mons });
+    }
+    return out;
+  }, [rockets.data, lang, isWanted]);
+
+  const wantedResearch = useMemo(() => {
+    const out: { text: string; rewards: LivePokemon[] }[] = [];
+    for (const c of research.data ?? []) {
+      for (const task of c.tasks) {
+        const rewards = task.rewards.filter((r) => r.kind === 'encounter' && isWanted(r.image, r.name, 'research', r.canBeShiny));
+        if (rewards.length) {
+          out.push({ text: lang === 'fr' ? (task.textFr ?? researchTaskFr(task.text, idx?.speciesByDex, 'fr')) : task.text, rewards });
+        }
+      }
+    }
+    return out;
+  }, [research.data, lang, idx, isWanted]);
+
+  const wantedEggs = useMemo(
+    () => (eggs.data ?? []).filter((m) => isWanted(m.image, m.name, 'egg', m.canBeShiny)),
+    [eggs.data, isWanted],
+  );
+
+  if (me.isPending || dataset.isPending) return <Spinner />;
+  if (!me.data) {
+    return (
+      <Empty>
+        {t.hunts_login}
+        <br />
+        <Link to="/login" className="mt-3 inline-block"><Button tone="primary">{t.login}</Button></Link>
+      </Empty>
+    );
+  }
+  const allLoading = raids.isPending && spawns.isPending && events.isPending && rockets.isPending && research.isPending && eggs.isPending;
+  if (allLoading) return <Spinner />;
+
+  const total =
+    wantedRaids.length +
+    wantedSpawns.length +
+    wantedMax.length +
+    wantedRockets.length +
+    wantedResearch.length +
+    wantedEggs.length;
+
+  const pickTarget = (image: string, bossName: string) => {
+    const found = fromImage(image, bossName) ?? tools.data?.pokemon.find((p) => p.dex === dexFromImage(image) && !p.mega);
+    if (found) setTarget(found);
+  };
+  const goBtn = (tab: Tab) => (
+    <button type="button" onClick={() => onGoTab(tab)} className="shrink-0 text-xs font-semibold text-sky hover:underline">
+      {t.hunts_see_tab} ›
+    </button>
+  );
+
+  return (
+    <>
+      <p className="mb-3 text-sm text-ink-2">{t.hunts_intro}</p>
+      {(!hasMissing || total === 0) && <Empty>{t.hunts_empty}</Empty>}
+
+      {wantedRaids.length > 0 && (
+        <Section title={t.tab_raids} count={wantedRaids.length} action={goBtn('raids')}>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {wantedRaids.map((b) => (
+              <li key={b.image + b.tier}>
+                <button
+                  type="button"
+                  onClick={() => pickTarget(b.image, b.name)}
+                  className="card flex w-full items-center gap-3 p-2 text-left ring-2 ring-go/60 transition active:scale-[0.99]"
+                >
+                  <img src={b.image} alt="" width={48} height={48} loading="lazy" className="shrink-0 object-contain" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 font-semibold">
+                      <span className="truncate">{liveName(b.name, b.image, idx, lang)}</span>
+                      {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
+                      <Badge tone="muted">{t.raid_tier[b.tier]}</Badge>
+                    </div>
+                    {b.end && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
+                        <span>{formatUntil(b.end, lang)}</span>
+                        <CountdownBadge e={{ end: b.end }} now={now} />
+                      </div>
+                    )}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {wantedSpawns.length > 0 && (
+        <Section title={t.tab_spawns} count={wantedSpawns.length} action={goBtn('spawns')}>
+          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
+            {wantedSpawns.map(({ m, event }) => (
+              <li key={m.image} className="flex flex-col items-center">
+                <Mon p={m} wanted />
+                <span className="mt-0.5 line-clamp-1 w-[4.5rem] text-center text-[10px] text-ink-3">{event}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {wantedMax.length > 0 && idx && (
+        <Section title={t.tab_max} count={wantedMax.length} action={goBtn('max')}>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {wantedMax.map(({ event: e, gmax, species }) => (
+              <li key={e.eventID} className="card p-3 ring-2 ring-go/60">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
+                  <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? t.kinds.gmax : t.tag_dynamax}</Badge>
+                  <CountdownBadge e={e} now={now} />
+                  <span>{formatRange(e.start, e.end, lang)}</span>
+                </div>
+                <div className="mt-1 font-semibold">{eventTitle(e.name, idx.speciesByDex, lang)}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {species.map((sp) => {
+                    const cover = idx.coverOf.get(sp.dex);
+                    const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') ?? cover : cover;
+                    return v ? (
+                      <Link key={sp.dex} to={`/dex/${sp.dex}`} className="flex flex-col items-center rounded-lg bg-go-soft/50 p-1 text-center ring-2 ring-go/60">
+                        <Sprite idx={idx} variant={v} size={48} />
+                        <span className="w-[4.5rem] truncate text-[11px] font-semibold">{localized(sp.name, lang)}</span>
+                      </Link>
+                    ) : null;
+                  })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {wantedRockets.length > 0 && (
+        <Section title={t.tab_rocket} count={wantedRockets.length} action={goBtn('rocket')}>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {wantedRockets.map((r) => (
+              <li key={r.trainer} className="card p-2.5 ring-2 ring-go/60">
+                <p className="mb-1.5 text-sm font-bold">{r.trainer}</p>
+                <div className="flex flex-wrap gap-2">
+                  {r.mons.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} size={48} wanted />)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {wantedResearch.length > 0 && (
+        <Section title={t.tab_research} count={wantedResearch.length} action={goBtn('research')}>
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {wantedResearch.map((task, ti) => (
+              <li key={`${task.text}-${ti}`} className="card p-3 ring-2 ring-go/60">
+                <div className="text-sm font-semibold">{task.text}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {task.rewards.map((r, i) => <Mon key={`${r.image}-${i}`} p={r} size={48} wanted />)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {wantedEggs.length > 0 && (
+        <Section title={t.tab_eggs} count={wantedEggs.length} action={goBtn('eggs')}>
+          <div className="flex flex-wrap gap-2">
+            {wantedEggs.map((m, i) => (
+              <Mon key={`${m.name}-${m.eggType}-${i}`} p={m} wanted regional={m.isRegional} sub={m.eggType} />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      <CountersSheet target={target} onClose={() => setTarget(null)} />
+    </>
+  );
+}
+
 function Raids() {
   const t = useT();
   const { lang } = useLang();
+  const now = useNowMinute();
   // A boss opens its best counters.
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
@@ -174,7 +451,7 @@ function Raids() {
   const { moments, next } = useMemo(() => raidSchedule(events.data ?? []), [events.data]);
   if (raids.isPending) return <Spinner />;
   if (raids.isError && !bosses.length) return <LiveError retry={() => void raids.refetch()} />;
-  const name = (n: string, image: string) => liveName(n, image, idx?.speciesByDex, lang);
+  const name = (n: string, image: string) => liveName(n, image, idx, lang);
   const pickTarget = (image: string, bossName: string) => {
     const found = fromImage(image, bossName) ?? tools.data?.pokemon.find((p) => p.dex === dexFromImage(image) && !p.mega);
     if (found) setTarget(found);
@@ -199,7 +476,6 @@ function Raids() {
       </div>
     ) : null;
   };
-  const raidSource = (b: { tier: RaidTier }): HuntSource => (b.tier === 'mega' ? 'megaRaid' : b.tier.startsWith('shadow') ? 'shadowRaid' : 'raid');
   const upcomingSource = (eventName: string, bossName: string): HuntSource =>
     /shadow/i.test(eventName) || /^shadow /i.test(bossName) ? 'shadowRaid' : /\bmega\b|primal/i.test(`${eventName} ${bossName}`) ? 'megaRaid' : 'raid';
   const allTiers = RAID_TIERS.filter((tier) => bosses.some((b) => b.tier === tier));
@@ -211,7 +487,7 @@ function Raids() {
     <>
       <p className="mb-2 text-sm text-ink-2">{t.raids_tap_hint}</p>
       {(allTiers.length > 1 || anyWanted) && (
-        <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
           {anyWanted && (
             <Chip active={onlyHunts} onClick={() => setOnlyHunts((v) => !v)} className="min-h-8 shrink-0 px-2.5 text-xs">
               {t.game_my_hunts}
@@ -235,7 +511,7 @@ function Raids() {
         const list = visibleBosses.filter((b) => b.tier === tier);
         return (
           <Section key={tier} title={t.raid_tier[tier]} count={list.length}>
-            <ul className="space-y-2">
+            <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {list.map((b) => {
                 const wanted = isWanted(b.image, b.name, raidSource(b), b.canBeShiny);
                 return (
@@ -254,12 +530,20 @@ function Raids() {
                           {wanted && <Badge tone="grass">{t.game_wanted_badge}</Badge>}
                         </div>
                         {cpLine(b)}
-                        {b.end && <div className="text-xs font-medium text-go-ink dark:text-go">{formatUntil(b.end, lang)}</div>}
+                        {b.end && (
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-go-ink dark:text-go">
+                            <span>{formatUntil(b.end, lang)}</span>
+                            <CountdownBadge e={{ end: b.end }} now={now} />
+                          </div>
+                        )}
                         {eventOf(b.image, b.name) && <div className="truncate text-xs font-semibold text-sky">{eventOf(b.image, b.name)}</div>}
                       </div>
                       <div className="flex shrink-0 flex-wrap justify-end gap-1">
                         {typesOf(b).map((ty) => <TypeBadge key={ty} type={ty} small />)}
-                        {b.boostedWeather?.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={20} height={20} loading="lazy" decoding="async" className="opacity-70" />)}
+                        {b.boostedWeather?.map((w) => {
+                          const wLabel = weatherFr(w.name, lang);
+                          return <img key={w.name} src={w.image} alt={wLabel} title={wLabel} width={20} height={20} loading="lazy" decoding="async" className="opacity-70" />;
+                        })}
                       </div>
                     </button>
                   </li>
@@ -272,7 +556,7 @@ function Raids() {
 
       {moments.length > 0 && (
         <Section title={t.raid_moments} count={moments.length}>
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {moments.map((e) => (
               <li key={e.eventID} className="card flex items-center gap-3 p-3">
                 <span className="text-xl" aria-hidden="true">{e.eventType === 'raid-hour' ? '⏰' : '📅'}</span>
@@ -280,7 +564,10 @@ function Raids() {
                   <span className="block font-semibold">{eventTitle(e.name, idx?.speciesByDex, lang)}</span>
                   <span className="block text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</span>
                 </span>
-                {eventStatus(e) === 'current' && <Badge tone="grass">{t.raid_moment_now}</Badge>}
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  {eventStatus(e, now) === 'current' && <Badge tone="grass">{t.raid_moment_now}</Badge>}
+                  <CountdownBadge e={e} now={now} />
+                </div>
               </li>
             ))}
           </ul>
@@ -289,10 +576,13 @@ function Raids() {
 
       <Section title={t.raids_upcoming} count={next.length}>
         {next.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-        <ul className="space-y-2">
+        <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
           {next.map((e) => (
             <li key={e.eventID} className="card p-3">
-              <div className="text-xs text-ink-2">{formatRange(e.start, e.end, lang)}</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+                <span>{formatRange(e.start, e.end, lang)}</span>
+                <CountdownBadge e={e} now={now} />
+              </div>
               <div className="mt-1 font-semibold">{eventTitle(e.name, idx?.speciesByDex, lang)}</div>
               {!!e.extraData?.raidbattles?.bosses?.length && (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -327,82 +617,138 @@ function Raids() {
   );
 }
 
+const HIDDEN_PROMOS_KEY = 'hiddenPromoCodes';
+
+function readHiddenPromos(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_PROMOS_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHiddenPromos(codes: string[]) {
+  try {
+    if (codes.length) localStorage.setItem(HIDDEN_PROMOS_KEY, JSON.stringify(codes));
+    else localStorage.removeItem(HIDDEN_PROMOS_KEY);
+  } catch {}
+}
+
 function Events() {
   const t = useT();
   const { lang } = useLang();
-  const { dark } = useTheme();
-  const toast = useToast();
-  const qc = useQueryClient();
-  const me = useMe();
-  const posts = usePosts();
+  const now = useNowMinute();
+  const idx = useDataset().data;
   const promo = usePromoCodes();
-  const [url, setUrl] = useState('');
-  const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
-  const add = useMutation({ mutationFn: (u: string) => api<{ post: unknown }>('/game/posts', { body: { url: u } }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['game', 'posts'] }); toast(t.posts_added); setUrl(''); } });
-  const remove = useMutation({ mutationFn: (id: string) => api<{ ok: true }>(`/game/posts/${id}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['game', 'posts'] }) });
-  const submit = (e: FormEvent) => { e.preventDefault(); if (url.trim()) add.mutate(url.trim()); };
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [hiddenCodes, setHiddenCodes] = useState<string[]>(readHiddenPromos);
+
+  const allPromos = promo.data ?? [];
+  const hiddenSet = useMemo(() => new Set(hiddenCodes), [hiddenCodes]);
+  const visiblePromos = allPromos.filter((c) => !hiddenSet.has(c.code));
+  const hiddenCount = allPromos.length - visiblePromos.length;
+
+  const hidePromos = (codes: string[]) => {
+    const next = [...new Set([...hiddenCodes, ...codes])];
+    setHiddenCodes(next);
+    saveHiddenPromos(next);
+  };
+  const restorePromos = () => {
+    setHiddenCodes([]);
+    saveHiddenPromos([]);
+  };
 
   return (
     <>
-      {promo.data && promo.data.length > 0 && (
-        <Section title={t.promo_title} count={promo.data.length}>
-          <ul className="space-y-2">
-            {promo.data.map((c) => (
-              <li key={c.code} className="card p-3">
-                <div className="font-semibold">{c.title}</div>
-                {c.rewards.length > 0 && <div className="mt-0.5 text-xs text-ink-2">{c.rewards.join(' · ')}</div>}
-                <div className="mt-2 flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-lg bg-paper-2 px-2 py-1.5 text-sm">{c.code}</code>
-                  <CopyButton className="min-h-9 px-3 text-sm" text={c.code} />
-                  <a href={c.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-xl bg-go px-3 text-sm font-semibold text-white">{t.redeem}</a>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      <Section title={t.posts_title} count={posts.data?.length}>
-        {isManager && (
-          <form onSubmit={submit} className="mb-3 flex gap-2">
-            <TextField placeholder={t.posts_add_placeholder} value={url} onChange={(e) => setUrl(e.target.value)} className="flex-1" inputMode="url" />
-            <Button tone="primary" type="submit" disabled={add.isPending || !url.trim()}>{t.add}</Button>
-          </form>
-        )}
-        {add.isError && <p className="mb-2 text-sm text-berry">{t.err_generic}</p>}
-        {posts.isPending && <Spinner />}
-        {posts.data?.length === 0 && <p className="text-sm text-ink-3">{t.posts_empty}</p>}
-        <ul className="space-y-3">
-          {posts.data?.map((p) => (
-            <li key={p.id} className="card p-3">
-              <div className="flex items-center gap-2 text-xs text-ink-2">
-                <Badge tone="muted">@{p.authorUrl?.split('/').pop() ?? p.author}</Badge>
-                {p.postedAt && <span>{new Date(p.postedAt).toLocaleDateString(lang, { dateStyle: 'medium' })}</span>}
-                <a href={p.url} target="_blank" rel="noreferrer" className="ml-auto font-semibold text-sky">{t.open_on_x}</a>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm">
-                {linkify(p.text).map((part, i) => part.url ? <a key={i} href={part.url} target="_blank" rel="noreferrer" className="break-all font-semibold text-sky underline">{part.text}</a> : <span key={i}>{part.text}</span>)}
-              </p>
-              {p.codes.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {p.codes.map((code) => (
-                    <a key={code} href={`https://store.pokemongo.com/offer-redemption?passcode=${code}`} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-xl bg-go px-3 text-sm font-semibold text-white">🎁 {code}</a>
-                  ))}
+      {visiblePromos.length > 0 && (
+        <section className="card mb-4 overflow-hidden">
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-expanded={promoOpen}
+              onClick={() => setPromoOpen((v) => !v)}
+              className="flex min-w-0 flex-1 items-center gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-paper-2/50"
+            >
+              <span className="text-base" aria-hidden="true">🎁</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-bold">{t.promo_title}</span>
+              <Badge tone="grass">{visiblePromos.length}</Badge>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className={`shrink-0 text-ink-3 transition-transform ${promoOpen ? 'rotate-180' : ''}`}
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { hidePromos(visiblePromos.map((c) => c.code)); setPromoOpen(false); }}
+              className="mr-2 shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-ink-3 transition hover:bg-paper-2 hover:text-ink"
+            >
+              {t.promo_hide_all}
+            </button>
+          </div>
+          {promoOpen && (
+            <div className="border-t border-line p-3">
+              <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {visiblePromos.map((c) => (
+                  <li key={c.code} className="rounded-xl border border-line bg-paper-2/35 p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1 font-semibold">{promoTextFr(c.title, idx?.speciesByDex, lang)}</div>
+                      <button
+                        type="button"
+                        aria-label={`${t.promo_hide_one} ${c.code}`}
+                        title={t.promo_hide_one}
+                        onClick={() => hidePromos([c.code])}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs text-ink-3 transition hover:bg-card hover:text-ink"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {c.rewards.length > 0 && (
+                      <div className="mt-0.5 text-xs text-ink-2">
+                        {c.rewards.map((r) => promoTextFr(r, idx?.speciesByDex, lang)).join(' · ')}
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="flex-1 truncate rounded-lg bg-card px-2 py-1.5 text-sm">{c.code}</code>
+                      <CopyButton className="min-h-9 px-3 text-sm" text={c.code} />
+                      <a href={c.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center rounded-xl bg-go px-3 text-sm font-semibold text-white">{t.redeem}</a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {hiddenCount > 0 && (
+                <div className="mt-2.5 flex items-center justify-end gap-2 text-xs text-ink-3">
+                  <span>{t.promo_hidden_count(hiddenCount)}</span>
+                  <button type="button" onClick={restorePromos} className="font-semibold text-sky hover:underline">
+                    {t.promo_show_hidden}
+                  </button>
                 </div>
               )}
-              <div className="mt-2"><XEmbed html={p.html} dark={dark} /></div>
-              {isManager && <button type="button" className="mt-1 text-xs text-berry" onClick={() => remove.mutate(p.id)}>{t.posts_remove}</button>}
-            </li>
-          ))}
-        </ul>
-      </Section>
+            </div>
+          )}
+        </section>
+      )}
 
-      <Section title={t.timeline_title(X_HANDLE)}>
-        <p className="mb-2 text-xs text-ink-3">{t.timeline_hint} <a href={`https://x.com/${X_HANDLE}/media`} target="_blank" rel="noreferrer" className="font-semibold text-sky">@{X_HANDLE}</a></p>
-        <div className="card overflow-hidden p-1">
-          <XEmbed html={`<a class="twitter-timeline" href="https://x.com/${X_HANDLE}?ref_src=twsrc%5Etfw">Posts by ${X_HANDLE}</a>`} dark={dark} />
+      <EventFeed now={now} />
+
+      {visiblePromos.length === 0 && hiddenCount > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-dashed border-line px-3 py-2 text-xs text-ink-3">
+          <span>🎁 {t.promo_hidden_count(hiddenCount)}</span>
+          <button type="button" onClick={restorePromos} className="font-semibold text-sky hover:underline">
+            {t.promo_show_hidden}
+          </button>
         </div>
-      </Section>
+      )}
     </>
   );
 }
@@ -411,6 +757,7 @@ function Events() {
 function MaxBattles() {
   const t = useT();
   const { lang } = useLang();
+  const nowMs = useNowMinute();
   const events = useEvents();
   const dataset = useDataset();
   const { hasMissing, isWantedKey } = useMissingHunts();
@@ -440,14 +787,15 @@ function MaxBattles() {
   const block = (title: string, items: GameEvent[]) => (
     <Section title={title} count={items.length}>
       {items.length === 0 && <p className="text-sm text-ink-3">{t.max_empty}</p>}
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {items.map((e) => {
           const species = named(e.name);
           const gmax = /gigantamax/i.test(e.name);
           return (
             <li key={e.eventID} className="card p-3">
-              <div className="flex items-center gap-2 text-xs text-ink-2">
-                <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? 'Gigantamax' : 'Dynamax'}</Badge>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+                <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? t.kinds.gmax : t.tag_dynamax}</Badge>
+                <CountdownBadge e={e} now={nowMs} />
                 <span>{formatRange(e.start, e.end, lang)}</span>
               </div>
               <div className="mt-1 font-semibold">{eventTitle(e.name, dataset.data?.speciesByDex, lang)}</div>
@@ -523,17 +871,18 @@ function Research() {
       if (shinyOnly && !encs.some((r) => r.canBeShiny)) return false;
       if (onlyHunts && !encs.some((r) => isWanted(r.image, r.name, 'research', r.canBeShiny))) return false;
       if (!normQ) return true;
-      const hay = normalize([task.text, task.textFr ?? '', ...task.rewards.map((r) => `${r.name} ${r.kind === 'encounter' ? liveName(r.name, r.image, idx?.speciesByDex, lang) : rewardName(r)}`)].join(' '));
+      const taskLabel = lang === 'fr' ? (task.textFr ?? researchTaskFr(task.text, idx?.speciesByDex, 'fr')) : task.text;
+      const hay = normalize([task.text, task.textFr ?? '', taskLabel, ...task.rewards.map((r) => `${r.name} ${r.kind === 'encounter' ? liveName(r.name, r.image, idx, lang) : rewardName(r)}`)].join(' '));
       return hay.includes(normQ);
     }),
   });
   const block = (c: ResearchCategory) => (
-    <Section key={c.title} title={c.event ? eventTitle(c.title.replace(/ Tasks$/, ''), idx?.speciesByDex, lang) : (t.research_types[c.title] ?? c.title.replace(/ Tasks$/, ''))} count={c.tasks.length}>
+    <Section key={c.title} title={c.event ? eventTitle(c.title.replace(/ Tasks$/, ''), idx?.speciesByDex, lang) : (t.research_types[c.title] ?? eventLabelFr(c.title.replace(/ Tasks$/, ''), lang, idx?.speciesByDex))} count={c.tasks.length}>
       {c.end && <p className="-mt-1 mb-2 text-xs text-ink-3">{formatUntil(c.end, lang)}</p>}
-      <ul className="space-y-2">
+      <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {c.tasks.map((task, ti) => (
           <li key={`${task.text}-${ti}`} className="card p-3">
-            <div className="text-sm font-semibold">{lang === 'fr' ? (task.textFr ?? task.text) : task.text}</div>
+            <div className="text-sm font-semibold">{lang === 'fr' ? (task.textFr ?? researchTaskFr(task.text, idx?.speciesByDex, 'fr')) : task.text}</div>
             <div className="mt-2 flex flex-wrap items-start gap-2">
               {task.rewards.map((r, i) =>
                 r.kind === 'encounter' ? (
@@ -640,7 +989,7 @@ function Eggs() {
     if (onlyHunts && !isWanted(m.image, m.name, 'egg', m.canBeShiny)) return false;
     if (shinyOnly && !m.canBeShiny) return false;
     if (!normQ) return true;
-    const localN = liveName(m.name, m.image, idx?.speciesByDex, lang);
+    const localN = liveName(m.name, m.image, idx, lang);
     const dex = dexFromImage(m.image);
     return normalize(`${m.name} ${localN} ${dex ?? ''}`).includes(normQ);
   };
@@ -681,7 +1030,7 @@ function Eggs() {
           </button>
         )}
       </div>
-      <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+      <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
         <Chip active={distFilter === 'all'} onClick={() => setDistFilter('all')} className="min-h-8 shrink-0 px-2.5 text-xs">{t.filter_all}</Chip>
         {distances.map((d) => (
           <Chip key={d} active={distFilter === d} onClick={() => setDistFilter(distFilter === d ? 'all' : d)} className="min-h-8 shrink-0 px-2.5 text-xs">
@@ -711,7 +1060,7 @@ function Eggs() {
                     {tier > 0 && (
                       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-ink-2">
                         <span aria-hidden="true">{'🥚'.repeat(tier)}</span>
-                        <span>{t.egg_rarity_tier[tier] ?? `Tier ${tier}`}</span>
+                        <span>{t.egg_rarity_tier[tier] ?? (lang === 'fr' ? `Palier ${tier}` : `Tier ${tier}`)}</span>
                         <span className="tnum font-normal text-ink-3">{list.length}</span>
                       </p>
                     )}
@@ -756,6 +1105,7 @@ function LiveError({ retry }: { retry: () => void }) {
 function EventSpawnsTab() {
   const t = useT();
   const { lang } = useLang();
+  const nowMs = useNowMinute();
   const dataset = useDataset();
   const q = useEventSpawns();
   const { hasMissing, isWanted } = useMissingHunts();
@@ -790,7 +1140,10 @@ function EventSpawnsTab() {
       <a href={e.link} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3">
         {e.image && <img src={e.image} alt="" width={64} height={36} loading="lazy" className="h-9 w-16 shrink-0 rounded-md object-cover" />}
         <span className="min-w-0 flex-1">
-          <span className="block font-bold leading-tight">{title(e)}</span>
+          <span className="flex flex-wrap items-center gap-1.5 font-bold leading-tight">
+            <span>{title(e)}</span>
+            <CountdownBadge e={e} now={nowMs} />
+          </span>
           <span className="block text-xs text-ink-3">{e.start && `${date(e.start)} → `}{date(e.end)}</span>
         </span>
       </a>
@@ -822,7 +1175,7 @@ function EventSpawnsTab() {
       {view === 'all' ? (
         <Section title={t.spawns_now} count={grid.length}>
           {grid.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
             {grid.map(({ m, event, featured }) => (
               <li key={m.image} className="flex flex-col items-center">
                 <Mon p={m} wanted={isWanted(m.image, m.name, 'wild', m.canBeShiny)} />
@@ -835,11 +1188,11 @@ function EventSpawnsTab() {
         <>
           <Section title={t.spawns_now} count={nowFiltered.length}>
             {nowFiltered.length === 0 && <p className="text-sm text-ink-3">{t.nothing_here}</p>}
-            <ul className="space-y-3">{nowFiltered.map(card)}</ul>
+            <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">{nowFiltered.map(card)}</ul>
           </Section>
           {soonFiltered.length > 0 && (
             <Section title={t.spawns_soon} count={soonFiltered.length}>
-              <ul className="space-y-3">{soonFiltered.map(card)}</ul>
+              <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">{soonFiltered.map(card)}</ul>
             </Section>
           )}
         </>

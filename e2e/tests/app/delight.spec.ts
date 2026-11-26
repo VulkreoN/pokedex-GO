@@ -114,39 +114,28 @@ test('Me leads to an About page: who made the app, the Discord, the version', as
   await expect(page.getByRole('link', { name: /Rejoindre le Discord/ })).toHaveAttribute('href', 'https://discord.gg/9P6XF7SPge');
   await expect(page.getByText('Version de l’appli')).toBeVisible();
   await expect(page.getByText(/^\d+ Pokémon · \d+ variantes/)).toBeVisible();
-});
-
-test("X's widget waits for the player's yes, kept on the device and withdrawn from About", async ({ page }) => {
-  const fromX: string[] = [];
-  page.on('request', (r) => { if (/platform\.twitter\.com/.test(r.url())) fromX.push(r.url()); });
-  // No call out to X during the test: answer with an empty script.
-  await page.route(/platform\.twitter\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
-  await page.goto('/game?tab=events');
-  const show = page.getByRole('button', { name: /Afficher le contenu de X/ }).first();
-  await show.scrollIntoViewIfNeeded();
-  await expect(show).toBeVisible();
-  expect(fromX).toEqual([]);
-  await show.click();
-  await expect.poll(() => fromX.length).toBeGreaterThan(0);
-  await expect(page.getByRole('button', { name: /Afficher le contenu de X/ })).toHaveCount(0);
-
-  await page.goto('/about');
   await expect(page.getByRole('heading', { name: 'Confidentialité et cookies' })).toBeVisible();
-  await expect(page.getByText('Les posts X s’affichent sur cet appareil.')).toBeVisible();
-  await page.getByRole('button', { name: 'Ne plus les charger' }).click();
-  await expect(page.getByText('Les posts X ne se chargent pas tant que tu ne le demandes pas.')).toBeVisible();
+  await expect(page.getByText(/posts X/i)).toHaveCount(0);
 });
 
-test("what's new after an update: a banner on the Pokédex, closed for good, the whole history in About", async ({ page }) => {
+test("what's new after an update: a global banner with version badge, closed for good, version/date toggle in About", async ({ page }) => {
   await apiRegister(page.request);
-  await page.goto('/dex');
+  await page.goto('/game');
   const banner = page.getByRole('complementary', { name: 'Quoi de neuf' });
   await expect(banner).toBeVisible();
+  await expect(banner.getByText(/^v\d+\.\d+/)).toBeVisible();
   await banner.getByRole('button', { name: 'Compris' }).click();
   await expect(banner).toBeHidden();
-  await page.reload();
+  await page.goto('/dex');
   await expect(page.getByRole('searchbox').first()).toBeVisible();
   await expect(banner).toBeHidden();
   await page.goto('/about#news');
   await expect(page.getByRole('heading', { name: 'Nouveautés' })).toBeVisible();
+  const byVersion = page.getByRole('button', { name: 'Par version', exact: true });
+  const byDate = page.getByRole('button', { name: 'Par date', exact: true });
+  await expect(byVersion).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('v1.3', { exact: true }).first()).toBeVisible();
+  await byDate.click();
+  await expect(byDate).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('v1.3', { exact: true }).first()).toBeVisible();
 });

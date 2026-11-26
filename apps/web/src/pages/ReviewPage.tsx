@@ -1,14 +1,16 @@
 import { GenderReview } from '../components/GenderReview.js';
 import { Reports } from './AdminPage.js';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
+import { neutralKey } from '@mydexpogo/shared';
 import { Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { Badge, Button, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { api } from '../lib/api.js';
+import { useBulkOverride, useOverrides, type Override } from '../lib/admin.js';
 import { useMe } from '../lib/auth.js';
-import { useDataset } from '../lib/dataset.js';
+import { useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 interface FeedItem {
@@ -63,13 +65,13 @@ export function ReviewPage() {
   return (
     <>
       <TopBar title={t.review_title} back>
-        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
+        <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:px-5">
           {(['new', 'done', 'ignored'] as Status[]).map((s) => (
             <Chip key={s} active={status === s} onClick={() => setStatus(s)}>{{ new: t.review_new, done: t.review_done, ignored: t.review_ignored }[s]}</Chip>
           ))}
         </div>
       </TopBar>
-      <main className="mx-auto max-w-3xl space-y-3 px-3 pb-24">
+      <main className="mx-auto max-w-6xl space-y-3 px-3 pb-24 sm:px-5">
         {status === 'new' && (
           <section>
             <h2 className="mb-2 text-base font-bold">{t.admin_tabs.reports}</h2>
@@ -77,6 +79,7 @@ export function ReviewPage() {
           </section>
         )}
         {status === 'new' && idx && <GenderReview idx={idx} />}
+        {status === 'new' && idx && <HiddenVariantsCard idx={idx} />}
         {q.data && (
           <p className="text-xs text-ink-3">
             {q.data.status.enabled.news.length === 0 ? t.feed_disabled : t.feed_sources(q.data.status.enabled.news.length)}
@@ -154,6 +157,64 @@ export function ReviewPage() {
         <p className="pt-4 text-center text-xs text-ink-3"><Link to="/me" className="underline">{t.nav_me}</Link></p>
       </main>
     </>
+  );
+}
+
+function HiddenVariantsCard({ idx }: { idx: DatasetIndex }) {
+  const t = useT();
+  const { lang } = useLang();
+  const toast = useToast();
+  const overrides = useOverrides(true);
+  const bulk = useBulkOverride();
+  const hiddenGroups = useMemo(() => {
+    const grouped = new Map<string, { keys: string[]; sample: Override }>();
+    for (const o of overrides.data ?? []) {
+      if (o.hidden !== true) continue;
+      const nk = neutralKey(o.variantKey);
+      const cur = grouped.get(nk);
+      if (cur) cur.keys.push(o.variantKey);
+      else grouped.set(nk, { keys: [o.variantKey], sample: o });
+    }
+    return [...grouped.entries()].map(([key, v]) => ({ key, ...v }));
+  }, [overrides.data]);
+  if (!hiddenGroups.length) return null;
+  return (
+    <details className="card border-berry/35 p-3">
+      <summary className="cursor-pointer text-sm font-bold text-berry">
+        {t.variant_hidden_title(hiddenGroups.length)}
+      </summary>
+      <ul className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {hiddenGroups.map(({ key, keys, sample }) => {
+          const dex = sample.meta?.dex ?? Number(key.split('.')[0]);
+          const sp = idx.speciesByDex.get(dex);
+          const img = sample.meta?.img;
+          const src = img ? (/^https?:\/\//.test(img) ? img : `${idx.ds.assetBase}${img}`) : null;
+          const label = localized(sample.label ?? sample.meta?.label, lang) || t.normal;
+          return (
+            <li key={key} className="flex items-center gap-2.5 rounded-xl border border-line bg-paper/60 p-2">
+              {src && <img src={src} alt="" width={40} height={40} loading="lazy" className="h-10 w-10 shrink-0 object-contain opacity-75" />}
+              <div className="min-w-0 flex-1">
+                <Link to={`/dex/${dex}`} className="block truncate text-sm font-bold text-sky hover:underline">
+                  {sp ? localized(sp.name, lang) : `#${dex}`} · {label}
+                </Link>
+                <p className="truncate font-mono text-[11px] text-ink-3">{key}</p>
+              </div>
+              <Button
+                tone="quiet"
+                className="min-h-8 shrink-0 px-2.5 text-xs"
+                disabled={bulk.isPending}
+                onClick={async () => {
+                  await bulk.mutateAsync({ keys, hidden: null });
+                  toast(t.variant_restored);
+                }}
+              >
+                {t.variant_restore}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 

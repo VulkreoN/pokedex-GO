@@ -219,6 +219,47 @@ describe('"I have it"', () => {
     e = (await owner.get(`/lists/${listId}`)).body.list.entries;
     expect(e.find((x: any) => x.variantKey === '1').offers).toBeUndefined();
   });
+
+  it('supports deferred notifications flushed on leave, ignoring unticked marks', async () => {
+    const o = await register(name('do'));
+    const f = await register(name('df'));
+    await f.post('/friends/requests', { friendCode: o.user.friendCode });
+    await o.post(`/friends/requests/${(await o.get('/friends/requests')).body.requests[0].id}/accept`);
+    const lid = (await o.post('/lists', { name: 'Deferred' })).body.list.id;
+    await o.put(`/lists/${lid}/entries`, {
+      entries: [
+        { variantKey: '25', gender: 'f', shiny: false },
+        { variantKey: '133', gender: 'm', shiny: false },
+      ],
+    });
+    await o.post('/notifications/read', {});
+
+    // Tick both with deferNotify, untick Pikachu -> no notifications yet.
+    await f.post(`/lists/${lid}/offers`, { variantKey: '25', gender: 'f', shiny: false, on: true, deferNotify: true });
+    await f.post(`/lists/${lid}/offers`, { variantKey: '133', gender: 'm', shiny: false, on: true, deferNotify: true });
+    await f.post(`/lists/${lid}/offers`, { variantKey: '25', gender: 'f', shiny: false, on: false, deferNotify: true });
+    expect((await o.get('/notifications')).body.unread).toBe(0);
+
+    // Flushing only the unticked entry produces 0 notifications.
+    const emptyFlush = await f.post(`/lists/${lid}/offers/notify`, { variants: [{ variantKey: '25', gender: 'f', shiny: false }] });
+    expect(emptyFlush.status).toBe(200);
+    expect(emptyFlush.body).toEqual({ ok: true, notified: 0 });
+    expect((await o.get('/notifications')).body.unread).toBe(0);
+
+    // Flushing both notifies only the still-active Eevee.
+    const flush = await f.post(`/lists/${lid}/offers/notify`, {
+      variants: [
+        { variantKey: '25', gender: 'f', shiny: false },
+        { variantKey: '133', gender: 'm', shiny: false },
+      ],
+    });
+    expect(flush.status).toBe(200);
+    expect(flush.body).toEqual({ ok: true, notified: 1 });
+    const inbox = (await o.get('/notifications')).body;
+    expect(inbox.unread).toBe(1);
+    const offerNotif = inbox.items.find((n: any) => n.type === 'offer');
+    expect(offerNotif.data).toMatchObject({ count: 1, variants: [{ key: '133', gender: 'm', shiny: false, tag: '' }] });
+  });
 });
 
 describe('following friends\' lists', () => {
@@ -292,5 +333,42 @@ describe('caught after an "I have it"', () => {
     const before = (await b.get('/notifications')).body.items.length;
     await a.put(`/lists/${list}/entries`, { entries: [{ variantKey: '25', gender: 'f', shiny: false, done: true, note: 'x' }] });
     expect((await b.get('/notifications')).body.items.length).toBe(before);
+  });
+});
+
+describe('friend profiles & postcards visibility', () => {
+  it('returns friends postcards on /friends and shared badges/collections on /friends/:id/lists without leaking private lists', async () => {
+    const u1 = await register(name('fp1'));
+    const u2 = await register(name('fp2'));
+    await u2.post('/friends/requests', { friendCode: u1.user.friendCode });
+    await u1.post(`/friends/requests/${(await u1.get('/friends/requests')).body.requests[0].id}/accept`);
+
+    await u1.put('/friends/postcards', { postcards: [{ pattern: 'OCEAN', quantity: null }, { pattern: 'SANDSTORM', quantity: 4 }] });
+    const pubList = (await u1.post('/lists', { name: 'Shared Dex', visibility: 'friends' })).body.list.id;
+    const privList = (await u1.post('/lists', { name: 'Secret Dex', visibility: 'private' })).body.list.id;
+    await u1.put(`/lists/${pubList}/entries`, { entries: [{ variantKey: '25', gender: 'm', shiny: true, done: true }] });
+    await u1.put(`/lists/${privList}/entries`, { entries: [{ variantKey: '150', gender: '', shiny: true, done: true }] });
+
+    const listRes = await u2.get('/friends');
+    expect(listRes.status).toBe(200);
+    const fRow = listRes.body.friends.find((f: any) => f.id === u1.user.id);
+    expect(fRow.postcards).toEqual([
+      { pattern: 'OCEAN', quantity: null },
+      { pattern: 'SANDSTORM', quantity: 4 },
+    ]);
+
+    const profRes = await u2.get(`/friends/${u1.user.id}/lists`);
+    expect(profRes.status).toBe(200);
+    expect(profRes.body.friend.postcards).toEqual([
+      { pattern: 'OCEAN', quantity: null },
+      { pattern: 'SANDSTORM', quantity: 4 },
+    ]);
+    expect(profRes.body.friend.since).toBeTruthy();
+    expect(profRes.body.lists.map((l: any) => l.name)).toEqual(['Shared Dex']);
+    expect(profRes.body.profile).toMatchObject({
+      friendsCount: 1,
+      completedLists: 1,
+    });
+    expect(profRes.body.profile.entries).toEqual([{ variantKey: '25', shiny: true, tag: '', done: true }]);
   });
 });

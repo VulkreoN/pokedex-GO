@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import type { PvpData, PvpPokemon } from '@mydexpogo/shared';
+import { gblSeasonFr, type PvpData, type PvpPokemon } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { LEAGUE_LIST, ROLES, formOf, leagueName, moveName, pvpokeUrl, usePvpDetails, type FormRef, type League, type RankedDetail } from '../lib/pvpoke.js';
@@ -46,7 +46,7 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
         <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
           <Chip active={activeSeason === 'current'} onClick={() => setSeason('current')} className="min-h-8 px-2.5 text-xs">{t.pvp_season_current}</Chip>
           <Chip active={activeSeason === 'preview'} onClick={() => setSeason('preview')} className="min-h-8 px-2.5 text-xs">✨ {t.pvp_season_preview}</Chip>
-          {activeSeason === 'preview' && preview && <span className="text-xs text-ink-3">{preview.title}</span>}
+          {activeSeason === 'preview' && preview && <span className="text-xs text-ink-3">{gblSeasonFr(preview.title, lang)}</span>}
         </div>
       )}
       {!r ? (

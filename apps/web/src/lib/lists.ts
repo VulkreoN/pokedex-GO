@@ -1,12 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EntryGender, FriendRequest, ListDetail, ListEntry, ListSummary, ListVisibility, MembershipEntry, PublicUser, TradeMatch } from '@mydexpogo/shared';
+import type { EntryGender, FriendRequest, ListDetail, ListEntry, ListSummary, ListVisibility, MembershipEntry, PostcardFriendSuggestion, PublicUser, UserPostcard, VivillonPattern } from '@mydexpogo/shared';
 
 /** What the app sends: no gender = every gender the Pokémon exists in (the server checks against the game master). */
 export type EntryInput = Omit<ListEntry, 'note' | 'gender'> & { gender?: EntryGender; note?: string | null };
 import { api } from './api.js';
 
 export type ListAccess = 'owner' | 'friend' | 'link';
-export type Friend = PublicUser & { since: string; favorite?: boolean; lists?: number };
+export type Friend = PublicUser & { since: string; favorite?: boolean; lucky?: boolean; lists?: number; postcards?: UserPostcard[] };
+export interface FriendProfileStats {
+  friendsCount: number;
+  pvpCount: number;
+  completedLists: number;
+  entries: Pick<MembershipEntry, 'variantKey' | 'shiny' | 'tag' | 'done'>[];
+}
 
 export const useLists = () => useQuery({ queryKey: ['lists'], queryFn: () => api<{ lists: ListSummary[] }>('/lists').then((r) => r.lists) });
 
@@ -42,18 +48,18 @@ export const useUpdateList = (id: string) =>
   );
 
 export const useDeleteList = () =>
-  useListMutation((id: string) => api<{ ok: true }>(`/lists/${id}`, { method: 'DELETE' }), () => [['lists'], ['lists-membership'], ['friend-matches']]);
+  useListMutation((id: string) => api<{ ok: true }>(`/lists/${id}`, { method: 'DELETE' }), () => [['lists'], ['lists-membership'], ['postcards-discover']]);
 
 export const useUpsertEntries = () =>
   useListMutation(
     (vars: { id: string; entries: EntryInput[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'PUT', body: { entries: vars.entries } }),
-    (vars) => [['lists'], ['list', vars.id], ['lists-membership'], ['friend-matches']],
+    (vars) => [['lists'], ['list', vars.id], ['lists-membership'], ['postcards-discover']],
   );
 
 export const useRemoveEntries = () =>
   useListMutation(
     (vars: { id: string; entries: { variantKey: string; gender?: EntryGender; shiny: boolean; tag: ListEntry['tag'] }[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'DELETE', body: { entries: vars.entries } }),
-    (vars) => [['lists'], ['list', vars.id], ['lists-membership'], ['friend-matches']],
+    (vars) => [['lists'], ['list', vars.id], ['lists-membership'], ['postcards-discover']],
   );
 
 export const useShareList = () =>
@@ -73,19 +79,46 @@ export const useFriends = () => useQuery({ queryKey: ['friends'], queryFn: () =>
 export const useFriendRequests = () =>
   useQuery({ queryKey: ['friend-requests'], queryFn: () => api<{ requests: FriendRequest[] }>('/friends/requests').then((r) => r.requests) });
 export const useFriendLists = (id: string) =>
-  useQuery({ queryKey: ['friend-lists', id], queryFn: () => api<{ friend: PublicUser; lists: ListSummary[] }>(`/friends/${id}/lists`) });
-export const useFriendMatches = (id: string, enabled = true) =>
-  useQuery({ queryKey: ['friend-matches', id], queryFn: () => api<{ friend: PublicUser; iHaveForThem: TradeMatch[]; theyHaveForMe: TradeMatch[] }>(`/friends/${id}/matches`), enabled: enabled && !!id });
+  useQuery({
+    queryKey: ['friend-lists', id],
+    queryFn: () =>
+      api<{
+        friend: PublicUser & { since?: string; favorite?: boolean; lucky?: boolean; postcards?: UserPostcard[] };
+        lists: ListSummary[];
+        profile?: FriendProfileStats;
+      }>(`/friends/${id}/lists`),
+  });
+
+export const useMyPostcards = (enabled = true) =>
+  useQuery({ queryKey: ['my-postcards'], queryFn: () => api<{ postcards: UserPostcard[] }>('/friends/postcards').then((r) => r.postcards), enabled });
+
+export const useSavePostcards = () =>
+  useListMutation(
+    (postcards: UserPostcard[]) => api<{ postcards: UserPostcard[] }>('/friends/postcards', { method: 'PUT', body: { postcards } }),
+    () => [['my-postcards'], ['postcards-discover']],
+  );
+
+export const useDiscoverPostcards = (opts: { patterns?: VivillonPattern[]; all?: boolean } = {}, enabled = true) => {
+  const qs = new URLSearchParams();
+  if (opts.all) qs.set('all', '1');
+  else if (opts.patterns?.length) qs.set('patterns', opts.patterns.join(','));
+  const query = qs.toString();
+  return useQuery({
+    queryKey: ['postcards-discover', query],
+    queryFn: () => api<{ wantedPatterns: VivillonPattern[]; suggestions: PostcardFriendSuggestion[] }>(`/friends/postcards/discover${query ? `?${query}` : ''}`),
+    enabled,
+  });
+};
 
 export const useSendFriendRequest = () =>
   useListMutation(
     (friendCode: string) => api<{ accepted: boolean; friend?: PublicUser; to?: PublicUser }>('/friends/requests', { body: { friendCode } }),
-    () => [['friends'], ['friend-requests']],
+    () => [['friends'], ['friend-requests'], ['postcards-discover']],
   );
 export const useRespondFriendRequest = () =>
   useListMutation(
     (vars: { id: string; action: 'accept' | 'decline' }) => api<{ ok: true }>(`/friends/requests/${vars.id}/${vars.action}`, { method: 'POST' }),
-    () => [['friends'], ['friend-requests']],
+    () => [['friends'], ['friend-requests'], ['postcards-discover']],
   );
 /** My collections in a new order: shown at once, saved behind. */
 export function useReorderLists() {
@@ -103,8 +136,10 @@ export function useReorderLists() {
 }
 
 export const usePinFriend = () =>
-  useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/friends/${v.id}/favorite`, { method: 'PUT', body: { on: v.on } }), () => [['friends'], ['friends-lists']]);
+  useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/friends/${v.id}/favorite`, { method: 'PUT', body: { on: v.on } }), (v) => [['friends'], ['friends-lists'], ['friend-lists', v.id]]);
+export const useLuckyFriend = () =>
+  useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/friends/${v.id}/lucky`, { method: 'PUT', body: { on: v.on } }), (v) => [['friends'], ['friend-lists', v.id]]);
 export const usePinList = () =>
   useListMutation((v: { id: string; on: boolean }) => api<{ ok: true }>(`/lists/${v.id}/favorite`, { method: 'PUT', body: { on: v.on } }), () => [['friends-lists']]);
 
-export const useRemoveFriend = () => useListMutation((id: string) => api<{ ok: true }>(`/friends/${id}`, { method: 'DELETE' }), () => [['friends']]);
+export const useRemoveFriend = () => useListMutation((id: string) => api<{ ok: true }>(`/friends/${id}`, { method: 'DELETE' }), () => [['friends'], ['postcards-discover']]);

@@ -17,7 +17,8 @@ export interface DataStatus {
   sources: SourceFreshness[];
   feed?: { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number };
 }
-export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean | null; noEvolve: boolean | null; noMega: boolean | null; kind: VariantKind | null; updatedBy: string | null; updatedAt: string }
+export interface OverrideMeta { dex: number; label: LocalizedText | null; img: string | null; kind: VariantKind }
+export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean | null; noEvolve: boolean | null; noMega: boolean | null; kind: VariantKind | null; hidden: boolean | null; meta?: OverrideMeta | null; updatedBy: string | null; updatedAt: string }
 
 export const useDataStatus = () => useQuery({ queryKey: ['data-status'], queryFn: () => api<DataStatus>('/data/status'), refetchInterval: (q) => (q.state.data?.running ? 5000 : false) });
 
@@ -28,7 +29,7 @@ export const useOverrides = (enabled: boolean) =>
 export function useBulkOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { keys: string[]; released?: boolean | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null }) =>
+    mutationFn: (body: { keys: string[]; released?: boolean | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
       api<{ ok: true; count: number }>('/overrides', { method: 'PATCH', body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['overrides'] });
@@ -41,10 +42,10 @@ export function useSetOverride() {
   const qc = useQueryClient();
   return useMutation({
     // A save rewrites the whole correction: callers pass every field, the ones they did not touch included.
-    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null }) =>
+    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
       api<{ ok: true }>(`/overrides/${vars.variantKey}`, {
         method: 'PUT',
-        body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null, shinyReleased: vars.shinyReleased ?? null, noEvolve: vars.noEvolve ?? null, noMega: vars.noMega ?? null, kind: vars.kind ?? null },
+        body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null, shinyReleased: vars.shinyReleased ?? null, noEvolve: vars.noEvolve ?? null, noMega: vars.noMega ?? null, kind: vars.kind ?? null, hidden: vars.hidden ?? null },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['overrides'] });
@@ -58,9 +59,28 @@ export function useRefreshData() {
   return useMutation({ mutationFn: () => api<{ started: boolean }>('/data/refresh', { method: 'POST' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['data-status'] }) });
 }
 
-export interface AdminUser { id: string; username: string; role: Role; friendCode: string; createdAt: string }
-export const useUsers = (q: string, offset: number, enabled: boolean) =>
-  useQuery({ queryKey: ['users', q, offset], queryFn: () => api<{ users: AdminUser[]; total: number; offset: number }>(`/users?q=${encodeURIComponent(q)}&offset=${offset}`), enabled, placeholderData: (prev) => prev });
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: Role;
+  friendCode: string;
+  createdAt: string;
+  lastSeenAt?: string | null;
+  suspendedAt?: string | null;
+  listsCount?: number;
+}
+export type AdminUserFilter = 'all' | 'staff' | 'suspended' | 'push';
+export type AdminUserSort = 'role' | 'recent' | 'created';
+export const useUsers = (q: string, offset: number, enabled: boolean, filter: AdminUserFilter = 'all', sort: AdminUserSort = 'role') =>
+  useQuery({
+    queryKey: ['users', q, offset, filter, sort],
+    queryFn: () =>
+      api<{ users: AdminUser[]; total: number; offset: number }>(
+        `/users?q=${encodeURIComponent(q)}&offset=${offset}&filter=${filter}&sort=${sort}`,
+      ),
+    enabled,
+    placeholderData: (prev) => prev,
+  });
 export function useSetRole() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (vars: { id: string; role: Role }) => api<{ ok: true }>(`/users/${vars.id}/role`, { method: 'PATCH', body: { role: vars.role } }), onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }) });
@@ -78,11 +98,37 @@ export function relativeTime(iso: string | null, lang: string): string {
 
 /* ---------- Admin panel ---------- */
 
-export interface AdminStats { users: number; active7: number; active30: number; lists: number; entries: number; friendships: number; pushDevices: number; raidAlerts7: number; errorsToday: number; openReports: number; signupsByWeek: { week: string; n: number }[] }
+export interface AdminStats {
+  users: number;
+  active7: number;
+  active30: number;
+  lists: number;
+  entries: number;
+  friendships: number;
+  luckyFriends?: number;
+  pvpTeams?: number;
+  pushDevices: number;
+  raidAlerts7: number;
+  errorsToday: number;
+  openReports: number;
+  pendingFeed?: number;
+  signupsByWeek: { week: string; n: number }[];
+}
 export interface SourceHealth { okAt: string | null; errorAt: string | null; error: string | null }
-export interface AdminHealth { version: string; startedAt: string; dataset: DataStatus; sources: Partial<Record<'dataset' | 'research' | 'promo' | 'pvpoke' | 'raids' | 'feed', SourceHealth>> }
+export interface AdminHealth {
+  version: string;
+  startedAt: string;
+  dataset: DataStatus;
+  sources: Partial<Record<'dataset' | 'research' | 'promo' | 'events' | 'pvpoke' | 'raids' | 'hunts' | 'feed', SourceHealth>>;
+  runtime?: { memoryMb: number; dbSizeMb: number | null; sseConnections: number };
+}
 export interface AdminSession { createdAt: string; lastUsedAt: string | null; expiresAt: string; userAgent: string | null }
-export interface AdminUserDetail { sessions: AdminSession[]; friends: { id: string; username: string }[]; user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null; suspendedUntil: string | null; suspendedBy: string | null; suspendReason: string | null }; counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number } }
+export interface AdminUserDetail {
+  sessions: AdminSession[];
+  friends: { id: string; username: string }[];
+  user: AdminUser & { lastSeenAt: string | null; suspendedAt: string | null; suspendedUntil: string | null; suspendedBy: string | null; suspendReason: string | null };
+  counts: { lists: number; entries: number; friends: number; sessions: number; devices: number; pvp: number; pvpTeams?: number };
+}
 export interface SignupSettings { mode: 'open' | 'invite' | 'closed'; dailyCap: number | null }
 export interface Invite { id: string; note: string | null; maxUses: number; uses: number; expiresAt: string | null; createdAt: string }
 export interface AuditEntry { id: string; actor: string | null; action: string; targetType: string; targetId: string | null; data: Record<string, unknown>; createdAt: string; undoneAt: string | null; undoable: boolean }
@@ -100,7 +146,15 @@ export interface TrashedAccount { id: string; username: string; deletedAt: strin
 export const useAccountTrash = () => useQuery({ queryKey: ['admin', 'account-trash'], queryFn: () => api<{ accounts: TrashedAccount[] }>('/admin/trash/accounts').then((r) => r.accounts) });
 export const useSignups = () => useQuery({ queryKey: ['admin', 'signups'], queryFn: () => api<{ settings: SignupSettings; invites: Invite[] }>('/admin/signups') });
 export type AuditKind = 'all' | 'accounts' | 'lists' | 'data' | 'admin';
-export const useAudit = (offset: number, kind: AuditKind = 'all') => useQuery({ queryKey: ['admin', 'audit', kind, offset], queryFn: () => api<{ entries: AuditEntry[]; offset: number }>(`/admin/audit?offset=${offset}${kind === 'all' ? '' : `&kind=${kind}`}`), placeholderData: (p) => p });
+export const useAudit = (offset: number, kind: AuditKind = 'all', q = '') =>
+  useQuery({
+    queryKey: ['admin', 'audit', kind, offset, q],
+    queryFn: () =>
+      api<{ entries: AuditEntry[]; offset: number }>(
+        `/admin/audit?offset=${offset}${kind === 'all' ? '' : `&kind=${kind}`}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
+      ),
+    placeholderData: (p) => p,
+  });
 export const useReports = (status: 'open' | 'handled', enabled = true) => useQuery({ queryKey: ['reports', status], queryFn: () => api<{ reports: Report[] }>(`/reports?status=${status}`).then((r) => r.reports), enabled });
 export const useAdminAnnouncements = () => useQuery({ queryKey: ['admin', 'announcements'], queryFn: () => api<{ announcements: Announcement[]; pushAccounts: number }>('/admin/announcements') });
 

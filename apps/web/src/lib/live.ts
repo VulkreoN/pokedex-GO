@@ -1,4 +1,5 @@
 /** Live game data scraped from Leek Duck by ScrapedDuck (refreshed hourly on their side), plus our own event archive. */
+import { formInnerFr, resolveLiveKey, type HuntIndex, type Variant } from '@mydexpogo/shared';
 import { useQuery } from '@tanstack/react-query';
 
 const BASE = 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/';
@@ -138,33 +139,169 @@ export function dexFromImage(url: string): number | null {
 }
 
 const REGION_FR: Record<string, string> = { Alolan: "d'Alola", Galarian: 'de Galar', Hisuian: 'de Hisui', Paldean: 'de Paldea' };
-const FORM_FR: Record<string, string> = {
-  Normal: 'Normale', Attack: 'Attaque', Defense: 'Défense', Speed: 'Vitesse', Incarnate: 'Avatar', Therian: 'Totémique', Origin: 'Originelle',
-  Altered: 'Alternative', Forme: '', Form: '', Formes: '', Forms: '', Male: 'Mâle', Female: 'Femelle',
-};
+const COSTUME_PREFIX_FR: [RegExp, string][] = [
+  [/^Sun Crown$/i, 'Couronne Soleil'],
+  [/^Moon Crown$/i, 'Couronne Lune'],
+  [/^Day Scarf$/i, 'Écharpe Soleil'],
+  [/^Night Scarf$/i, 'Écharpe Lune'],
+  [/^Sun Scarf$/i, 'Écharpe Soleil'],
+  [/^Moon Scarf$/i, 'Écharpe Lune'],
+  [/^Flower Crown$/i, 'Couronne de fleurs'],
+  [/^Party Hat$/i, 'Chapeau de fête'],
+  [/^Witch Hat$/i, 'Chapeau de sorcière'],
+  [/^Santa Hat$/i, 'Chapeau de Noël'],
+  [/^Holiday Hat$/i, 'Chapeau des fêtes'],
+  [/^Winter Holiday$/i, 'Fêtes d’hiver'],
+  [/^Holiday$/i, 'Fêtes'],
+  [/^New Year(?:'s|’s)?(?: Hat)?$/i, 'Nouvel An'],
+  [/^Birthday Hat$/i, 'Chapeau d’anniversaire'],
+  [/^Cake Hat$/i, 'Chapeau gâteau'],
+  [/^Anniversary$/i, 'Anniversaire'],
+  [/^Fashion Week$/i, 'Semaine de la Mode'],
+  [/^Halloween$/i, 'Halloween'],
+  [/^Spooky$/i, 'Halloween'],
+  [/^Harvest$/i, 'Récolte'],
+  [/^Detective$/i, 'Détective'],
+  [/^Safari Hat$/i, 'Chapeau safari'],
+  [/^Explorer(?: Hat)?$/i, 'Explorateur'],
+  [/^Captain(?:'s|’s)? Hat$/i, 'Chapeau Capitaine'],
+  [/^Train Conductor$/i, 'Conducteur de train'],
+  [/^Cowboy Hat$/i, 'Chapeau de cow-boy'],
+  [/^Straw Hat$/i, 'Chapeau de paille'],
+  [/^Top Hat$/i, 'Haut-de-forme'],
+  [/^Bowler Hat$/i, 'Chapeau melon'],
+  [/^Beanie$/i, 'Bonnet'],
+  [/^Nightcap|Sleep Cap$/i, 'Bonnet de nuit'],
+  [/^Visor$/i, 'Visière'],
+  [/^Red Scarf$/i, 'Écharpe rouge'],
+  [/^Scarf$/i, 'Écharpe'],
+  [/^Crown$/i, 'Couronne'],
+  [/^Tiara$/i, 'Tiare'],
+  [/^Sunglasses|Shades$/i, 'Lunettes de soleil'],
+  [/^Goggles$/i, 'Lunettes'],
+  [/^Monocle$/i, 'Monocle'],
+  [/^Ribbon$/i, 'Ruban'],
+  [/^Bow$/i, 'Nœud'],
+  [/^Flying$/i, 'Volant'],
+  [/^Balloon$/i, 'Ballon'],
+  [/^Armored$/i, 'en Armure'],
+  [/^Clone$/i, 'Clone'],
+  [/^Costume$/i, 'Costumé'],
+  [/^Festive$/i, 'Festif'],
+  [/^Spring$/i, 'Printemps'],
+  [/^Summer$/i, 'Été'],
+  [/^Autumn|Fall$/i, 'Automne'],
+  [/^Winter$/i, 'Hiver'],
+  [/^Ash Hat$/i, 'Casquette de Sacha'],
+  [/^Dawn Hat$/i, 'Bonnet d’Aurore'],
+  [/^Lucas Hat$/i, 'Béret de Louka'],
+  [/^Brendan Hat$/i, 'Casquette de Brice'],
+  [/^May(?:'s|’s)? Bow$/i, 'Ruban de Flora'],
+  [/^Backwards Cap$/i, 'Casquette à l’envers'],
+  [/^World Championships$/i, 'Championnats du Monde'],
+];
+
+const DATASET_TOKEN_FR: [RegExp, string][] = [
+  [/\bSscarf\b/g, 'Écharpe Soleil'],
+  [/\bMscarf\b/g, 'Écharpe Lune'],
+  [/\bStiara\b/g, 'Couronne Soleil'],
+  [/\bMtiara\b/g, 'Couronne Lune'],
+];
+
+type SpeciesOrIdx =
+  | Map<number, { name: { en: string; fr?: string } }>
+  | { speciesByDex: Map<number, { name: { en: string; fr?: string } }>; variantByKey: Map<string, Variant>; hunt: HuntIndex };
+
+function costumePrefixFr(prefix: string): string {
+  const clean = prefix.trim();
+  for (const [re, fr] of COSTUME_PREFIX_FR) if (re.test(clean)) return fr;
+  return clean;
+}
+
+function variantLabelFr(raw: string): string {
+  let out = raw;
+  for (const [re, fr] of DATASET_TOKEN_FR) out = out.replace(re, fr);
+  return out;
+}
 
 /**
  * Leek Duck's English name in the app language: "Shadow Alolan Marowak" -> "Ossatueur d'Alola obscur",
- * "Mega Charizard X" -> "Méga-Dracaufeu X". The species comes from the picture; unknown shapes stay as written.
+ * "Mega Charizard X" -> "Méga-Dracaufeu X", "Sun Crown Pikachu" -> "Pikachu (Couronne Soleil)",
+ * "Rockruff" with pm744.fDUSK.icon.png -> "Rocabot (Forme Crépusculaire)".
  */
-export function liveName(name: string, image: string, speciesByDex: Map<number, { name: { en: string; fr?: string } }> | undefined, lang: string): string {
-  const sp = speciesByDex?.get(dexFromImage(image) ?? 0);
-  if (lang !== 'fr' || !sp?.name.fr) return name;
+export function liveName(name: string, image: string, speciesOrIdx: SpeciesOrIdx | undefined, lang: string): string {
+  const isIdx = !!speciesOrIdx && 'speciesByDex' in speciesOrIdx;
+  const speciesByDex = isIdx ? speciesOrIdx.speciesByDex : speciesOrIdx;
+  const dex = dexFromImage(image);
+  const sp = speciesByDex?.get(dex ?? 0);
+
+  // Resolve exact variant label from image URL (e.g. pm744.fDUSK.icon.png -> "Forme Crépusculaire").
+  let variantLabel: string | null = null;
+  if (isIdx) {
+    const key = resolveLiveKey(image, name, speciesOrIdx.hunt);
+    const v = key ? speciesOrIdx.variantByKey.get(key) : undefined;
+    if (v && v.kind !== 'base' && v.kind !== 'mega' && v.kind !== 'gmax' && v.label) {
+      variantLabel = lang === 'fr' ? (v.label.fr ?? variantLabelFr(v.label.en)) : v.label.en;
+    }
+  }
+
+  if (lang !== 'fr') {
+    if (variantLabel && !/\([^)]+\)/.test(name) && !name.toLowerCase().includes(variantLabel.toLowerCase())) {
+      return `${name} (${variantLabel})`;
+    }
+    return name;
+  }
+
+  if (!sp) return name;
+  const spFr = sp.name.fr ?? sp.name.en;
   const m = /^(Shadow )?(Mega |Primal )?(Alolan |Galarian |Hisuian |Paldean )?(Gigantamax |Dynamax )?(.*)$/.exec(name)!;
-  const rest = m[5]!;
-  if (!rest.startsWith(sp.name.en)) return name;
-  const suffix = rest
-    .slice(sp.name.en.length)
-    .replace(/\(([^)]*)\)/g, (_, inner: string) => `(${inner.split(/\s+/).map((w) => FORM_FR[w] ?? w).filter(Boolean).join(' ')})`)
-    .replace(/,? and /g, ', ');
-  let out = sp.name.fr;
+  const rest = m[5]!.trim();
+
+  let out = spFr;
+  let suffix = '';
+  let explicitFormOrCostume = false;
+
+  if (rest.startsWith(sp.name.en)) {
+    const tail = rest.slice(sp.name.en.length);
+    if (tail.trim()) explicitFormOrCostume = true;
+    const wearing = /^\s+(?:wearing|with)\s+(?:an?\s+)?(.+)$/i.exec(tail);
+    if (wearing) {
+      suffix = ` (${costumePrefixFr(wearing[1]!)})`;
+    } else {
+      suffix = tail
+        .replace(/\(([^)]*)\)/g, (_, inner: string) => {
+          const mapped = formInnerFr(inner);
+          return mapped ? `(${mapped})` : '';
+        })
+        .replace(/,? and /g, ', ');
+    }
+  } else if (rest.endsWith(` ${sp.name.en}`)) {
+    // Costume/form prefix before species name ("Sun Crown Pikachu", "Day Scarf Espeon", "Dusk Form Rockruff")
+    const prefix = rest.slice(0, rest.length - sp.name.en.length).trim();
+    if (/^Dusk(?: Form)?$/i.test(prefix)) suffix = ' (Forme Crépusculaire)';
+    else suffix = ` (${costumePrefixFr(prefix)})`;
+    explicitFormOrCostume = true;
+  } else {
+    return name;
+  }
+
   if (m[2] === 'Mega ') out = `Méga-${out}`;
   if (m[2] === 'Primal ') out = `Primo-${out}`;
   out += suffix;
   if (m[3]) out += ` ${REGION_FR[m[3].trim()]}`;
   if (m[4]) out += m[4] === 'Gigantamax ' ? ' Gigamax' : ' Dynamax';
   if (m[1]) out += ' obscur';
+  if (!explicitFormOrCostume && !m[2] && !m[3] && !m[4] && variantLabel) {
+    out += ` (${variantLabel})`;
+  }
   return out;
+}
+
+/** Splits a liveName like "Rocabot (Forme Crépusculaire)" into base name + distinct form/costume sub-label. */
+export function splitLiveLabel(label: string): { main: string; form: string | null } {
+  const m = /^(.+?)\s*\(([^)]+)\)$/.exec(label.trim());
+  if (!m) return { main: label, form: null };
+  return { main: m[1]!.trim(), form: m[2]!.trim() };
 }
 
 /**
@@ -191,6 +328,36 @@ export function formatUntil(end: string, lang: string): string {
   const day = new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'short' }).format(d);
   const time = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' }).format(d);
   return lang === 'fr' ? `jusqu'au ${day} ${time}` : `until ${day} ${time}`;
+}
+
+/** Human short duration ("2 j 3 h", "1 h 25", "35 min") for live countdown badges. */
+export function shortDuration(ms: number, lang: string): string {
+  const mins = Math.max(1, Math.round(ms / 60_000));
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const remM = mins % 60;
+  if (hours < 24) return remM ? `${hours} h ${String(remM).padStart(2, '0')}` : `${hours} h`;
+  const days = Math.floor(hours / 24);
+  const remH = hours % 24;
+  const d = lang === 'fr' ? 'j' : 'd';
+  return remH ? `${days} ${d} ${remH} h` : `${days} ${d}`;
+}
+
+/** Countdown info for active events (ending within 7 days) or upcoming events (starting within 72 hours). */
+export function countdownOf(
+  e: { start?: string | null; end?: string | null },
+  lang: string,
+  now = Date.now(),
+): { kind: 'starts' | 'ends'; text: string } | null {
+  const start = e.start ? new Date(e.start).getTime() : null;
+  const end = e.end ? new Date(e.end).getTime() : null;
+  if (start !== null && start > now && start - now <= 72 * 3600_000) {
+    return { kind: 'starts', text: shortDuration(start - now, lang) };
+  }
+  if ((start === null || start <= now) && end !== null && end > now && end - now <= 7 * 86_400_000) {
+    return { kind: 'ends', text: shortDuration(end - now, lang) };
+  }
+  return null;
 }
 
 export function formatRange(start: string | null, end: string | null, lang: string): string {

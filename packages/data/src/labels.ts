@@ -46,6 +46,22 @@ const FR_WORDS: Record<string, string> = {
   Party: 'Fête',
   Witch: 'Sorcière',
   Santa: 'Noël',
+  Sscarf: 'Écharpe Soleil',
+  Mscarf: 'Écharpe Lune',
+  Stiara: 'Couronne Soleil',
+  Mtiara: 'Couronne Lune',
+  Crown: 'Couronne',
+  Flower: 'Fleur',
+  Explorer: 'Explorateur',
+  Detective: 'Détective',
+  Safari: 'Safari',
+  Birthday: 'Anniversaire',
+  Ribbon: 'Ruban',
+  Bow: 'Nœud',
+  Nightcap: 'Bonnet de nuit',
+  Sunglasses: 'Lunettes de soleil',
+  Beanie: 'Bonnet',
+  Costume: 'Costumé',
 };
 
 /** "GOFEST_2026_CAP_RED" -> "GO Fest 2026 Cap Red". Strips numeric variant suffixes like "_01". */

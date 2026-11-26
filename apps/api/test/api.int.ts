@@ -257,6 +257,23 @@ describe('roles', () => {
     expect(await kindOf(two!.key)).toBe('costume');
   });
 
+  it('lets managers hide a non-existent variant from the Pokédex and restore it anytime', async () => {
+    const target = ds.variants.find((v) => v.kind === 'costume' && !v.key.endsWith('.g2'))!;
+    expect(target).toBeTruthy();
+    expect((await alice.put(`/overrides/${encodeURIComponent(target.key)}`, { hidden: true })).status).toBe(403);
+    expect((await manager.put(`/overrides/${encodeURIComponent(target.key)}`, { hidden: true })).status).toBe(200);
+    const hiddenDs = (await anon.get('/data/pokedex.json')).body as Dataset;
+    expect(hiddenDs.variants.find((v) => v.key === target.key)).toBeUndefined();
+    const listed = (await anon.get('/overrides')).body.overrides.find((o: any) => o.variantKey === target.key);
+    expect(listed.hidden).toBe(true);
+    expect(listed.meta).toMatchObject({ dex: target.dex, kind: target.kind });
+
+    // Restoring via PATCH hidden: null brings the variant right back into the dataset.
+    expect((await manager.patch('/overrides', { keys: [target.key], hidden: null })).status).toBe(200);
+    const restoredDs = (await anon.get('/data/pokedex.json')).body as Dataset;
+    expect(restoredDs.variants.find((v) => v.key === target.key)).toBeTruthy();
+  });
+
   it('opens the review queue to managers only', async () => {
     expect((await alice.get('/feed')).status).toBe(403);
     expect((await manager.get('/feed')).status).toBe(200);
@@ -272,6 +289,8 @@ describe('roles', () => {
     expect((await anon.get('/game/posts')).status).toBe(200);
     expect((await alice.post('/game/posts', { url: 'https://x.com/g47ix/status/1' })).status).toBe(403);
     expect((await manager.post('/game/posts', { url: 'https://evil.example/status/1' })).status).toBe(400);
+    expect((await anon.get('/game/asset?url=https://evil.example/a.png')).status).toBe(400);
+    expect((await anon.get('/game/asset?url=http://cdn.leekduck.com/a.png')).status).toBe(400);
   });
 });
 

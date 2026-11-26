@@ -11,12 +11,43 @@ import { useMe } from './lib/auth.js';
 import { LangContext, detectLang } from './lib/i18n.js';
 import { applyTheme, getTheme } from './lib/theme.js';
 import { AnnouncementBanner } from './components/AnnouncementBanner.js';
+import { UpdateBanner } from './components/WhatsNew.js';
 import { useRealtime } from './lib/social.js';
 import { reportError } from './lib/errorReport.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
 import { applyTeam } from './lib/team.js';
 import { getStartPage } from './lib/startPage.js';
+
+const CHUNK_RELOAD_KEY = 'chunk-reload-at';
+
+/** True when a lazy route failed to load because a newer deploy replaced its hashed JS bundle. */
+export function isChunkLoadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  return /is not a valid JavaScript MIME type|Importing a module script failed|Failed to fetch dynamically imported module|ChunkLoadError|Unable to preload CSS/i.test(msg);
+}
+
+/** Reloads the page at most once per 30 s so a stale tab seamlessly picks up the newly deployed bundle. */
+export function reloadOnceForChunkError(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? '0');
+    if (Date.now() - last < 30_000) return false;
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+  } catch {}
+  location.reload();
+  return true;
+}
+
+function lazyRoute<T extends { default: React.ComponentType }>(loader: () => Promise<T>) {
+  return lazy(() =>
+    loader().catch((err) => {
+      if (isChunkLoadError(err) && reloadOnceForChunkError()) {
+        return new Promise<T>(() => {});
+      }
+      throw err;
+    }),
+  );
+}
 
 /** Secondary tabs and routes load on demand; core tabs prefetch once the app is idle. */
 const coreLoaders = {
@@ -27,23 +58,23 @@ const coreLoaders = {
   FriendsPage: () => import('./pages/FriendsPage.js').then((m) => ({ default: m.FriendsPage })),
   MePage: () => import('./pages/MePage.js').then((m) => ({ default: m.MePage })),
 };
-const ListsPage = lazy(coreLoaders.ListsPage);
-const ListPage = lazy(coreLoaders.ListPage);
-const SharedListPage = lazy(() => import('./pages/ListPage.js').then((m) => ({ default: m.SharedListPage })));
-const LastListRedirect = lazy(() => import('./pages/ListPage.js').then((m) => ({ default: m.LastListRedirect })));
-const FriendsPage = lazy(coreLoaders.FriendsPage);
-const FriendListsPage = lazy(() => import('./pages/FriendsPage.js').then((m) => ({ default: m.FriendListsPage })));
-const MePage = lazy(coreLoaders.MePage);
-const GamePage = lazy(coreLoaders.GamePage);
-const PvpPage = lazy(coreLoaders.PvpPage);
-const PvpTeamPage = lazy(() => import('./pages/PvpTeamPage.js').then((m) => ({ default: m.PvpTeamPage })));
-const PvpBattlePage = lazy(() => import('./pages/PvpBattlePage.js').then((m) => ({ default: m.PvpBattlePage })));
-const AdminPage = lazy(() => import('./pages/AdminPage.js').then((m) => ({ default: m.AdminPage })));
-const WelcomePage = lazy(() => import('./pages/WelcomePage.js').then((m) => ({ default: m.WelcomePage })));
-const NotificationsPage = lazy(() => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })));
-const LoginPage = lazy(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
-const ReviewPage = lazy(() => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })));
-const AboutPage = lazy(() => import('./pages/AboutPage.js').then((m) => ({ default: m.AboutPage })));
+const ListsPage = lazyRoute(coreLoaders.ListsPage);
+const ListPage = lazyRoute(coreLoaders.ListPage);
+const SharedListPage = lazyRoute(() => import('./pages/ListPage.js').then((m) => ({ default: m.SharedListPage })));
+const LastListRedirect = lazyRoute(() => import('./pages/ListPage.js').then((m) => ({ default: m.LastListRedirect })));
+const FriendsPage = lazyRoute(coreLoaders.FriendsPage);
+const FriendListsPage = lazyRoute(() => import('./pages/FriendsPage.js').then((m) => ({ default: m.FriendListsPage })));
+const MePage = lazyRoute(coreLoaders.MePage);
+const GamePage = lazyRoute(coreLoaders.GamePage);
+const PvpPage = lazyRoute(coreLoaders.PvpPage);
+const PvpTeamPage = lazyRoute(() => import('./pages/PvpTeamPage.js').then((m) => ({ default: m.PvpTeamPage })));
+const PvpBattlePage = lazyRoute(() => import('./pages/PvpBattlePage.js').then((m) => ({ default: m.PvpBattlePage })));
+const AdminPage = lazyRoute(() => import('./pages/AdminPage.js').then((m) => ({ default: m.AdminPage })));
+const WelcomePage = lazyRoute(() => import('./pages/WelcomePage.js').then((m) => ({ default: m.WelcomePage })));
+const NotificationsPage = lazyRoute(() => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })));
+const LoginPage = lazyRoute(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
+const ReviewPage = lazyRoute(() => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })));
+const AboutPage = lazyRoute(() => import('./pages/AboutPage.js').then((m) => ({ default: m.AboutPage })));
 
 function prefetchPages() {
   const run = () => Object.values(coreLoaders).forEach((load) => void load().catch(() => {}));
@@ -88,6 +119,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return { error };
   }
   componentDidCatch(error: Error) {
+    if (isChunkLoadError(error) && reloadOnceForChunkError()) return;
     reportError(error, 'render');
   }
   render() {
@@ -139,6 +171,7 @@ export function App() {
           <BrowserRouter>
             <ScrollToTop />
             <ErrorBoundary>
+            <UpdateBanner />
             <AnnouncementBanner />
             <PageFade>
             <Suspense fallback={<Spinner />}>

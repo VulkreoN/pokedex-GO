@@ -12,3 +12,5 @@ export * from './searchImport.js';
 export * from './eventNames.js';
 export * from './moon.js';
 export * from './huntMatch.js';
+export * from './medals.js';
+export * from './vivillon.js';
