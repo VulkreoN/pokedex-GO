@@ -34,7 +34,7 @@ export function WhatsNewBanner() {
             <span className="tnum text-xs text-ink-3">{dateLabel}</span>
           </div>
           <div className="mt-1 space-y-0.5 text-xs text-ink-2">
-            {lines.slice(0, 2).map((l) => <p key={l} className="flex gap-1.5"><span aria-hidden="true">•</span><span>{l}</span></p>)}
+            {lines.slice(0, 2).map((l) => <p key={l} className="flex gap-1.5"><span aria-hidden="true">•</span><span className="line-clamp-2">{l}</span></p>)}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {lines.length > 2 && <Button tone="ghost" className="min-h-8 px-2.5 text-xs" onClick={() => setOpen(true)}>{t.whats_new_more(lines.length - 2)}</Button>}

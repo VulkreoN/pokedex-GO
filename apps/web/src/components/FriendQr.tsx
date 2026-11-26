@@ -38,7 +38,6 @@ async function readQr(source: HTMLVideoElement | HTMLImageElement, canvas: HTMLC
     try {
       const found = await detector.detect(source);
       if (found[0]) return found[0].rawValue;
-      return null;
     } catch {}
   }
   const w = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;

@@ -290,8 +290,14 @@ test("a friend's QR code, read from a screenshot, fills in the friend code", asy
 
   await shower.goto('/friends');
   await shower.getByRole('button', { name: 'Mon QR code' }).click();
-  const png = await shower.getByRole('img', { name: ua.friendCode }).screenshot();
+  const qrImg = shower.getByRole('img', { name: ua.friendCode });
+  await qrImg.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const png = await qrImg.screenshot();
 
+  // Also disable BarcodeDetector on the scanner context so jsQR is always exercised (matching Linux CI).
+  await scanner.addInitScript(() => {
+    delete (window as unknown as { BarcodeDetector?: unknown }).BarcodeDetector;
+  });
   await scanner.goto('/friends');
   await scanner.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
   await scanner.getByRole('button', { name: 'Scanner un QR code' }).click();

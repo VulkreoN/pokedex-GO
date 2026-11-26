@@ -910,10 +910,15 @@ test('v1.3: Game "Pour moi" overview + countdowns, Collection stats, Trainer med
 });
 
 test('automatic Events tab renders multi-template infographics (Max Battle + Long Event) with French bonuses, raid tiers, GO Pass & tickets', async ({ page, context }) => {
-  // Keep startPast inside the current local day so the mobile WeeklySchedule ("today" tab) always includes it even right after midnight.
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 1, 0);
-  const startPast = new Date(Math.max(todayStart.getTime(), Date.now() - 3600_000)).toISOString();
+  // Format startPast as 00:00:00 of the current day in Playwright's browser timezone (Europe/Paris) — matching ScrapedDuck's
+  // local-time strings — so WeeklySchedule always puts it on "today" even when the CI host runs in UTC (e.g. 23:30 UTC = 00:30 Paris).
+  const parisYmd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const startPast = `${parisYmd}T00:00:00`;
   const endSoon = new Date(Date.now() + 3 * 3600_000).toISOString();
   await context.route('**/api/game/events', (route) =>
     route.fulfill({
