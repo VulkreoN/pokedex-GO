@@ -148,6 +148,101 @@ export const friendRoutes = new Hono<AuthEnv>()
       (await db.select({ id: schema.listUnfollows.listId }).from(schema.listUnfollows).where(eq(schema.listUnfollows.userId, me.id))).map((r) => r.id),
     );
     return c.json({ friend: pub(friend), lists: lists.map((l) => ({ ...l, following: !unfollowed.has(l.id) })) });
+  })
+  /** Crosses my collections with a friend's visible collections (plus explicit "I have it" offers) to find trade matches. */
+  .get('/:id/matches', async (c) => {
+    const me = c.get('user');
+    const other = c.req.param('id');
+    if (!(await areFriends(me.id, other))) return c.json({ error: 'not_friends' }, 403);
+    const [friend] = await db.select().from(schema.users).where(eq(schema.users.id, other)).limit(1);
+    if (!friend) return c.json({ error: 'not_found' }, 404);
+
+    const [myRows, friendRows] = await Promise.all([
+      db
+        .select({
+          listId: schema.lists.id,
+          listName: schema.lists.name,
+          variantKey: schema.listEntries.variantKey,
+          gender: schema.listEntries.gender,
+          shiny: schema.listEntries.shiny,
+          tag: schema.listEntries.tag,
+          done: schema.listEntries.done,
+        })
+        .from(schema.listEntries)
+        .innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId))
+        .where(eq(schema.lists.ownerId, me.id)),
+      db
+        .select({
+          listId: schema.lists.id,
+          listName: schema.lists.name,
+          variantKey: schema.listEntries.variantKey,
+          gender: schema.listEntries.gender,
+          shiny: schema.listEntries.shiny,
+          tag: schema.listEntries.tag,
+          done: schema.listEntries.done,
+        })
+        .from(schema.listEntries)
+        .innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId))
+        .where(and(eq(schema.lists.ownerId, other), inArray(schema.lists.visibility, ['friends', 'link']))),
+    ]);
+
+    const myListIds = [...new Set(myRows.map((r) => r.listId))];
+    const friendListIds = [...new Set(friendRows.map((r) => r.listId))];
+    const [offersToMe, offersByMe] = await Promise.all([
+      myListIds.length
+        ? db.select().from(schema.listOffers).where(and(inArray(schema.listOffers.listId, myListIds), eq(schema.listOffers.userId, other)))
+        : Promise.resolve([]),
+      friendListIds.length
+        ? db.select().from(schema.listOffers).where(and(inArray(schema.listOffers.listId, friendListIds), eq(schema.listOffers.userId, me.id)))
+        : Promise.resolve([]),
+    ]);
+
+    const exactKey = (e: { variantKey: string; gender: string; shiny: boolean; tag: string }) => `${e.variantKey}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`;
+    const offerKey = (e: { listId: string; variantKey: string; gender: string; shiny: boolean; tag: string }) => `${e.listId}|${exactKey(e)}`;
+    const match = (
+      missingRows: typeof myRows,
+      sourceRows: typeof myRows,
+      offers: { listId: string; variantKey: string; gender: string; shiny: boolean; tag: string }[],
+    ) => {
+      const offerSet = new Set(offers.map(offerKey));
+      const caughtByKey = new Map<string, { listId: string; listName: string }>();
+      for (const r of sourceRows) {
+        if (!r.done) continue;
+        const k = exactKey(r);
+        if (!caughtByKey.has(k)) caughtByKey.set(k, { listId: r.listId, listName: r.listName });
+      }
+      const seen = new Set<string>();
+      const out = [];
+      for (const m of missingRows) {
+        if (m.done) continue;
+        const dedup = offerKey(m);
+        if (seen.has(dedup)) continue;
+        const offered = offerSet.has(dedup);
+        // A regular caught Pokémon can also satisfy a "lucky" hunt via a lucky trade.
+        const source =
+          caughtByKey.get(exactKey(m)) ??
+          (m.tag === 'lucky' ? caughtByKey.get(exactKey({ ...m, tag: '' })) : undefined);
+        if (!offered && !source) continue;
+        seen.add(dedup);
+        out.push({
+          variantKey: m.variantKey,
+          gender: m.gender,
+          shiny: m.shiny,
+          tag: m.tag,
+          listId: m.listId,
+          listName: m.listName,
+          ...(source ? { sourceListId: source.listId, sourceListName: source.listName } : {}),
+          ...(offered ? { offered: true } : {}),
+        });
+      }
+      return out;
+    };
+
+    return c.json({
+      friend: pub(friend),
+      iHaveForThem: match(friendRows, myRows, offersByMe),
+      theyHaveForMe: match(myRows, friendRows, offersToMe),
+    });
   });
 
 async function acceptRequest(requestId: string, fromId: string, toId: string) {

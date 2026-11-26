@@ -243,3 +243,78 @@ test('game search warns when forms, colours or costumes cannot be filtered, and 
   await manyNote.getByRole('button', { name: 'voir moins' }).click();
   await expect(manyNote.locator('li')).toHaveCount(8);
 });
+
+test('collection UX: starter template, contextual /dex?to add, entry notes, filters, long-press and duplicate', async ({ page }) => {
+  await apiRegister(page.request);
+
+  // 1. Starter template when creating a new collection.
+  await page.goto('/lists');
+  await page.getByRole('button', { name: 'Nouvelle collection' }).first().click();
+  const createSheet = page.locator('dialog[open]');
+  await createSheet.getByRole('button', { name: 'Gen 1 · Kanto', exact: true }).click();
+  await expect(createSheet.getByLabel('Nom')).toHaveValue('Gen 1 · Kanto');
+  await createSheet.getByRole('button', { name: 'Créer' }).click();
+  await expect(page.getByText(/Pokémon ajoutés/)).toBeVisible();
+  await expect(page.getByText('Gen 1 · Kanto')).toBeVisible();
+
+  // 2. Mixed collection to test notes, shiny/tag filters, long-press pick, contextual add, and duplicate.
+  const list = (await (await page.request.post('/api/lists', { data: { name: 'Ma Liste UX' } })).json()).list;
+  await page.request.put(`/api/lists/${list.id}/entries`, {
+    data: {
+      entries: [
+        { variantKey: '1', gender: 'm', shiny: false, tag: 'lucky', done: false },
+        { variantKey: '4', gender: 'm', shiny: true, tag: '', done: false },
+      ],
+    },
+  });
+
+  await page.goto(`/lists/${list.id}`);
+  // Personal note via the card options menu.
+  const bulbaCard = page.locator('li', { hasText: 'Bulbizarre' });
+  await bulbaCard.getByRole('button', { name: 'Options' }).click();
+  const optSheet = page.locator('dialog[open]');
+  await optSheet.getByLabel('Note personnelle').fill('Réservé à Tom');
+  await optSheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText('Note enregistrée')).toBeVisible();
+  await expect(bulbaCard.getByText('Réservé à Tom')).toBeVisible();
+
+  // Quick Shiny & Tag filters inside the collection.
+  await page.getByRole('button', { name: 'Shiny', exact: true }).click();
+  await expect(page.locator('main ul > li')).toHaveCount(1);
+  await expect(page.getByText('Salamèche')).toBeVisible();
+  await page.getByRole('button', { name: 'Shiny', exact: true }).click();
+  await page.getByRole('button', { name: 'Chanceux', exact: true }).click();
+  await expect(page.locator('main ul > li')).toHaveCount(1);
+  await expect(page.getByText('Bulbizarre')).toBeVisible();
+  await page.getByRole('button', { name: 'Chanceux', exact: true }).click();
+
+  // Long-press (contextmenu) selects all genders of the pressed card (not 0).
+  await bulbaCard.getByRole('button', { name: 'Bulbizarre' }).click({ button: 'right' });
+  const bar = page.getByRole('toolbar');
+  await expect(bar.getByText('1 sélectionné')).toBeVisible();
+  await bar.getByRole('button', { name: 'Terminé' }).click();
+
+  // Contextual "+ Ajouter des Pokémon" keeps the collection pre-selected and shows "Déjà dedans" badges.
+  await page.getByRole('link', { name: 'Ajouter des Pokémon' }).click();
+  await expect(page).toHaveURL(new RegExp(`/dex\\?to=${list.id}$`));
+  await expect(page.getByText('Ajout dans « Ma Liste UX »')).toBeVisible();
+  await page.getByPlaceholder('Nom ou numéro').fill('carapuce');
+  await page.getByRole('button', { name: 'Ajouter Carapuce', exact: true }).click();
+  const addSheet = page.locator('dialog[open]');
+  await expect(addSheet.getByLabel(/Ma Liste UX/)).toBeChecked();
+  await addSheet.getByRole('button', { name: /^Ajouter · / }).click();
+  await expect(page.getByText(/Ajouté à 1 collection/)).toBeVisible();
+
+  // Re-opening Carapuce now shows the "Déjà dedans" badge on Ma Liste UX.
+  await page.getByRole('button', { name: 'Ajouter Carapuce', exact: true }).click();
+  await expect(page.locator('dialog[open] li', { hasText: 'Ma Liste UX' }).getByText('Déjà dedans')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Back to collection -> duplicate own list from Edit sheet.
+  await page.getByRole('link', { name: 'Retour', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/lists/${list.id}$`));
+  await page.getByRole('button', { name: 'Modifier' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Dupliquer cette collection' }).click();
+  await expect(page.getByText('Collection dupliquée')).toBeVisible();
+  await expect(page).not.toHaveURL(new RegExp(`/lists/${list.id}$`));
+});

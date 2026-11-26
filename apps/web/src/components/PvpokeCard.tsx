@@ -14,7 +14,12 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
   const t = useT();
   const { lang } = useLang();
   const q = usePvpDetails(me.dex);
-  const mine = (q.data ?? []).filter((r) => formOf(pvp, r)?.key === me.key);
+  const [season, setSeason] = useState<'current' | 'preview'>('current');
+  const preview = q.data?.preview;
+  const previewMine = (preview?.rankings ?? []).filter((r) => formOf(pvp, r)?.key === me.key);
+  const hasPreview = !!preview && previewMine.length > 0;
+  const activeSeason = season === 'preview' && hasPreview ? 'preview' : 'current';
+  const mine = activeSeason === 'preview' ? previewMine : (q.data?.rankings ?? []).filter((r) => formOf(pvp, r)?.key === me.key);
   // Start on the league (and normal / Shadow) where it ranks best.
   const best = [...mine].sort((a, b) => a.rank / a.of - b.rank / b.of)[0];
   const [league, setLeague] = useState<League | null>(null);
@@ -29,10 +34,21 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
 
   return (
     <section className="card mt-4 p-3" aria-label={t.pvpoke_title}>
-      <div className="mb-2 flex items-baseline gap-2">
+      <div className="mb-2 flex flex-wrap items-baseline gap-2">
         <h2 className="flex-1 text-base font-bold">{t.pvpoke_title}</h2>
-        {r && <a href={pvpokeUrl(r)} target="_blank" rel="noreferrer" className="text-sm font-semibold text-sky">{t.pvpoke_open}</a>}
+        {r && (
+          <a href={pvpokeUrl(r, activeSeason === 'preview' ? preview?.slug : undefined)} target="_blank" rel="noreferrer" className="text-sm font-semibold text-sky">
+            {t.pvpoke_open}
+          </a>
+        )}
       </div>
+      {hasPreview && (
+        <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+          <Chip active={activeSeason === 'current'} onClick={() => setSeason('current')} className="min-h-8 px-2.5 text-xs">{t.pvp_season_current}</Chip>
+          <Chip active={activeSeason === 'preview'} onClick={() => setSeason('preview')} className="min-h-8 px-2.5 text-xs">✨ {t.pvp_season_preview}</Chip>
+          {activeSeason === 'preview' && preview && <span className="text-xs text-ink-3">{preview.title}</span>}
+        </div>
+      )}
       {!r ? (
         <p className="text-sm text-ink-2">{t.pvpoke_unranked}</p>
       ) : (
@@ -52,7 +68,14 @@ export function PvpokeCard({ idx, pvp, me }: { idx: DatasetIndex; pvp: PvpData; 
 
           <div className="mt-3 flex items-end gap-3">
             <div>
-              <div className="tnum text-[34px] font-extrabold leading-none">#{r.rank}</div>
+              <div className="flex items-baseline gap-2">
+                <div className="tnum text-[34px] font-extrabold leading-none">#{r.rank}</div>
+                {activeSeason === 'preview' && r.delta !== undefined && (
+                  <span className={`tnum rounded-md px-1.5 py-0.5 text-xs font-bold ${r.delta === null ? 'bg-info-soft text-info-ink' : r.delta > 0 ? 'bg-go-soft text-go-ink' : r.delta < 0 ? 'bg-berry/15 text-berry' : 'bg-paper-2 text-ink-3'}`}>
+                    {r.delta === null ? t.pvp_preview_new : r.delta > 0 ? `▲ +${r.delta}` : r.delta < 0 ? `▼ ${r.delta}` : '='}
+                  </span>
+                )}
+              </div>
               <div className="tnum mt-1 text-xs text-ink-3">{t.pvpoke_of(r.of)}</div>
             </div>
             <div className="ml-auto text-right">

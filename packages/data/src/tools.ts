@@ -41,6 +41,8 @@ interface GmEntry {
       cinematicMoves?: (string | number)[];
       eliteQuickMove?: (string | number)[];
       eliteCinematicMove?: (string | number)[];
+      nonTmCinematicMoves?: (string | number)[];
+      formChange?: { availableForm?: string[]; moveReassignment?: { quickMoves?: { replacementMoves?: (string | number)[] }[]; cinematicMoves?: { replacementMoves?: (string | number)[] }[] } }[];
       kmBuddyDistance?: number;
       evolutionBranch?: Branch[];
       thirdMove?: { stardustToUnlock?: number; candyToUnlock?: number };
@@ -53,6 +55,8 @@ interface GmEntry {
 export interface ToolsContext {
   isCostume: (dex: number, token: string) => boolean;
   released: (dex: number) => boolean;
+  /** Whether a specific non-Mega form is released in the game (excludes battle-only & datamined forms). */
+  formReleased?: (dex: number, key: string) => boolean;
   /** Whether this Mega / Primal is in the game (not one of the upcoming ones). */
   megaReleased: (key: string) => boolean;
   name: (dex: number, token: string | null) => LocalizedText;
@@ -69,7 +73,26 @@ const humanize = (token: string) => token.toLowerCase().replace(/_fast$/, '').sp
 
 /** Eevee's nickname trick: once per nickname, the same in every language. */
 const EEVEE_NICKNAMES: Record<string, string> = { '134': 'Rainer', '135': 'Sparky', '136': 'Pyro', '196': 'Sakura', '197': 'Tamao', '470': 'Linnea', '471': 'Rea', '700': 'Kira' };
-const TYROGUE: Record<string, 'atk' | 'def' | 'equal'> = { '106': 'atk', '107': 'def', '237': 'equal' };
+const TYROGUE: Record<string, 'atk' | 'def' | 'sta'> = { '106': 'atk', '107': 'def', '237': 'sta' };
+/** Signature / Adventure Effect moves Niantic keeps off pokemonSettings so Elite TMs cannot teach them. */
+const EXTRA_SIGNATURE_MOVES: Record<string, string[]> = {
+  '249.fS': ['AEROBLAST_PLUS', 'AEROBLAST_PLUS_PLUS'],
+  '250.fS': ['SACRED_FIRE_PLUS', 'SACRED_FIRE_PLUS_PLUS'],
+  '483.fORIGIN': ['ROAR_OF_TIME'],
+  '484.fORIGIN': ['SPACIAL_REND'],
+  '647.fRESOLUTE': ['SECRET_SWORD'],
+};
+/** Alternate forms whose Game Master template carries a copied `shadow` block even though their Shadow is not out. */
+const UNRELEASED_SHADOW_FORMS = new Set([
+  '144.fGALARIAN', '145.fGALARIAN', '146.fGALARIAN',
+  '150.fA',
+  '249.fS', '250.fS',
+  '483.fORIGIN', '484.fORIGIN', '487.fORIGIN',
+  '554.fGALARIAN', '555.fGALARIAN_STANDARD',
+  '641.fTHERIAN', '642.fTHERIAN', '645.fTHERIAN',
+]);
+/** Legacy "_S" shadow-template placeholders in the game master (only Apex Lugia/Ho-Oh are distinct forms). */
+const APEX_FORMS = new Set(['249.fS', '250.fS']);
 
 const typeOf = (t?: string) => (t ? (t.replace('POKEMON_TYPE_', '').toLowerCase() as PokemonType) : null);
 const tokenOf = (pokemonId: string, form?: string) => {
@@ -94,6 +117,27 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     moveNames[id] = name;
   }
 
+  // Collect form-change signature moves (Fusion / Crowned forms: Moongeist Beam, Sunsteel Strike, Freeze Shock, Ice Burn, Behemoth Blade/Bash).
+  const formChangeMoves = new Map<string, { quick: string[]; charged: string[] }>();
+  for (const t of gm) {
+    const ps = t.data.pokemonSettings;
+    if (!ps?.formChange?.length) continue;
+    for (const fc of ps.formChange) {
+      if (!fc.moveReassignment || !fc.availableForm?.length) continue;
+      const qAdd = (fc.moveReassignment.quickMoves ?? []).flatMap((r) => r.replacementMoves ?? []).map(String).filter((id) => moves[id]);
+      const cAdd = (fc.moveReassignment.cinematicMoves ?? []).flatMap((r) => r.replacementMoves ?? []).map(String).filter((id) => moves[id]);
+      if (!qAdd.length && !cAdd.length) continue;
+      for (const targetForm of fc.availableForm) {
+        // Skip reversion entries back to base forms (e.g. Crowned -> Hero reverts Behemoth Blade back to Iron Head).
+        if (targetForm.endsWith('_NORMAL') || targetForm.endsWith('_HERO')) continue;
+        const k = `${ps.pokemonId}|${targetForm}`;
+        const bucket = formChangeMoves.get(k) ?? formChangeMoves.set(k, { quick: [], charged: [] }).get(k)!;
+        bucket.quick.push(...qAdd);
+        bucket.charged.push(...cAdd);
+      }
+    }
+  }
+
   // One entry per form; the formless template only when no "_NORMAL" one says the same.
   const pokemon = new Map<string, ToolPokemon>();
   const keyOf = new Map<string, string>(); // `${pokemonId}|${form}` -> key
@@ -107,8 +151,8 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     const token = tokenOf(ps.pokemonId, ps.form);
     if (token && (ctx.isCostume(dex, token) || /COPY|_\d{4}$|^\d{4}$/.test(token))) continue;
     const key = makeVariantKey({ dex, form: token, costume: null, gender: null });
-    // Raid-boss-only forms (Eternamax): never on a player's side.
-    if (token === 'ETERNAMAX') continue;
+    // Raid-boss-only forms (Eternamax) and internal "_S" shadow templates (except Apex Lugia/Ho-Oh).
+    if (token === 'ETERNAMAX' || (token === 'S' && !APEX_FORMS.has(key))) continue;
     keyOf.set(`${ps.pokemonId}|${ps.form ?? ''}`, key);
     if (!ps.form) keyOf.set(`${ps.pokemonId}|${ps.pokemonId}_NORMAL`, key);
     if (pokemon.has(key)) continue;
@@ -116,12 +160,16 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     const types = [typeOf(ps.type), typeOf(ps.type2)].filter((x): x is PokemonType => !!x);
     // Recent moves are numbers in the game master ("590"): ids are strings everywhere here.
     const ids = (list?: (string | number)[]) => (list ?? []).map(String).filter((id) => moves[id]);
-    const elite = [...ids(ps.eliteQuickMove), ...ids(ps.eliteCinematicMove)];
-    const quick = [...ids(ps.quickMoves), ...ids(ps.eliteQuickMove)];
-    const charged = [...ids(ps.cinematicMoves), ...ids(ps.eliteCinematicMove)];
-    const p: ToolPokemon = { key, dex, name: ctx.name(dex, token), types, atk: s.baseAttack!, def: s.baseDefense ?? 0, sta: s.baseStamina ?? 0, released: ctx.released(dex), quick: [...new Set(quick)], charged: [...new Set(charged)] };
+    const fc = ps.form ? formChangeMoves.get(`${ps.pokemonId}|${ps.form}`) : undefined;
+    const extraSig = ids(EXTRA_SIGNATURE_MOVES[key]);
+    const nonTm = ids(ps.nonTmCinematicMoves);
+    const elite = [...ids(ps.eliteQuickMove), ...ids(ps.eliteCinematicMove), ...nonTm, ...(fc?.quick ?? []), ...(fc?.charged ?? []), ...extraSig];
+    const quick = [...ids(ps.quickMoves), ...ids(ps.eliteQuickMove), ...(fc?.quick ?? [])];
+    const charged = [...ids(ps.cinematicMoves), ...ids(ps.eliteCinematicMove), ...nonTm, ...(fc?.charged ?? []), ...extraSig];
+    const released = ctx.formReleased ? ctx.formReleased(dex, key) : ctx.released(dex);
+    const p: ToolPokemon = { key, dex, name: ctx.name(dex, token), types, atk: s.baseAttack!, def: s.baseDefense ?? 0, sta: s.baseStamina ?? 0, released, quick: [...new Set(quick)], charged: [...new Set(charged)] };
     if (elite.length) p.elite = [...new Set(elite)];
-    if (ps.shadow) p.shadow = true;
+    if (ps.shadow && !UNRELEASED_SHADOW_FORMS.has(key)) p.shadow = true;
     if (ps.kmBuddyDistance) p.buddyKm = ps.kmBuddyDistance;
     if (ps.thirdMove?.stardustToUnlock) p.secondMove = [ps.thirdMove.stardustToUnlock, ps.thirdMove.candyToUnlock ?? 0];
     if (ps.evolutionBranch?.length) branchesOf.set(key, ps.evolutionBranch);
@@ -143,7 +191,7 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
         atk: evo.stats.baseAttack,
         def: evo.stats.baseDefense ?? p.def,
         sta: evo.stats.baseStamina ?? p.sta,
-        released: p.released && ctx.megaReleased(megaKey),
+        released: ctx.released(dex) && ctx.megaReleased(megaKey),
         mega: true,
         shadow: undefined,
         evolutions: undefined,

@@ -1,6 +1,6 @@
 /**
  * Exports a list as a themed A4 PDF: a grid of collector cards with names, caught ones faded and struck through.
- * jsPDF is loaded on demand; sprites are fetched as data URLs (both image hosts send CORS headers).
+ * jsPDF is loaded on demand; sprites are fetched with a timeout, deduplicated by URL, and shrunk so huge lists stay light.
  */
 import type { Lang, ListDetail } from '@mydexpogo/shared';
 import { cardDone, cardsOf, missingCards } from './cards.js';
@@ -11,53 +11,79 @@ import { drawGender } from './genderGlyph.js';
 import { localized } from './i18n.js';
 import { qrModules } from './qr.js';
 
-export async function toDataUrl(url: string): Promise<string | null> {
+/** Fetches a CORS sprite blob with a hard timeout so a single stalled image never hangs an export. */
+export async function fetchSpriteBlob(url: string, timeoutMs = 8_000): Promise<Blob | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     // The page already displayed these pictures as plain <img>, so the browser and the service worker hold
     // responses that cannot be read from script. A distinct URL makes them fetch a readable (CORS) copy.
-    const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}pdf=1`, { mode: 'cors', credentials: 'omit' });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise((ok) => {
-      const r = new FileReader();
-      r.onload = () => ok(r.result as string);
-      r.onerror = () => ok(null);
-      r.readAsDataURL(blob);
+    const res = await fetch(`${url}${url.includes('?') ? '&' : '?'}pdf=1`, {
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal,
     });
+    if (!res.ok) return null;
+    return await res.blob();
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+export async function toDataUrl(url: string): Promise<string | null> {
+  const blob = await fetchSpriteBlob(url);
+  if (!blob) return null;
+  return await new Promise((ok) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result as string);
+    r.onerror = () => ok(null);
+    r.readAsDataURL(blob);
+  });
 }
 
 /**
  * A picture redrawn small enough for a PDF cell. Game pictures are large: embedded as they are, a list of a few
- * hundred Pokémon made a PDF of several hundred megabytes that desktop browsers failed to produce.
+ * hundred Pokémon made a PDF of several hundred megabytes that mobile and desktop browsers failed to produce.
  */
-async function shrink(dataUrl: string, size = 160): Promise<string | null> {
-  const img = await new Promise<HTMLImageElement | null>((ok) => {
-    const i = new Image();
-    i.onload = () => ok(i);
-    i.onerror = () => ok(null);
-    i.src = dataUrl;
-  });
-  if (!img) return null;
-  const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/png');
+async function shrinkBlob(blob: Blob, size = 120): Promise<string | null> {
+  const objUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement | null>((ok) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => ok(null);
+      i.src = objUrl;
+    });
+    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+    const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const out = canvas.toDataURL('image/png');
+    // Immediately release backing store so mobile Safari does not hit canvas memory limits.
+    canvas.width = 0;
+    canvas.height = 0;
+    return out;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
 }
 
-export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T, index: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i]!);
+      out[i] = await fn(items[i]!, i);
     }
   }));
   return out;
@@ -86,9 +112,10 @@ export interface PdfOptions {
   theme?: ExportTheme;
   note?: string;
   friendCode?: string;
+  onProgress?: (done: number, total: number) => void;
 }
 
-export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: Lang, t: PdfLabels & Record<string, unknown>, opts: PdfOptions = {}) {
+export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: Lang, t: PdfLabels & Record<string, unknown>, opts: PdfOptions = {}): Promise<{ blob: Blob; filename: string }> {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const theme = opts.theme ?? EXPORT_THEMES.classic;
@@ -140,13 +167,19 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     .map((c) => {
       const v = entryVariant(idx, c.variantKey, c.members.every((m) => m.gender === 'f') ? 'f' : 'm');
       const sp = v && idx.speciesByDex.get(v.dex);
-      return v && sp ? { c, e: { shiny: c.shiny, tag: c.tag, done: cardDone(c) }, v, sp } : null;
+      return v && sp ? { c, e: { shiny: c.shiny, tag: c.tag, done: cardDone(c) }, v, sp, url: imageUrl(idx, v, c.shiny) ?? imageUrl(idx, v, false) } : null;
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
-  const pictures = await mapLimit(rows, 8, async ({ e, v }) => {
-    const url = imageUrl(idx, v, e.shiny) ?? imageUrl(idx, v, false);
-    const data = url ? await toDataUrl(url) : null;
-    return data ? shrink(data) : null;
+
+  // Deduplicate unique sprite URLs so duplicate forms (e.g. normal + lucky) are fetched & embedded only once.
+  const uniqueUrls = [...new Set(rows.map((r) => r.url).filter((u): u is string => !!u))];
+  const shrunkByUrl = new Map<string, string | null>();
+  let fetched = 0;
+  opts.onProgress?.(0, uniqueUrls.length);
+  await mapLimit(uniqueUrls, 6, async (url) => {
+    const blob = await fetchSpriteBlob(url);
+    shrunkByUrl.set(url, blob ? await shrinkBlob(blob) : null);
+    opts.onProgress?.(++fetched, uniqueUrls.length);
   });
 
   const done = list.entries.filter((e) => e.done).length;
@@ -263,53 +296,76 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
   };
 
   let y = header(true);
-  // The in-game search for what is missing: selectable text, and a QR code for phones that cannot copy from a PDF.
+
+  // The in-game search for what is missing: paginated cleanly if very long so it never overflows off page 1.
   if (opts.search) {
     const qr = qrModules(opts.search);
     const qrSize = qr ? 30 : 0;
     const textW = W - 2 * M - qrSize - 6;
     doc.setFont('courier', 'normal');
     doc.setFontSize(8.5);
-    const lines = doc.splitTextToSize(pdfText(opts.search), textW - 6) as string[];
-    const boxH = Math.max(qr ? qrSize + 6 : 0, 14 + lines.length * 3.6);
-    doc.setFillColor(...rgbSearchBg);
-    doc.setDrawColor(...rgbSearchBorder);
-    doc.setLineWidth(0.35);
-    doc.roundedRect(M, y, W - 2 * M, boxH, 3, 3, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(...rgbInk);
-    doc.text(pdfText(t.export_search_title), M + 4, y + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...rgbInk3);
-    doc.text(pdfText(qr ? t.export_search_hint : t.export_search_no_qr), M + 4, y + 10);
-    doc.setFont('courier', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...rgbInk);
-    doc.text(lines, M + 4, y + 15);
-    if (qr) {
-      const cell = qrSize / (qr.length + 2);
-      const qx = W - M - qrSize - 3;
-      const qy = y + 3;
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(qx, qy, qrSize, qrSize, 1.5, 1.5, 'F');
-      doc.setFillColor(...rgbQrDark);
-      qr.forEach((row, r) => row.forEach((dark, c) => { if (dark) doc.rect(qx + (c + 1) * cell, qy + (r + 1) * cell, cell + 0.02, cell + 0.02, 'F'); }));
+    const allLines = doc.splitTextToSize(pdfText(opts.search), textW - 6) as string[];
+    const lineH = 3.6;
+    let offset = 0;
+    let firstBox = true;
+    while (offset < allLines.length || firstBox) {
+      const topPad = firstBox ? 15 : 6;
+      const availH = H - M - y - topPad - 4;
+      const maxLines = Math.max(1, Math.floor(availH / lineH));
+      const slice = allLines.slice(offset, offset + maxLines);
+      offset += slice.length;
+      const boxH = Math.max(firstBox && qr ? qrSize + 6 : 0, topPad + slice.length * lineH + 2.5);
+      doc.setFillColor(...rgbSearchBg);
+      doc.setDrawColor(...rgbSearchBorder);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(M, y, W - 2 * M, boxH, 3, 3, 'FD');
+      if (firstBox) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...rgbInk);
+        doc.text(pdfText(t.export_search_title), M + 4, y + 6);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(...rgbInk3);
+        doc.text(pdfText(qr ? t.export_search_hint : t.export_search_no_qr), M + 4, y + 10);
+      }
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...rgbInk);
+      if (slice.length) doc.text(slice, M + 4, y + topPad);
+      if (firstBox && qr) {
+        const cell = qrSize / (qr.length + 2);
+        const qx = W - M - qrSize - 3;
+        const qy = y + 3;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(qx, qy, qrSize, qrSize, 1.5, 1.5, 'F');
+        doc.setFillColor(...rgbQrDark);
+        qr.forEach((row, r) => row.forEach((dark, c) => { if (dark) doc.rect(qx + (c + 1) * cell, qy + (r + 1) * cell, cell + 0.02, cell + 0.02, 'F'); }));
+      }
+      firstBox = false;
+      y += boxH + 4.5;
+      if (offset < allLines.length) {
+        doc.addPage();
+        pageNum++;
+        y = header(false);
+      }
     }
-    y += boxH + 4.5;
   }
 
-  rows.forEach(({ c, e, v, sp }, i) => {
-    const col = i % COLS;
-    if (col === 0 && i > 0) y += cellH + GAP;
+  let rowIdx = 0;
+  rows.forEach(({ c, e, v, sp, url }) => {
+    const col = rowIdx % COLS;
+    if (col === 0 && rowIdx > 0) y += cellH + GAP;
     if (y + cellH > H - M) {
       doc.addPage();
       pageNum++;
       y = header(false);
+      rowIdx = 0;
     }
-    const x = M + col * (cellW + GAP);
+    const drawCol = rowIdx % COLS;
+    const x = M + drawCol * (cellW + GAP);
     const cx = x + cellW / 2;
+    rowIdx++;
 
     // Collector card container.
     doc.setFillColor(...rgbCard);
@@ -321,11 +377,12 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     doc.setFillColor(...rgbHalo);
     doc.circle(cx, y + 13.5, 9.5, 'F');
 
-    const pic = pictures[i];
+    const pic = url ? shrunkByUrl.get(url) : null;
     if (pic) {
       if (e.done) doc.setGState(doc.GState({ opacity: 0.32 }));
       try {
-        doc.addImage(pic, 'PNG', cx - img / 2, y + 2.2, img, img, undefined, 'FAST');
+        // Passing `url` as jsPDF image alias ensures duplicate sprites share a single embedded PDF object.
+        doc.addImage(pic, 'PNG', cx - img / 2, y + 2.2, img, img, url!, 'FAST');
       } catch {}
       if (e.done) doc.setGState(doc.GState({ opacity: 1 }));
     }
@@ -378,5 +435,15 @@ export async function exportListPdf(idx: DatasetIndex, list: ListDetail, lang: L
     }
   });
 
-  doc.save(`${fileSlug(list.name)}.pdf`);
+  const filename = `${fileSlug(list.name)}.pdf`;
+  const blob = doc.output('blob');
+  const dlUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = dlUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(dlUrl), 30_000);
+  return { blob, filename };
 }

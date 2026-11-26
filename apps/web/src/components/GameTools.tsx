@@ -1,16 +1,44 @@
 /** The Game tab's tools: best counters (raids, Team GO Rocket, any Pokémon), costs, buddy distances, the GO Battle League. */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { nextFullMoons, powerUpCost, rankCounters, weaknesses, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
+import { nextFullMoons, powerUpCost, rankCounters, weaknesses, type PokemonType, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
-import { TypeBadge } from './TypeBadge.js';
-import { Badge, Chip, Empty, Sheet, Spinner } from './ui.js';
+import { TYPE_COLORS, TypeBadge } from './TypeBadge.js';
+import { Badge, Button, Chip, Empty, Sheet, Spinner } from './ui.js';
+import { useMe } from '../lib/auth.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { typeName, useLang, useT } from '../lib/i18n.js';
+import { useMembership } from '../lib/lists.js';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
-import { eventStatus, eventTitle, useEvents, useRaids, type LivePokemon } from '../lib/live.js';
+import { dexFromImage, eventStatus, eventTitle, useEvents, useRaids, type LivePokemon } from '../lib/live.js';
 import { liveKey, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
+
+/** Tells whether a live Pokémon (raid, egg, spawn, research, Rocket) is missing in one of the signed-in player's collections. */
+export function useMissingHunts() {
+  const me = useMe();
+  const membership = useMembership(!!me.data);
+  return useMemo(() => {
+    const normalMissing = new Set<number>();
+    const shinyMissing = new Set<number>();
+    for (const e of membership.data ?? []) {
+      if (e.done) continue;
+      const dex = Number(e.variantKey.split('.')[0]);
+      if (!Number.isFinite(dex) || dex <= 0) continue;
+      if (e.shiny) shinyMissing.add(dex);
+      else normalMissing.add(dex);
+    }
+    const hasMissing = normalMissing.size > 0 || shinyMissing.size > 0;
+    const isWanted = (image: string, canBeShiny?: boolean): boolean => {
+      const dex = dexFromImage(image);
+      if (!dex) return false;
+      if (normalMissing.has(dex)) return true;
+      // If only hunting shiny, highlight when it can be shiny (or shiny status unknown).
+      return shinyMissing.has(dex) && canBeShiny !== false;
+    };
+    return { hasMissing, isWanted };
+  }, [membership.data]);
+}
 
 /** The tools need both the Pokédex (pictures) and their own data. */
 function useToolData(): { idx: DatasetIndex; tools: ToolsData } | 'loading' | 'error' {
@@ -46,7 +74,14 @@ function PokemonPicker({ tools, onPick, releasedOnly = false }: { tools: ToolsDa
   }, [q, tools, releasedOnly]);
   return (
     <div>
-      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search_placeholder} aria-label={t.tools_pick} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3" />
+      <div className="relative">
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search_placeholder} aria-label={t.tools_pick} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3" />
+        {q && (
+          <button type="button" onClick={() => setQ('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">
+            ✕
+          </button>
+        )}
+      </div>
       {found.length > 0 && (
         <ul className="mt-1 divide-y divide-line rounded-xl border border-line bg-card">
           {found.map((p) => (
@@ -157,7 +192,6 @@ export function CountersSheet({ target, onClose }: { target: ToolPokemon | null;
   return (
     <Sheet open={!!target} onClose={onClose} title={target ? t.counters_title(local(target.name, lang)) : ''}>
       {target && (typeof data === 'string' ? <Loading state={data} /> : <CounterList idx={data.idx} tools={data.tools} target={target} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} />)}
-      {target && <Link to={`/dex/${target.dex}`} className="mt-1 block pb-2 text-center text-sm font-semibold text-sky">{t.counters_dex_link}</Link>}
     </Sheet>
   );
 }
@@ -184,43 +218,121 @@ export function RocketTab() {
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
   const eventOf = useEventMarks('rocket');
+  const { hasMissing, isWanted } = useMissingHunts();
   const [target, setTarget] = useState<ToolPokemon | null>(null);
+  const [query, setQuery] = useState('');
+  const [onlyHunts, setOnlyHunts] = useState(false);
   if (rockets.isPending) return <Spinner />;
-  if (rockets.isError) return <Empty>{t.live_error}</Empty>;
-  const leaders = rockets.data.filter((r) => !/Grunt/.test(r.name));
-  const grunts = rockets.data.filter((r) => /Grunt/.test(r.name));
-  const card = (r: (typeof rockets.data)[number]) => (
-    <li key={r.name} className="card p-2.5">
-      <p className="mb-1.5 text-sm font-bold">{rocketName(r.name, lang, (ty) => typeName(ty, lang))}</p>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {[r.firstPokemon, r.secondPokemon, r.thirdPokemon].map((slot, i) => (
-          <div key={i} className="flex items-center gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
-            <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
-            {slot.map((m) => {
-              const p = fromImage(m.image, m.name);
-              return (
-                <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} title={eventOf(m.image, m.name)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}${eventOf(m.image, m.name) ? ` · ${eventOf(m.image, m.name)}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''} ${eventOf(m.image, m.name) ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}>
-                  <img src={m.image} alt="" width={38} height={38} loading="lazy" decoding="async" className="object-contain" />
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </li>
-  );
+  if (rockets.isError) return <Empty>{t.live_error}<br /><Button tone="ghost" className="mt-3" onClick={() => void rockets.refetch()}>{t.retry}</Button></Empty>;
+
+  const q = normalize(query);
+  const gruntTypeOf = (type: string): PokemonType | null => {
+    const low = type.toLowerCase();
+    return low in TYPE_COLORS ? (low as PokemonType) : null;
+  };
+  const hasWantedEncounter = (r: (typeof rockets.data)[number]) =>
+    [r.firstPokemon, r.secondPokemon, r.thirdPokemon].flat().some((m) => m.isEncounter && isWanted(m.image, m.canBeShiny));
+
+  const filtered = rockets.data.filter((r) => {
+    if (onlyHunts && !hasWantedEncounter(r)) return false;
+    if (!q) return true;
+    const title = rocketName(r.name, lang, (ty) => typeName(ty, lang));
+    const mons = [r.firstPokemon, r.secondPokemon, r.thirdPokemon]
+      .flat()
+      .map((m) => {
+        const p = fromImage(m.image, m.name);
+        return `${m.name} ${p ? `${p.name.en} ${p.name.fr ?? ''}` : ''}`;
+      })
+      .join(' ');
+    return normalize(`${title} ${r.name} ${r.type} ${mons}`).includes(q);
+  });
+  const leaders = filtered.filter((r) => !/Grunt/.test(r.name));
+  const grunts = filtered.filter((r) => /Grunt/.test(r.name));
+  const anyWanted = hasMissing && rockets.data.some(hasWantedEncounter);
+
+  const card = (r: (typeof rockets.data)[number]) => {
+    const gType = gruntTypeOf(r.type);
+    const weak = gType ? weaknesses([gType]) : [];
+    const wanted = hasWantedEncounter(r);
+    return (
+      <li key={r.name} className={`card p-2.5 ${wanted ? 'ring-2 ring-go/60' : ''}`}>
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-bold">{rocketName(r.name, lang, (ty) => typeName(ty, lang))}</p>
+          {gType && <TypeBadge type={gType} small />}
+          {wanted && <Badge tone="grass">{t.game_wanted_badge}</Badge>}
+          {weak.length > 0 && (
+            <span className="ml-auto flex flex-wrap items-center gap-1 text-[11px] text-ink-3">
+              <span>{t.rocket_weak_to}</span>
+              {weak.slice(0, 4).map((w) => <TypeBadge key={w.type} type={w.type} small />)}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {[r.firstPokemon, r.secondPokemon, r.thirdPokemon].map((slot, i) => (
+            <div key={i} className="flex items-center gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
+              <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
+              {slot.map((m) => {
+                const p = fromImage(m.image, m.name);
+                const monWanted = m.isEncounter && isWanted(m.image, m.canBeShiny);
+                return (
+                  <button
+                    key={`${m.image}-${m.name}`}
+                    type="button"
+                    disabled={!p}
+                    onClick={() => p && setTarget(p)}
+                    title={eventOf(m.image, m.name)}
+                    aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}${eventOf(m.image, m.name) ? ` · ${eventOf(m.image, m.name)}` : ''}`}
+                    className={`relative rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${monWanted ? 'ring-2 ring-go' : m.isEncounter ? 'ring-2 ring-shiny' : ''} ${eventOf(m.image, m.name) ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}
+                  >
+                    <img src={m.image} alt="" width={38} height={38} loading="lazy" decoding="async" className="object-contain" />
+                    {monWanted && <span className="absolute -left-1 -top-1 rounded-full bg-go px-1 text-[8px] font-bold leading-3.5 text-white">★</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </li>
+    );
+  };
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <div className="relative">
+        <input
+          type="search"
+          inputMode="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t.rocket_search}
+          aria-label={t.rocket_search}
+          className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">
+            ✕
+          </button>
+        )}
+      </div>
+      {anyWanted && (
+        <div className="flex flex-wrap gap-2">
+          <Chip active={onlyHunts} onClick={() => setOnlyHunts((v) => !v)}>{t.game_my_hunts}</Chip>
+        </div>
+      )}
       <p className="flex items-center gap-2 text-sm text-ink-2"><span className="inline-block h-4 w-4 shrink-0 rounded ring-2 ring-shiny" aria-hidden="true" />{t.rocket_legend}</p>
       <EventLegend className="" marks={rockets.data.flatMap((r) => [r.firstPokemon, r.secondPokemon, r.thirdPokemon].flat().map((m) => eventOf(m.image, m.name)))} />
-      <section>
-        <h2 className="mb-2 text-base font-bold">{t.rocket_leaders}</h2>
-        <ul className="space-y-2">{leaders.map(card)}</ul>
-      </section>
-      <section>
-        <h2 className="mb-2 text-base font-bold">{t.rocket_grunts}</h2>
-        <ul className="space-y-2">{grunts.map(card)}</ul>
-      </section>
+      {leaders.length === 0 && grunts.length === 0 && <Empty>{t.nothing_here}</Empty>}
+      {leaders.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-base font-bold">{t.rocket_leaders}</h2>
+          <ul className="space-y-2">{leaders.map(card)}</ul>
+        </section>
+      )}
+      {grunts.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-base font-bold">{t.rocket_grunts}</h2>
+          <ul className="space-y-2">{grunts.map(card)}</ul>
+        </section>
+      )}
       <CountersSheet target={target} onClose={() => setTarget(null)} />
     </div>
   );
@@ -233,13 +345,16 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
   const cpm = idx.ds.pvp?.cpm[39] ?? 0.7903;
   const counters = useMemo(() => rankCounters(tools, { types: target.types, def: target.def }, { cpm, megas, shadows, limit: 12 }), [tools, target, cpm, megas, shadows]);
   const weak = weaknesses(target.types);
-  const top = counters[0]?.dps ?? 1;
+  const top = counters[0]?.score ?? 1;
   return (
-    <section aria-label={t.counters_title(local(target.name, lang))} className="space-y-3 pb-2">
+    <section aria-label={t.counters_title(local(target.name, lang))} className="space-y-3 overflow-x-hidden pb-2">
       <div className="card flex items-center gap-3 p-3">
         <FormSprite idx={idx} p={target} size={56} />
         <div className="min-w-0 flex-1">
-          <p className="font-bold">{local(target.name, lang)}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <p className="min-w-0 flex-1 truncate font-bold">{local(target.name, lang)}</p>
+            <Link to={`/dex/${target.dex}`} className="shrink-0 text-xs font-semibold text-sky hover:underline">{t.counters_dex_link} ›</Link>
+          </div>
           <div className="mt-0.5 flex flex-wrap gap-1">{target.types.map((ty) => <TypeBadge key={ty} type={ty} small />)}</div>
           <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-ink-2">
             {t.counters_weak}
@@ -262,18 +377,22 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
       <ol className="space-y-1.5">
         {counters.map((c, i) => (
           <li key={`${c.pokemon.key}${c.shadow ? '-shadow' : ''}`} className="card flex items-center gap-2 p-2">
-            <span className="tnum w-6 text-center text-sm font-bold text-ink-3">{i + 1}</span>
+            <span className="tnum w-5 shrink-0 text-center text-sm font-bold text-ink-3">{i + 1}</span>
             <FormSprite idx={idx} p={c.pokemon} size={44} />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">
-                {c.shadow && <span className="mr-1 text-shadow-ink">{t.counters_shadow}</span>}
-                {local(c.pokemon.name, lang)}
-                {c.elite && <span className="ml-1 align-middle"><Badge tone="datamined">{t.counters_elite}</Badge></span>}
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-snug">
+                <span className="truncate">
+                  {c.shadow && <span className="mr-1 text-shadow-ink">{t.counters_shadow}</span>}
+                  {local(c.pokemon.name, lang)}
+                </span>
+                {c.elite && <Badge tone="datamined">{t.counters_elite}</Badge>}
               </p>
               <p className="truncate text-xs text-ink-2">{moveLabel(tools, c.quick, lang)} · {moveLabel(tools, c.charged, lang)}</p>
-              <div className="mt-1 h-1.5 rounded-full bg-paper-2"><div className="h-full rounded-full bg-go" style={{ width: `${Math.round((c.dps / top) * 100)}%` }} /></div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper-2">
+                <div className="h-full rounded-full bg-go" style={{ width: `${Math.min(100, Math.round((c.score / top) * 100))}%` }} />
+              </div>
             </div>
-            <span className="tnum w-12 shrink-0 text-right text-xs text-ink-3">{c.dps.toFixed(1)}<br />{t.counters_dps}</span>
+            <span className="tnum w-14 shrink-0 text-right text-xs text-ink-3">{c.dps.toFixed(1)}<br />{t.counters_dps}</span>
           </li>
         ))}
       </ol>
@@ -296,6 +415,7 @@ export function CostsTool() {
   const t = useT();
   const { lang } = useLang();
   const data = useToolData();
+  const notesOf = useEvoNotes();
   const [pokemon, setPokemon] = useState<ToolPokemon | null>(null);
   const [from, setFrom] = useState(20);
   const [to, setTo] = useState(40);
@@ -340,34 +460,33 @@ export function CostsTool() {
         <PokemonPicker tools={tools} onPick={setPokemon} />
         {pokemon && (
           <div className="card space-y-2 p-3 text-sm">
-            <div className="flex items-center gap-2">
+            <Link to={`/dex/${pokemon.dex}`} className="flex items-center gap-2 hover:underline">
               <FormSprite idx={idx} p={pokemon} size={44} />
               <span className="font-bold">{local(pokemon.name, lang)}</span>
-            </div>
+            </Link>
             {!pokemon.evolutions?.length && !pokemon.megaEnergy && <p className="text-ink-3">{t.costs_no_evolution}</p>}
             {pokemon.evolutions?.map((e) => {
               const into = byKey.get(e.to);
-              const notes = [
-                e.candy && t.costs_candies(e.candy) + (e.candyPurified ? ` (${t.costs_purified_short} ${e.candyPurified})` : ''),
-                e.item && local(tools.items[e.item], lang, e.item),
-                e.lure && local(tools.items[e.lure], lang, e.lure),
-                e.buddyKm && t.costs_buddy_km(e.buddyKm),
-                e.daytime && t.costs_day,
-                e.nighttime && t.costs_night,
-                e.tradeFree && t.costs_trade_free,
-                e.quest && t.costs_quest,
-              ].filter(Boolean);
+              const base = notesOf(tools, e);
+              const notes = e.candyPurified ? `${base} (${t.costs_purified_short} ${e.candyPurified})` : base;
               return (
                 <div key={e.to} className="flex items-center gap-2 border-t border-line pt-2">
-                  {into && <FormSprite idx={idx} p={into} size={36} />}
-                  <div>
-                    <p className="font-semibold">→ {into ? local(into.name, lang) : e.to}</p>
-                    <p className="text-xs text-ink-2">{notes.join(' · ')}</p>
+                  {into && <Link to={`/dex/${into.dex}`} className="shrink-0"><FormSprite idx={idx} p={into} size={36} /></Link>}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">
+                      → {into ? <Link to={`/dex/${into.dex}`} className="hover:underline">{local(into.name, lang)}</Link> : e.to}
+                    </p>
+                    <p className="text-xs text-ink-2">{notes}</p>
                   </div>
                 </div>
               );
             })}
-            {pokemon.megaEnergy && <p className="border-t border-line pt-2">{t.costs_mega(fmt(pokemon.megaEnergy[0]), fmt(pokemon.megaEnergy[1]))}</p>}
+            {pokemon.megaEnergy && (
+              <p className="border-t border-line pt-2">
+                {t.costs_mega(fmt(pokemon.megaEnergy[0]), fmt(pokemon.megaEnergy[1]))}
+                {pokemon.megaMove && ` · ${t.costs_mega_move(moveLabel(tools, pokemon.megaMove, lang))}`}
+              </p>
+            )}
             {pokemon.secondMove && <p className="text-xs text-ink-2">{t.costs_second_move(fmt(pokemon.secondMove[0]), fmt(pokemon.secondMove[1]))}</p>}
           </div>
         )}
@@ -457,7 +576,7 @@ export function LeagueTool() {
   const { lang } = useLang();
   const events = useEvents();
   if (events.isPending) return <Spinner />;
-  if (events.isError) return <Empty>{t.live_error}</Empty>;
+  if (events.isError) return <Empty>{t.live_error}<br /><Button tone="ghost" className="mt-3" onClick={() => void events.refetch()}>{t.retry}</Button></Empty>;
   const weeks = events.data
     .filter((e) => e.eventType === 'go-battle-league' && eventStatus(e) !== 'past')
     .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
@@ -577,7 +696,14 @@ export function EvolutionsTool() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-ink-2">{t.evo_help}</p>
-      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search_placeholder} aria-label={t.evo_search} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3" />
+      <div className="relative">
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search_placeholder} aria-label={t.evo_search} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3" />
+        {q && (
+          <button type="button" onClick={() => setQ('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">
+            ✕
+          </button>
+        )}
+      </div>
       {words.length > 0 && groups.size === 0 && <Empty>{t.evo_none(q.trim())}</Empty>}
       {EVO_ORDER.filter((g) => groups.has(g)).map((g) => {
         const isOpen = words.length > 0 || open === g;

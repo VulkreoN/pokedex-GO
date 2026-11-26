@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
-import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
+import type { EntryTag, ListDetail, ListDetailEntry, ListVisibility } from '@mydexpogo/shared';
 import { ExportSheet } from '../components/ExportSheet.js';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
@@ -12,12 +12,12 @@ import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, type ListAccess } from '../lib/lists.js';
-import { useUpsertEntries } from '../lib/lists.js';
+import { buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
+import { useCopyList, useDeleteList, useList, useRemoveEntries, useShareList, useSharedList, useUpdateList, useUpsertEntries, type ListAccess } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
 import { useFollowList, useOffer } from '../lib/social.js';
 import { CARD_SORTS, cardDone, cardMissing, cardsOf, sortCards, type CardSort, type EntryCard } from '../lib/cards.js';
-import { selection } from '../lib/selection.js';
+import { selection, useSelection, useSuppressSelectionBar } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
 import { useProgressive } from '../lib/progressive.js';
 
@@ -82,14 +82,21 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   const follow = useFollowList(list.id);
   const [sharing, setSharing] = useState(false);
   const [view, setView] = useState<View>('missing');
+  const [shinyFilter, setShinyFilter] = useState<'all' | 'shiny' | 'normal'>('all');
+  const [tagFilter, setTagFilter] = useState<EntryTag | 'all'>('all');
+  const [offeredOnly, setOfferedOnly] = useState(false);
   const [query, setQuery] = useState('');
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<EntryCard | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
   // Several cards at once: tapping a card picks it instead of ticking it.
   const [picking, setPicking] = useState(false);
+  useSuppressSelectionBar(picking);
+  const basketCount = useSelection().length;
   /** Picked genders of cards: `${card id}|${gender}`. */
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [pickSex, setPickSex] = useState<'all' | 'm' | 'f'>('all');
@@ -118,6 +125,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   };
   const rank = useMemo(() => new Map(idx.ds.variants.map((v, i) => [v.key, i])), [idx]);
   const allCards = useMemo(() => cardsOf(list.entries), [list.entries]);
+  const hasMixedShiny = useMemo(() => allCards.some((c) => c.shiny) && allCards.some((c) => !c.shiny), [allCards]);
+  const presentTags = useMemo(() => [...new Set(allCards.map((c) => c.tag).filter((tg): tg is EntryTag => tg !== ''))], [allCards]);
+  const hasAnyOffer = useMemo(
+    () => allCards.some((c) => (owner ? c.members.some((m) => !m.done && m.offers?.length) : c.members.some((m) => m.offeredByMe))),
+    [allCards, owner],
+  );
   // Search by name, number or costume / form name ("sorcière"), like the Pokédex; any word may match.
   const words = useMemo(() => normalize(query).split(/\s+/).filter(Boolean), [query]);
   const cards = useMemo(
@@ -125,10 +138,17 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       sortCards(
         allCards.filter((c) => {
           if (!(view === 'all' || (view === 'caught' ? c.members.some((m) => m.done) : cardMissing(c)))) return false;
+          if (shinyFilter === 'shiny' && !c.shiny) return false;
+          if (shinyFilter === 'normal' && c.shiny) return false;
+          if (tagFilter !== 'all' && c.tag !== tagFilter) return false;
+          if (offeredOnly) {
+            const hasOffer = owner ? c.members.some((m) => !m.done && m.offers?.length) : c.members.some((m) => m.offeredByMe);
+            if (!hasOffer) return false;
+          }
           if (!words.length) return true;
           const v = idx.variantByKey.get(c.variantKey) ?? entryVariant(idx, c.variantKey, 'm');
           if (!v) return false;
-          const label = normalize(`${v.label?.en ?? ''} ${v.label?.fr ?? ''}`);
+          const label = normalize(`${v.label?.en ?? ''} ${v.label?.fr ?? ''} ${c.members.map((m) => m.note ?? '').join(' ')}`);
           return words.some((w) => matchesQuery(idx, v.dex, w) || (!/^\d+$/.test(w) && label.includes(w)));
         }),
         sort,
@@ -137,13 +157,41 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
           name: (k) => localized(idx.speciesByDex.get(idx.variantByKey.get(k)?.dex ?? 0)?.name, lang) ?? '',
         },
       ),
-    [allCards, view, words, sort, rank, idx, lang],
+    [allCards, view, shinyFilter, tagFilter, offeredOnly, owner, words, sort, rank, idx, lang],
   );
   const done = list.entries.filter((e) => e.done).length;
   // The count rolls up as cards are ticked.
   const rolledDone = useRolling(done);
   // A big collection builds its first cards at once, the next ones as they come near the screen.
-  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${sort}|${query}`);
+  const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, `${view}|${shinyFilter}|${tagFilter}|${offeredOnly}|${sort}|${query}`);
+
+  const openOptions = (c: EntryCard) => {
+    setSelected(c);
+    setNoteDraft(c.members.find((m) => m.note)?.note ?? '');
+  };
+  const saveNote = async () => {
+    if (!selected || !owner) return;
+    const clean = noteDraft.trim() || null;
+    await upsert.mutateAsync({
+      id: list.id,
+      entries: selected.members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: m.done, note: clean })),
+    });
+    toast(t.entry_note_saved);
+    setSelected(null);
+  };
+  const fillTemplate = async (tid: ListTemplateId) => {
+    const entries = buildTemplateEntries(idx, tid);
+    if (!entries.length) return;
+    setTemplateBusy(true);
+    try {
+      await inParts(entries, (part) => upsert.mutateAsync({ id: list.id, entries: part }));
+      toast(t.template_count(entries.length));
+    } catch {
+      toast(t.err_generic);
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
 
   /** A sound and a vibration for each tick; the last missing Pokémon of the collection gets confetti. */
   /** Plays the reward, and returns the milestone reached (25, 50, 75) for the message, if any. */
@@ -292,7 +340,22 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
             {(['missing', 'caught', 'all'] as View[]).map((v) => (
               <Chip key={v} active={view === v} onClick={() => setView(v)}>{{ missing: t.missing, caught: t.caught, all: t.filter_all }[v]}</Chip>
             ))}
-
+            {hasAnyOffer && (
+              <Chip active={offeredOnly} onClick={() => setOfferedOnly((v) => !v)}>{t.list_filter_offered}</Chip>
+            )}
+            {hasMixedShiny && (
+              <>
+                <Chip active={shinyFilter === 'shiny'} onClick={() => setShinyFilter((v) => (v === 'shiny' ? 'all' : 'shiny'))}>
+                  <Sparkle className={shinyFilter === 'shiny' ? 'text-shiny' : ''} /> {t.shiny}
+                </Chip>
+                <Chip active={shinyFilter === 'normal'} onClick={() => setShinyFilter((v) => (v === 'normal' ? 'all' : 'normal'))}>{t.normal}</Chip>
+              </>
+            )}
+            {presentTags.map((tg) => (
+              <Chip key={tg} active={tagFilter === tg} onClick={() => setTagFilter((v) => (v === tg ? 'all' : tg))}>
+                {tagLabel(idx, tg, t)}
+              </Chip>
+            ))}
           </div>
 <div className="mt-2 flex gap-2">
           <Button tone="ghost" className="flex-1 gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
@@ -314,26 +377,43 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
             {owner && (
               <>
                 <br />
-                <Link to="/dex" className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link>
+                <Link to={`/dex?to=${list.id}`} className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link>
                 <br />
                 <button type="button" onClick={() => setImporting(true)} className="mt-2 inline-block font-semibold text-sky">{t.import_title}</button>
+                <div className="mt-5 text-left">
+                  <p className="mb-2 text-center text-xs font-semibold text-ink-3">{t.template_title}</p>
+                  <div className="flex flex-wrap justify-center gap-1.5">
+                    {(['living_released', 'shiny_released', 'costumes', 'mega_gmax', 'gen1'] as ListTemplateId[]).map((tid) => (
+                      <Chip key={tid} disabled={templateBusy} onClick={() => void fillTemplate(tid)} className="min-h-8 px-2.5 text-xs">
+                        {templateBusy ? t.template_filling : t.templates[tid]}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
               </>
             )}
           </Empty>
         )}
         {allCards.length > 8 && (
-          <input
-            type="search"
-            inputMode="search"
-            placeholder={t.list_search}
-            aria-label={t.list_search}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="mt-2 min-h-10 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:border-sky"
-          />
+          <div className="relative mt-2">
+            <input
+              type="search"
+              inputMode="search"
+              placeholder={t.list_search}
+              aria-label={t.list_search}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">✕</button>
+            )}
+          </div>
         )}
         {list.entries.length > 0 && cards.length === 0 && words.length > 0 && <Empty>{t.list_search_none(query.trim())}</Empty>}
-        {list.entries.length > 0 && cards.length === 0 && !words.length && <Empty>{view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>}
+        {list.entries.length > 0 && cards.length === 0 && !words.length && (
+          <Empty>{shinyFilter !== 'all' || tagFilter !== 'all' || offeredOnly ? t.nothing_here : view === 'missing' ? t.all_caught : view === 'caught' ? t.none_caught : t.nothing_here}</Empty>
+        )}
         {cards.length > 0 && (owner || (loggedIn && list.entries.length > 0)) && (
           <div className="flex items-center gap-3 pt-2 text-xs text-ink-3">
             {list.entries.length > 1 ? (
@@ -379,7 +459,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
                     </span>
                   )}
                   {owner && !picking && (
-                    <button type="button" onClick={() => setSelected(c)} className="absolute left-0.5 top-0.5 z-10 flex h-9 w-9 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
+                    <button type="button" onClick={() => openOptions(c)} className="absolute left-0.5 top-0.5 z-10 flex h-9 w-9 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                     </button>
                   )}
@@ -388,8 +468,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
                     onClick={() => (picking ? togglePick(c) : toggleCard(c))}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
-                      // A long press starts picking several cards.
-                      if (!picking && loggedIn) { setPicking(true); setPicked(new Set([c.id])); } else if (!picking) setSelected(c);
+                      // A long press starts picking several cards (every gender of the pressed card).
+                      if (!picking && loggedIn) { setPicking(true); setPicked(new Set(c.members.map((m) => memberId(c, m)))); } else if (!picking) openOptions(c);
                     }}
                     aria-pressed={picking ? isPicked : friend ? c.members.filter((m) => !m.done).every((m) => m.offeredByMe) : allDone}
                     aria-label={`${localized(sp.name, lang)}${v.label ? ` ${localized(v.label, lang)}` : ''}`}
@@ -409,6 +489,9 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
                     <span className="mt-1 w-full truncate text-center text-[12px] font-semibold leading-tight">{localized(sp.name, lang)}</span>
                     {v.label && <span className="w-full truncate text-center text-[10px] leading-tight text-ink-3">{localized(v.label, lang)}</span>}
                     {c.tag && <span className="w-full truncate text-center text-[10px] font-semibold leading-tight text-ink-2">{tagLabel(idx, c.tag, t)}</span>}
+                    {c.members.find((m) => m.note)?.note && (
+                      <span className="w-full truncate text-center text-[10px] italic leading-tight text-ink-3">{c.members.find((m) => m.note)!.note}</span>
+                    )}
                   </button>
                   {gendered && (
                     <div className="mt-1 flex gap-1">
@@ -502,13 +585,13 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       )}
 
       {owner && !picking && (
-        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[var(--nav-h)] z-20 px-3">
+        <div className={`pb-safe pointer-events-none fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
           <div className="mx-auto flex max-w-3xl justify-end gap-2">
             <button type="button" onClick={() => setImporting(true)} aria-label={t.import_title} title={t.import_title} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-card px-4 font-semibold text-ink shadow-lg ring-1 ring-line hover:brightness-[0.98]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></svg>
               {t.import_short}
             </button>
-            <Link to="/dex" className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg hover:brightness-110">
+            <Link to={`/dex?to=${list.id}`} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg hover:brightness-110">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {t.add_pokemon}
             </Link>
@@ -529,37 +612,88 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       </Sheet>
 
       <Sheet open={strings} onClose={() => setStrings(false)} title={t.game_strings_title}>
-        <SearchStrings idx={idx} entries={list.entries} />
+        {strings && <SearchStrings idx={idx} entries={list.entries} />}
       </Sheet>
 
       <Sheet open={!!selected} onClose={() => setSelected(null)} title={selected ? localized(idx.speciesByDex.get(idx.variantByKey.get(selected.variantKey)?.dex ?? 0)?.name, lang) : ''}>
-        {selected && (
-          <div className="space-y-2">
-            {selected.members.map((m) => (
-              <div key={m.gender} className="space-y-1">
-                <Button className="w-full" onClick={() => { toggleMember(m); setSelected(null); }} disabled={!owner}>
-                  {m.done ? t.mark_missing(genderSymbol(m.gender)) : t.mark_caught(genderSymbol(m.gender))}
-                </Button>
-                {owner && m.offers?.length ? <p className="text-sm text-ink-2">{genderSymbol(m.gender)} {t.offer_by(m.offers.map((o) => o.username))}</p> : null}
+        {selected && (() => {
+          const sv = entryVariant(idx, selected.variantKey, selected.members.every((m) => m.gender === 'f') ? 'f' : 'm');
+          const ssp = sv && idx.speciesByDex.get(sv.dex);
+          return (
+            <div className="space-y-3">
+              {sv && ssp && (
+                <div className="flex items-center gap-3 rounded-card bg-paper-2 p-2.5">
+                  <span className="relative shrink-0">
+                    <Sprite idx={idx} variant={sv} shiny={selected.shiny} size={52} />
+                    {selected.shiny && <Sparkle className="absolute -right-0.5 top-0 text-shiny" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-bold">{localized(ssp.name, lang)}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-ink-2">
+                      {sv.label && <span>{localized(sv.label, lang)}</span>}
+                      {selected.shiny && <Badge tone="shiny">{t.shiny}</Badge>}
+                      {selected.tag && <Badge tone="muted">{tagLabel(idx, selected.tag, t)}</Badge>}
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                {selected.members.map((m) => (
+                  <div key={m.gender} className="space-y-1">
+                    <Button className="w-full" onClick={() => { toggleMember(m); setSelected(null); }} disabled={!owner}>
+                      {m.done ? t.mark_missing(genderSymbol(m.gender)) : t.mark_caught(genderSymbol(m.gender))}
+                    </Button>
+                    {owner && m.offers?.length ? <p className="text-sm text-ink-2">{genderSymbol(m.gender)} {t.offer_by(m.offers.map((o) => o.username))}</p> : null}
+                  </div>
+                ))}
               </div>
-            ))}
-            <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="block"><Button className="w-full">{t.nav_dex}</Button></Link>
-            {owner && (
-              <Button
-                tone="danger"
-                className="w-full"
-                onClick={async () => {
-                  const gone = selected.members;
-                  await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] });
-                  setSelected(null);
-                  toast(t.removed(1), { action: { label: t.undo, onClick: () => void writeDone(gone, (m) => m.done) } });
-                }}
-              >
-                {t.remove_entry}
-              </Button>
-            )}
-          </div>
-        )}
+              {owner && (
+                <div className="space-y-2 rounded-card border border-line p-3">
+                  <TextField
+                    label={t.entry_note_label}
+                    placeholder={t.entry_note_placeholder}
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    maxLength={200}
+                  />
+                  <Button tone="primary" className="min-h-10 w-full text-sm" disabled={upsert.isPending} onClick={() => void saveNote()}>
+                    {t.save}
+                  </Button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="flex-1"><Button className="w-full">{t.nav_dex}</Button></Link>
+                {loggedIn && (
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      const entries = selected.members.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag }));
+                      selection.add(entries);
+                      toast(t.added_to_selection(entries.length));
+                      setSelected(null);
+                    }}
+                  >
+                    {t.pick_basket}
+                  </Button>
+                )}
+              </div>
+              {owner && (
+                <Button
+                  tone="danger"
+                  className="w-full"
+                  onClick={async () => {
+                    const gone = selected.members;
+                    await remove.mutateAsync({ id: list.id, entries: [{ variantKey: selected.variantKey, shiny: selected.shiny, tag: selected.tag }] });
+                    setSelected(null);
+                    toast(t.removed(1), { action: { label: t.undo, onClick: () => void writeDone(gone, (m) => m.done) } });
+                  }}
+                >
+                  {t.remove_entry}
+                </Button>
+              )}
+            </div>
+          );
+        })()}
       </Sheet>
 
       {owner && id && (
@@ -570,6 +704,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
           shareUrl={shareUrl}
           onSave={async (body) => { await update.mutateAsync(body); setEditing(false); }}
           onShare={async (on) => { await share.mutateAsync({ id: list.id, on }); }}
+          onDuplicate={async () => {
+            const r = await copy.mutateAsync({ id: list.id });
+            toast(t.list_duplicated);
+            setEditing(false);
+            navigate(`/lists/${r.list.id}`);
+          }}
           onDelete={async () => { await del.mutateAsync(list.id); navigate('/lists'); }}
         />
       )}
@@ -580,7 +720,25 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
 /** The phone's own share menu (Messages, Discord…), where there is one; computers usually keep "Copy link". */
 const canShareLink = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function' && matchMedia('(pointer: coarse)').matches;
 
-function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }: { open: boolean; onClose: () => void; list: ListDetail; shareUrl: string | null; onSave: (b: { name: string; description: string | null; visibility: ListVisibility }) => Promise<void>; onShare: (on: boolean) => Promise<void>; onDelete: () => Promise<void> }) {
+function EditSheet({
+  open,
+  onClose,
+  list,
+  shareUrl,
+  onSave,
+  onShare,
+  onDuplicate,
+  onDelete,
+}: {
+  open: boolean;
+  onClose: () => void;
+  list: ListDetail;
+  shareUrl: string | null;
+  onSave: (b: { name: string; description: string | null; visibility: ListVisibility }) => Promise<void>;
+  onShare: (on: boolean) => Promise<void>;
+  onDuplicate: () => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
   const t = useT();
   const toast = useToast();
   const [name, setName] = useState(list.name);
@@ -588,32 +746,35 @@ function EditSheet({ open, onClose, list, shareUrl, onSave, onShare, onDelete }:
   const [visibility, setVisibility] = useState<ListVisibility>(list.visibility);
   return (
     <Sheet open={open} onClose={onClose} title={t.edit}>
-      <div className="space-y-3">
-        <TextField label={t.list_name} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
-        <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-        <VisibilityField value={visibility} onChange={setVisibility} />
-        <Button tone="primary" className="w-full" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), description: description.trim() || null, visibility })}>{t.save}</Button>
-        <div className="rounded-card border border-line p-3">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{t.share} {shareUrl && <Badge tone="grass">{t.share_on}</Badge>}</div>
-          {shareUrl ? (
-            <div className="space-y-2">
-              <code className="block break-all rounded-lg bg-paper-2 p-2 text-xs">{shareUrl}</code>
-              <div className="flex gap-2">
-                {canShareLink() && (
-                  <Button tone="primary" className="flex-1" onClick={() => void navigator.share({ title: list.name, url: shareUrl }).catch(() => {})}>{t.share_link}</Button>
-                )}
-                <Button className="flex-1" onClick={async () => { if (await copyText(shareUrl)) toast(t.link_copied); }}>{t.copy_link}</Button>
-                <Button tone="ghost" onClick={() => onShare(false)}>{t.share_off}</Button>
+      {open && (
+        <div className="space-y-3">
+          <TextField label={t.list_name} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+          <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+          <VisibilityField value={visibility} onChange={setVisibility} />
+          <Button tone="primary" className="w-full" disabled={!name.trim()} onClick={() => onSave({ name: name.trim(), description: description.trim() || null, visibility })}>{t.save}</Button>
+          <div className="rounded-card border border-line p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{t.share} {shareUrl && <Badge tone="grass">{t.share_on}</Badge>}</div>
+            {shareUrl ? (
+              <div className="space-y-2">
+                <code className="block break-all rounded-lg bg-paper-2 p-2 text-xs">{shareUrl}</code>
+                <div className="flex gap-2">
+                  {canShareLink() && (
+                    <Button tone="primary" className="flex-1" onClick={() => void navigator.share({ title: list.name, url: shareUrl }).catch(() => {})}>{t.share_link}</Button>
+                  )}
+                  <Button className="flex-1" onClick={async () => { if (await copyText(shareUrl)) toast(t.link_copied); }}>{t.copy_link}</Button>
+                  <Button tone="ghost" onClick={() => onShare(false)}>{t.share_off}</Button>
+                </div>
               </div>
-            </div>
-          ) : list.visibility === 'private' ? (
-            <p className="text-sm text-ink-2">{t.share_private_hint}</p>
-          ) : (
-            <Button className="w-full" onClick={() => onShare(true)}>{t.copy_link}</Button>
-          )}
+            ) : list.visibility === 'private' ? (
+              <p className="text-sm text-ink-2">{t.share_private_hint}</p>
+            ) : (
+              <Button className="w-full" onClick={() => onShare(true)}>{t.copy_link}</Button>
+            )}
+          </div>
+          <Button className="w-full" onClick={() => void onDuplicate()}>{t.duplicate_list}</Button>
+          <HoldButton className="w-full" onConfirm={onDelete}>{t.delete_list}</HoldButton>
         </div>
-        <HoldButton className="w-full" onConfirm={onDelete}>{t.delete_list}</HoldButton>
-      </div>
+      )}
     </Sheet>
   );
 }

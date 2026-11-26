@@ -12,6 +12,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-26-ux',
+    date: '2026-11-26',
+    fr: [
+      'Collections & Pokédex : ajout direct depuis une liste, modèles prêts à l’emploi (Living Dex, Shiny, Costumes, Gen 1 à 9…), notes perso, filtres Type / Rareté / Shiny / Fonds spéciaux, recherche +famille et 1-151, et export image/PDF fiabilisé sur les grandes listes.',
+      'Onglet Jeu & Contres : badge « Me manque » + filtre « Mes chasses », œufs triés par distance avec recherche et sources claires (Suivi d’exploration, Routes Mateo), évolutions au hasard complètes, et contres mis à jour avec les fusions et attaques signatures.',
+      'PvP & Échanges : onglet Échanges chez chaque ami, aperçu « Prochaine saison » PvPoke avec évolution des rangs, équipes populaires mises à jour et filtrables, et boutons −/+ / Rang 1 sur les IV.',
+      'Nouveaux thèmes complets pour l’appli dans Moi : Sagesse, Bravoure, Intuition, Team Rocket, Sakura, Forêt et Nuit OLED, en mode clair et sombre.',
+    ],
+    en: [
+      'Collections & Pokédex: add straight from any list, starter templates (Living Dex, Shinies, Costumes, Gen 1–9…), personal notes, Type / Rarity / Shiny / Background filters, +family & 1-151 search, and rock-solid large-list image/PDF exports.',
+      'Game tab & Counters: “Missing” highlights + “My hunts” filter, cleaner Eggs search & source labels (Adventure Sync, Mateo Routes), complete random evolutions, and updated raid counters with fusions & signature moves.',
+      'PvP & Trades: automatic Trades tab on every friend, PvPoke “Next season” preview with rank deltas, up-to-date filterable popular teams, and −/+ / Rank 1 IV presets.',
+      'Brand-new full-app themes in Me: Mystic, Valor, Instinct, Team Rocket, Sakura, Forest and OLED Night in both light and dark modes.',
+    ],
+  },
+  {
     id: '2026-11-26-styles',
     date: '2026-11-26',
     fr: [

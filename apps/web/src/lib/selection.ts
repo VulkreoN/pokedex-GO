@@ -1,5 +1,5 @@
 /** A basket of entries picked while browsing, sent to one or more lists in one go. Survives navigation (sessionStorage). */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { EntryGender, EntryTag } from '@mydexpogo/shared';
 
 export interface SelectionItem {
@@ -68,5 +68,33 @@ export function useSelection(): SelectionItem[] {
     },
     () => items,
     () => items,
+  );
+}
+
+/** Coordinates floating bars so a page-level selection toolbar does not overlap the basket bar on mobile. */
+let suppressCount = 0;
+const suppressListeners = new Set<() => void>();
+const notifySuppress = () => suppressListeners.forEach((l) => l());
+
+export function useSuppressSelectionBar(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    suppressCount++;
+    notifySuppress();
+    return () => {
+      suppressCount = Math.max(0, suppressCount - 1);
+      notifySuppress();
+    };
+  }, [active]);
+}
+
+export function useSelectionBarSuppressed(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      suppressListeners.add(l);
+      return () => suppressListeners.delete(l);
+    },
+    () => suppressCount > 0,
+    () => false,
   );
 }

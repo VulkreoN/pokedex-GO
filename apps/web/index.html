@@ -14,13 +14,22 @@
       try {
         var t = localStorage.getItem('theme');
         var d = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-        if (d) {
-          document.documentElement.classList.add('dark');
-          var m = document.querySelector('meta[name="theme-color"]');
-          if (m) m.setAttribute('content', '#1f6d7c');
-        }
+        if (d) document.documentElement.classList.add('dark');
         var tm = localStorage.getItem('team');
-        if (tm === 'valor' || tm === 'mystic' || tm === 'instinct') document.documentElement.dataset.team = tm;
+        var bars = {
+          none: ['#158296', '#1f6d7c'],
+          mystic: ['#1d63c4', '#1b4f9c'],
+          valor: ['#cc2f3b', '#a82435'],
+          instinct: ['#c98300', '#9a6508'],
+          rocket: ['#31224a', '#4d1f7a'],
+          sakura: ['#c43b78', '#9c2b63'],
+          forest: ['#176b49', '#1a5c41'],
+          oled: ['#262c36', '#0c111d']
+        };
+        if (tm && tm !== 'none' && bars[tm]) document.documentElement.dataset.team = tm;
+        var pair = bars[tm] || bars.none;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', d ? pair[1] : pair[0]);
       } catch (e) {}
     </script>
   </head>

@@ -153,8 +153,8 @@ export interface ToolEvolution {
   itemCount?: number;
   /** Chance-based: one of several outcomes (Dunsparce; Eevee's first three; Wurmple; Toxel). */
   random?: boolean;
-  /** Tyrogue: by its highest stat (Attack -> Hitmonlee, Defense -> Hitmonchan, both equal -> Hitmontop). */
-  byStat?: 'atk' | 'def' | 'equal';
+  /** Tyrogue: by its highest IV (Attack -> Hitmonlee, Defense -> Hitmonchan, HP -> Hitmontop). */
+  byStat?: 'atk' | 'def' | 'sta' | 'equal';
   /** Eevee: a nickname picks this one, once per nickname (Sparky -> Jolteon). */
   nickname?: string;
 }
@@ -296,6 +296,32 @@ export interface ListEvent {
 
 export interface ListDetail extends ListSummary {
   entries: ListDetailEntry[];
+}
+
+/** Compact membership entry across the signed-in player's collections (for "already in list" badges). */
+export interface MembershipEntry {
+  listId: string;
+  variantKey: string;
+  gender: EntryGender;
+  shiny: boolean;
+  tag: EntryTag;
+  done: boolean;
+}
+
+/** A trade match between the player and a friend: one caught (or explicitly offered) what the other is missing. */
+export interface TradeMatch {
+  variantKey: string;
+  gender: EntryGender;
+  shiny: boolean;
+  tag: EntryTag;
+  /** The collection where this Pokémon is missing. */
+  listId: string;
+  listName: string;
+  /** The collection where the other player already caught it (omitted when only an explicit offer). */
+  sourceListId?: string;
+  sourceListName?: string;
+  /** True when explicitly marked "I have it". */
+  offered?: boolean;
 }
 
 /** 'account': changes made to your account by an admin; always sent, cannot be switched off. */

@@ -38,12 +38,12 @@ export function PvpTeamPage() {
   const details = useQueries({
     queries: [...new Set(members.map((m) => m.dex))].map((dex) => ({
       queryKey: ['game', 'pvp-rankings', dex],
-      queryFn: () => fetch(`/api/game/pvp-rankings/${dex}`).then((r) => (r.ok ? r.json() : { rankings: [] })).then((r: { rankings: RankedDetail[] }) => r.rankings),
+      queryFn: () => fetch(`/api/game/pvp-rankings/${dex}`).then((r) => (r.ok ? r.json() : { rankings: [] })).then((r: { rankings: RankedDetail[] }) => r),
       staleTime: 3600_000,
     })),
   });
   const pvpokeOf = (m: PvpPokemon) =>
-    pvp ? details.flatMap((d) => d.data ?? []).filter((r) => r.league === league && !r.shadow && formOf(pvp, r)?.key === m.key)[0] : undefined;
+    pvp ? details.flatMap((d) => d.data?.rankings ?? []).filter((r) => r.league === league && !r.shadow && formOf(pvp, r)?.key === m.key)[0] : undefined;
 
   if (ds.isPending) return <Spinner />;
   if (!pvp || !ds.data) return <Empty>{t.pvp_unavailable}</Empty>;
@@ -224,36 +224,71 @@ function PopularTeams({ league, onLoad }: { league: League; onLoad: (keys: strin
   const { lang } = useLang();
   const { ds, pvp } = usePvp();
   const q = usePopularTeams(league);
+  const [sortBy, setSortBy] = useState<'games' | 'score'>('games');
+  const [filter, setFilter] = useState('');
   if (!pvp || !ds.data || !q.data?.teams.length) return null;
   const idx = ds.data;
+  const nf = normalize(filter);
+  const resolved = q.data.teams
+    .map((team) => ({ team, forms: team.members.map((m) => ({ m, p: formOf(pvp, m) })) }))
+    .filter((row) => row.forms.every((x) => !!x.p))
+    .filter((row) => !nf || row.forms.some(({ m, p }) => normalize(`${p!.name.en} ${p!.name.fr ?? ''} ${m.name}`).includes(nf)))
+    .sort((a, b) => (sortBy === 'score' ? b.team.score - a.team.score : b.team.games - a.team.games));
   return (
     <section className="mt-5">
-      <h2 className="text-base font-bold">{t.team_popular}</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="mr-auto text-base font-bold">{t.team_popular}</h2>
+        <select
+          aria-label={t.team_popular_sort}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'games' | 'score')}
+          className="min-h-8 rounded-full border border-line bg-card px-2.5 text-xs font-semibold text-ink"
+        >
+          <option value="games">{t.team_popular_sort_games}</option>
+          <option value="score">{t.team_popular_sort_score}</option>
+        </select>
+      </div>
       <p className="mt-0.5 text-xs text-ink-3">{t.team_popular_hint(q.data.updated && !Number.isNaN(Date.parse(q.data.updated)) ? new Date(q.data.updated).toLocaleDateString(lang, { day: 'numeric', month: 'long', year: 'numeric' }) : q.data.updated)}</p>
+      <div className="relative mt-2">
+        <input
+          type="search"
+          inputMode="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t.team_popular_search}
+          aria-label={t.team_popular_search}
+          className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+        />
+        {filter && (
+          <button type="button" onClick={() => setFilter('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">
+            ✕
+          </button>
+        )}
+      </div>
+      {resolved.length === 0 && <p className="mt-3 text-center text-sm text-ink-3">{t.nothing_here}</p>}
       <ul className="mt-2 space-y-2">
-        {q.data.teams.map((team, i) => {
-          const forms = team.members.map((m) => ({ m, p: formOf(pvp, m) }));
-          if (forms.some((x) => !x.p)) return null;
-          return (
-            <li key={i}>
-              <button type="button" onClick={() => onLoad(forms.map((x) => x.p!.key))} className="card flex w-full items-center gap-2 p-2 text-left hover:brightness-[0.98]">
-                <span className="grid flex-1 grid-cols-3 gap-1">
-                  {forms.map(({ m, p }) => {
-                    const v = picture(idx, p!);
-                    return (
-                      <span key={m.speciesId} className="flex min-w-0 flex-col items-center">
-                        {v && <Sprite idx={idx} variant={v} size={44} />}
-                        <span className="w-full truncate text-center text-[11px] font-semibold leading-tight">{localized(p!.name, lang).replace(/ \(.*\)$/, '')}</span>
-                        {m.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
-                      </span>
-                    );
-                  })}
-                </span>
-                <span className="tnum shrink-0 text-right text-xs text-ink-3">{t.team_games(team.games)}</span>
-              </button>
-            </li>
-          );
-        })}
+        {resolved.map(({ team, forms }, i) => (
+          <li key={i}>
+            <button type="button" onClick={() => onLoad(forms.map((x) => x.p!.key))} className="card flex w-full items-center gap-2 p-2 text-left hover:brightness-[0.98]">
+              <span className="grid flex-1 grid-cols-3 gap-1">
+                {forms.map(({ m, p }) => {
+                  const v = picture(idx, p!);
+                  return (
+                    <span key={m.speciesId} className="flex min-w-0 flex-col items-center">
+                      {v && <Sprite idx={idx} variant={v} size={44} />}
+                      <span className="w-full truncate text-center text-[11px] font-semibold leading-tight">{localized(p!.name, lang).replace(/ \(.*\)$/, '')}</span>
+                      {m.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
+                    </span>
+                  );
+                })}
+              </span>
+              <span className="tnum shrink-0 text-right text-xs text-ink-3">
+                <span className="block">{t.team_games(team.games)}</span>
+                {team.score > 0 && <span className="block text-[11px] font-semibold text-ink-2">{t.team_score(team.score)}</span>}
+              </span>
+            </button>
+          </li>
+        ))}
       </ul>
     </section>
   );

@@ -9,7 +9,7 @@ export const LEAGUE_LIST: League[] = ['great', 'ultra', 'master'];
 export const LEAGUE_CP: Record<League, number> = { great: 1500, ultra: 2500, master: 10000 };
 
 export interface FormRef { speciesId: string; name: string; dex: number; atk: number; def: number; hp: number; shadow: boolean }
-export interface RankedPokemon extends FormRef { rank: number; score: number }
+export interface RankedPokemon extends FormRef { rank: number; score: number; delta?: number | null }
 export interface PvpokeMove { id: string; name: string; type: string; power: number; energy: number; energyGain: number; turns?: number }
 export const ROLES = ['lead', 'closer', 'switch', 'charger', 'attacker', 'consistency'] as const;
 export interface RankedDetail extends RankedPokemon {
@@ -20,6 +20,24 @@ export interface RankedDetail extends RankedPokemon {
   wins: (FormRef & { rating: number })[];
   losses: (FormRef & { rating: number })[];
 }
+export interface PreviewRankings {
+  slug: string;
+  title: string;
+  url: string;
+  great: RankedPokemon[];
+  ultra: RankedPokemon[];
+  master: RankedPokemon[];
+}
+export interface PvpRankingsData {
+  great: RankedPokemon[];
+  ultra: RankedPokemon[];
+  master: RankedPokemon[];
+  preview?: PreviewRankings;
+}
+export interface PvpDetailsData {
+  rankings: RankedDetail[];
+  preview?: { slug: string; title: string; url: string; rankings: RankedDetail[] };
+}
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -27,15 +45,15 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** The top 100 of each league. */
+/** The top 100 of each league (plus next-season preview when PvPoke has one live). */
 export const usePvpRankings = () =>
-  useQuery({ queryKey: ['game', 'pvp-rankings'], queryFn: () => getJson<Record<League, RankedPokemon[]>>('/api/game/pvp-rankings'), staleTime: 3600_000, retry: 1 });
+  useQuery({ queryKey: ['game', 'pvp-rankings'], queryFn: () => getJson<PvpRankingsData>('/api/game/pvp-rankings'), staleTime: 3600_000, retry: 1 });
 
-/** Every ranked form of one species, both leagues. */
+/** Every ranked form of one species in every league (plus next-season preview when live). */
 export const usePvpDetails = (dex: number) =>
   useQuery({
     queryKey: ['game', 'pvp-rankings', dex],
-    queryFn: () => getJson<{ rankings: RankedDetail[] }>(`/api/game/pvp-rankings/${dex}`).then((r) => r.rankings),
+    queryFn: () => getJson<PvpDetailsData>(`/api/game/pvp-rankings/${dex}`),
     staleTime: 3600_000,
     retry: 1,
   });
@@ -62,7 +80,8 @@ export function moveName(pvp: PvpData, m: PvpokeMove, lang: Lang): string {
   return n ? localized(n, lang) || m.name : m.name;
 }
 
-export const pvpokeUrl = (r: { league: League; speciesId: string }) => `https://pvpoke.com/rankings/all/${LEAGUE_CP[r.league]}/overall/${r.speciesId}/`;
+export const pvpokeUrl = (r: { league: League; speciesId: string }, previewSlug?: string) =>
+  `https://pvpoke.com/${previewSlug ? `${previewSlug}/` : ''}rankings/all/${LEAGUE_CP[r.league]}/overall/${r.speciesId}/`;
 
 export const leagueName = (t: { league_great: string; league_ultra: string; league_master: string }, l: League) => (l === 'great' ? t.league_great : l === 'ultra' ? t.league_ultra : t.league_master);
 

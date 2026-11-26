@@ -601,10 +601,17 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
 
   // The Tools tab: same forms as the PvP data, plus Megas, their moves and costs.
   const variantByKey = new Map(variants.map((v) => [v.key, v]));
+  const battleFormSet = new Set(Object.keys((overridesFile as { battleForms?: Record<string, string> }).battleForms ?? {}));
   const names = pvp?.moves ?? moveNames(gm as { templateId: string }[], texts);
   const tools = extractTools(gm as Parameters<typeof extractTools>[0], {
     isCostume: (dex, token) => speciesByDex.get(dex)?.gmForms.get(token) === true || looksLikeCostume(token),
     released: (dex) => speciesFull.get(dex)?.released === true,
+    formReleased: (dex, key) => {
+      if (speciesFull.get(dex)?.released !== true) return false;
+      if (battleFormSet.has(key)) return false;
+      const v = variantByKey.get(key);
+      return !v || !v.datamined;
+    },
     megaReleased: (key) => variantByKey.has(key) && !variantByKey.get(key)!.datamined,
     dexOf: (id) => speciesById.get(id)?.dex,
     name: (dex, token) => {
@@ -626,9 +633,13 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     },
     questText: (id) => {
       const q = (gm as { templateId: string; data: { evolutionQuestTemplate?: { goals?: { target?: number }[]; display?: { description?: string } } } }[]).find((t) => t.templateId === id)?.data.evolutionQuestTemplate;
-      const key = q?.display?.description?.toLowerCase();
-      if (!key) return undefined;
-      const target = String(q?.goals?.[0]?.target ?? '');
+      const rawKey = q?.display?.description?.toLowerCase();
+      if (!rawKey) return undefined;
+      const targetNum = q?.goals?.[0]?.target ?? 0;
+      // Niantic points multi-heart quests (Sylveon 70, Florges 20) to *_single even when target > 1; prefer *_plural when present.
+      const pluralKey = targetNum > 1 ? rawKey.replace(/_(single|singular)$/, '_plural') : rawKey;
+      const key = pluralKey !== rawKey && texts.en.has(pluralKey) ? pluralKey : rawKey;
+      const target = String(targetNum || '');
       const en = texts.en.get(key)?.replace(/\{0\}/g, target);
       const fr = texts.fr.get(key)?.replace(/\{0\}/g, target);
       return en ? { en, fr: fr ?? en } : undefined;
@@ -665,7 +676,9 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     byKind,
   };
   log(`dataset v${dataset.version}: ${stats.species} species, ${stats.variants} variants (${stats.datamined} datamined)`);
-  tools.version = dataset.version;
+  // Hash tools itself into tools.version so changes to tools.ts always rotate the HTTP ETag even when species/variants are unchanged.
+  const toolsHash = createHash('sha256').update(JSON.stringify(tools)).digest('hex').slice(0, 8);
+  tools.version = `${dataset.version}-${toolsHash}`;
   return { dataset, stats, tools };
 }
 

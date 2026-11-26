@@ -182,13 +182,97 @@ input, textarea { caret-color: var(--go); }
 .pokeball-wobble { animation: wobble 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
 @keyframes shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 .skeleton { background: var(--paper-2); animation: shimmer 1.3s ease-in-out infinite; }
-/* Team colours for the header (Me). */
-[data-team='valor'] { --sky-top: #d43b32; --sky-bottom: #a82237; }
-[data-team='mystic'] { --sky-top: #2472cc; --sky-bottom: #1c4299; }
-[data-team='instinct'] { --sky-top: #a66800; --sky-bottom: #8a3e09; }
-.dark[data-team='valor'] { --sky-top: #8e2a32; --sky-bottom: #5f1a2b; }
-.dark[data-team='mystic'] { --sky-top: #1f4e8c; --sky-bottom: #1a2f66; }
-.dark[data-team='instinct'] { --sky-top: #8a6a16; --sky-bottom: #6b4314; }
+/* Full-app cohesive palettes (Light & Dark), each composed for WCAG AA >= 4.5:1 contrast. */
+[data-team='mystic'] {
+  --paper: #eaf1fb; --paper-2: #dae6f7; --card: #ffffff; --line: #c6d7ef;
+  --ink: #1a2c44; --ink-2: #445a78; --ink-3: #516888;
+  --sky-top: #1d63c4; --sky-bottom: #163d8f;
+  --go: #1c5ec2; --go-soft: #d9e8ff; --go-ink: #154799; --sky: #1857b5;
+}
+.dark[data-team='mystic'] {
+  --paper: #131d2c; --paper-2: #1f2e45; --card: #1a283d; --line: #2d4261;
+  --ink: #eef4fc; --ink-2: #b4c7df; --ink-3: #8fa9c9;
+  --sky-top: #1b4f9c; --sky-bottom: #142c63;
+  --go: #2a74dc; --go-soft: #1b365d; --go-ink: #9cc7ff; --sky: #7ec0ff;
+}
+
+[data-team='valor'] {
+  --paper: #fbf0ef; --paper-2: #f4dfde; --card: #ffffff; --line: #e9cbca;
+  --ink: #3a1f24; --ink-2: #6b484e; --ink-3: #78535a;
+  --sky-top: #cc2f3b; --sky-bottom: #991b2e;
+  --go: #be2634; --go-soft: #fde0e3; --go-ink: #981b27; --sky: #b32539;
+}
+.dark[data-team='valor'] {
+  --paper: #1f171b; --paper-2: #33252c; --card: #2a1f25; --line: #49353f;
+  --ink: #faf0f2; --ink-2: #d8bcc2; --ink-3: #b8989f;
+  --sky-top: #a82435; --sky-bottom: #6c1426;
+  --go: #d43848; --go-soft: #4a2029; --go-ink: #ffabb4; --sky: #ff9ca6;
+}
+
+[data-team='instinct'] {
+  --paper: #faf4e4; --paper-2: #f1e6ca; --card: #ffffff; --line: #e4d5af;
+  --ink: #382c16; --ink-2: #665432; --ink-3: #725f3b;
+  --sky-top: #c98300; --sky-bottom: #9c5200;
+  --go: #a66700; --go-soft: #fdf0c8; --go-ink: #7a4a00; --sky: #995a00;
+}
+.dark[data-team='instinct'] {
+  --paper: #1e1b14; --paper-2: #332c20; --card: #29241b; --line: #493f2e;
+  --ink: #fbf6ea; --ink-2: #d8ccb3; --ink-3: #b7a88a;
+  --sky-top: #9a6508; --sky-bottom: #6a3d06;
+  --go: #c4820a; --go-soft: #433417; --go-ink: #f8d47c; --sky: #f5ca5c;
+}
+
+[data-team='rocket'] {
+  --paper: #f1eef7; --paper-2: #e3dcf0; --card: #ffffff; --line: #d3c8e6;
+  --ink: #251c36; --ink-2: #54476e; --ink-3: #63557d;
+  --sky-top: #31224a; --sky-bottom: #1b1429;
+  --go: #6d31b8; --go-soft: #eadffb; --go-ink: #531e96; --sky: #6b2bb5;
+}
+.dark[data-team='rocket'] {
+  --paper: #14111c; --paper-2: #262036; --card: #1e192b; --line: #3a3052;
+  --ink: #f2eefb; --ink-2: #c5badb; --ink-3: #a294bf;
+  --sky-top: #4d1f7a; --sky-bottom: #26103d;
+  --go: #8844db; --go-soft: #311d52; --go-ink: #d5b8ff; --sky: #c699ff;
+}
+
+[data-team='sakura'] {
+  --paper: #fbf0f5; --paper-2: #f4dfea; --card: #ffffff; --line: #e8cadb;
+  --ink: #381e2d; --ink-2: #69455b; --ink-3: #785269;
+  --sky-top: #c43b78; --sky-bottom: #8c2463;
+  --go: #b62d6c; --go-soft: #fce0ee; --go-ink: #8f1d53; --sky: #ad2d68;
+}
+.dark[data-team='sakura'] {
+  --paper: #1e151d; --paper-2: #332432; --card: #291d28; --line: #4a3548;
+  --ink: #faf0f6; --ink-2: #d8bdd0; --ink-3: #b796ad;
+  --sky-top: #9c2b63; --sky-bottom: #641946;
+  --go: #cf4284; --go-soft: #48203a; --go-ink: #ffb3d6; --sky: #ffa8d1;
+}
+
+[data-team='forest'] {
+  --paper: #e8f3eb; --paper-2: #d5e9dc; --card: #ffffff; --line: #bedbc8;
+  --ink: #1b3428; --ink-2: #426152; --ink-3: #4e6e5e;
+  --sky-top: #176b49; --sky-bottom: #104d3b;
+  --go: #187049; --go-soft: #d2f0df; --go-ink: #12593a; --sky: #146c5c;
+}
+.dark[data-team='forest'] {
+  --paper: #131e19; --paper-2: #22352c; --card: #1b2a23; --line: #324c3f;
+  --ink: #ecf6f0; --ink-2: #b4cec0; --ink-3: #8eb09e;
+  --sky-top: #1a5c41; --sky-bottom: #113b2d;
+  --go: #279460; --go-soft: #1b3f2e; --go-ink: #9be8bf; --sky: #7ee0ad;
+}
+
+[data-team='oled'] {
+  --paper: #f2f3f5; --paper-2: #e4e7ec; --card: #ffffff; --line: #d2d7e0;
+  --ink: #1c222c; --ink-2: #4b5565; --ink-3: #596475;
+  --sky-top: #262c36; --sky-bottom: #161a22;
+  --go: #2c3545; --go-soft: #e2e6ec; --go-ink: #1f2633; --sky: #2456ba;
+}
+.dark[data-team='oled'] {
+  --paper: #07090d; --paper-2: #191f2a; --card: #11151d; --line: #273040;
+  --ink: #f1f4f9; --ink-2: #b2bccd; --ink-3: #8e9ab0;
+  --sky-top: #151d2e; --sky-bottom: #0c111d;
+  --go: #2a7de1; --go-soft: #152b4a; --go-ink: #99c8ff; --sky: #78b8ff;
+}
 
 /* Every page breathes under its header, whatever its own top spacing (outside the layers, so it wins). */
 header.topbar ~ main { padding-top: 1rem; }

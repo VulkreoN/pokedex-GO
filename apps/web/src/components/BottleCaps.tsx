@@ -1,16 +1,18 @@
 import { useState } from 'react';
+import type { GameLang } from '@mydexpogo/shared';
 import { candidateSearch, HYPER_TRAINING, type HtStat } from '../lib/hyperTraining.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { Button, Chip, CopyButton } from './ui.js';
+import { Chip, CopyButton } from './ui.js';
 
 /** Hyper Training helper: candidate search string, rules, and the task for each IV step. */
 export function BottleCaps() {
   const t = useT();
   const { lang } = useLang();
   const [shinyOnly, setShinyOnly] = useState(true);
+  const [gameLang, setGameLang] = useState<GameLang>('en');
   const [stat, setStat] = useState<HtStat>('atk');
   const [current, setCurrent] = useState(0);
-  const search = candidateSearch(shinyOnly);
+  const search = candidateSearch(shinyOnly, gameLang);
   const tasks = HYPER_TRAINING[lang === 'fr' ? 'fr' : 'en'][stat];
   return (
     <div className="space-y-4">
@@ -23,6 +25,13 @@ export function BottleCaps() {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <CopyButton tone="primary" text={search} />
           <Chip active={shinyOnly} onClick={() => setShinyOnly((v) => !v)}>{t.caps_shiny_only}</Chip>
+          <span className="ml-auto inline-flex gap-1">
+            {(['en', 'fr'] as const).map((gl) => (
+              <Chip key={gl} active={gameLang === gl} onClick={() => setGameLang(gl)} className="min-h-8 px-2.5 text-xs">
+                {gl === 'fr' ? 'Français' : 'English'}
+              </Chip>
+            ))}
+          </span>
         </div>
       </section>
 

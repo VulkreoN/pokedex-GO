@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ListDetail } from '@mydexpogo/shared';
 import { cardDone, cardsOf, missingCards } from '../lib/cards.js';
 import { entryVariant, type DatasetIndex } from '../lib/dataset.js';
@@ -18,7 +18,7 @@ import {
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { exportListPdf, fileSlug } from '../lib/pdf.js';
 import { exportSearch } from '../lib/searchString.js';
-import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, renderListImages, sharePictures, type ImageLayout } from '../lib/shareImage.js';
+import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, downloadBlobsStaggered, renderListImages, sharePictures, type ImageLayout } from '../lib/shareImage.js';
 import { FormBlindWarning, SearchSettingsPanel, useSearchSettings } from './SearchStrings.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { useToast } from './toast.js';
@@ -62,6 +62,9 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
   const [note, setNote] = useState('');
   const [imageLayout, setImageLayout] = useState<ImageLayout>('preview');
   const [exporting, setExporting] = useState<'save' | 'copy' | 'share' | 'pdf' | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [readyImages, setReadyImages] = useState<{ blob: Blob; name: string }[] | null>(null);
+  useEffect(() => () => setReadyImages(null), []);
   const [withSearch, setWithSearchState] = useState(() => {
     try {
       return localStorage.getItem('exportWithSearch') !== '0';
@@ -88,33 +91,53 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
   const suggestedId = useMemo(() => suggestExportTheme(list.entries, exportMissing), [list.entries, exportMissing]);
   const theme = useMemo(() => resolveExportTheme(themeChoice, list.entries, exportMissing), [themeChoice, list.entries, exportMissing]);
   const activeCode = showCode && friendCode ? friendCode : undefined;
+  const busyLabel = progress && progress.total > 0 ? t.export_progress(progress.done, progress.total) : t.export_working;
 
   /** Image or PDF export using the active theme, note, friend code, and search settings. */
   const exportAs = async (kind: 'save' | 'copy' | 'share' | 'pdf') => {
     setExporting(kind);
+    setProgress(null);
+    setReadyImages(null);
+    const onProgress = (done: number, total: number) => setProgress({ done, total });
     try {
-      const common = { onlyMissing: exportMissing, search: withSearch ? search : null, theme, note: note.trim() || undefined, friendCode: activeCode };
-      if (kind === 'pdf') await exportListPdf(idx, list, lang, t, common);
-      else {
+      const common = { onlyMissing: exportMissing, search: withSearch ? search : null, theme, note: note.trim() || undefined, friendCode: activeCode, onProgress };
+      if (kind === 'pdf') {
+        await exportListPdf(idx, list, lang, t, common);
+      } else {
         const blobs = await renderListImages(idx, list, lang, t, { ...common, layout: imageLayout });
         const names = blobs.map((_, i) => `${fileSlug(list.name)}${blobs.length > 1 ? `-${i + 1}` : ''}.png`);
         if (kind === 'save') {
-          blobs.forEach((b, i) => downloadBlob(b, names[i]!));
+          await downloadBlobsStaggered(blobs, names);
           toast(t.images_saved(blobs.length));
+          // On phones, browsers often drop auto-downloads 2..N: keep a 1-tap per-page tray open for multi-image exports.
+          if (blobs.length > 1) {
+            setReadyImages(blobs.map((blob, i) => ({ blob, name: names[i]! })));
+            return;
+          }
         } else if (kind === 'copy') {
           if (blobs.length > 1) {
             toast(t.image_copy_pages(blobs.length));
+            setReadyImages(blobs.map((blob, i) => ({ blob, name: names[i]! })));
             return;
           }
           await copyPicture(blobs[0]!);
           toast(t.image_copied);
-        } else if (!(await sharePictures(blobs, names, list.name))) return;
+        } else {
+          const res = await sharePictures(blobs, names, list.name);
+          if (res === 'cancelled') return;
+          if (res === 'needs-gesture') {
+            // Long generation expired mobile user activation: surface a fresh-tap tray instead of failing.
+            setReadyImages(blobs.map((blob, i) => ({ blob, name: names[i]! })));
+            return;
+          }
+        }
       }
       onClose();
     } catch {
       toast(t.err_generic);
     } finally {
       setExporting(null);
+      setProgress(null);
     }
   };
 
@@ -166,10 +189,36 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
           <Chip active={imageLayout === 'compact'} onClick={() => setImageLayout('compact')} className="min-h-8 px-2.5 text-xs">{t.export_layout_compact}</Chip>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('save')}>{exporting === 'save' ? t.export_working : t.export_save}</Button>
-          {canCopyPicture() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('copy')}>{exporting === 'copy' ? t.export_working : t.copy}</Button>}
-          {canSharePictures() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('share')}>{exporting === 'share' ? t.export_working : t.share}</Button>}
+          <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('save')}>{exporting === 'save' ? busyLabel : t.export_save}</Button>
+          {canCopyPicture() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('copy')}>{exporting === 'copy' ? busyLabel : t.copy}</Button>}
+          {canSharePictures() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('share')}>{exporting === 'share' ? busyLabel : t.share}</Button>}
         </div>
+        {readyImages && readyImages.length > 0 && (
+          <div className="rounded-xl border border-go/40 bg-go-soft/40 p-2.5">
+            <p className="text-xs font-bold text-go-ink">{t.export_ready_title(readyImages.length)}</p>
+            <p className="mt-0.5 text-[11px] text-ink-2">{t.export_ready_hint}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {readyImages.map((img, i) => (
+                <Button
+                  key={img.name}
+                  className="min-h-9 px-3 text-xs"
+                  onClick={() => downloadBlob(img.blob, img.name)}
+                >
+                  {t.export_page_btn(i + 1, readyImages.length)}
+                </Button>
+              ))}
+              {canSharePictures() && (
+                <Button
+                  tone="primary"
+                  className="min-h-9 px-3 text-xs"
+                  onClick={() => void sharePictures(readyImages.map((x) => x.blob), readyImages.map((x) => x.name), list.name).catch(() => toast(t.err_generic))}
+                >
+                  {t.export_share_all(readyImages.length)}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* PDF export button. */}
@@ -184,7 +233,7 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
         </span>
         <span>
-          <span className="block font-semibold">{exporting === 'pdf' ? t.export_working : t.export_pdf_short}</span>
+          <span className="block font-semibold">{exporting === 'pdf' ? busyLabel : t.export_pdf_short}</span>
           <span className="block text-xs text-ink-3">{t.export_pdf_hint}</span>
         </span>
       </button>

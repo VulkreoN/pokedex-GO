@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abbreviationFit, decodeMember, rankLeague } from './pvpRankings.js';
+import { abbreviationFit, decodeMember, parsePreviewSeason, pickFresherAnalysis, rankLeague, withRankDeltas } from './pvpRankings.js';
 
 const sp = (speciesId: string, speciesName: string, dex: number, baseStats: { atk: number; def: number; hp: number }, extra = {}) => ({ speciesId, speciesName, dex, baseStats, types: [], fastMoves: [], chargedMoves: [], ...extra });
 const gm = new Map([
@@ -57,5 +57,43 @@ describe('decodeMember', () => {
     expect(decodeMember('missingno A/B/C', byId, moves)).toBeNull();
     expect(abbreviationFit('Bd', moves.get('BULLDOZE')!)).toBe(1);
     expect(abbreviationFit('C', moves.get('COUNTER')!)).toBe(2);
+  });
+});
+
+describe('pickFresherAnalysis', () => {
+  const sample = (lastUpdated: string, team = 'melmetal TS/DbI/DyP') => ({ properties: { lastUpdated }, teams: [{ team, teamScore: 550, games: 100 }] });
+  it('picks whichever PvPoke analysis file was updated more recently', () => {
+    const older = sample('August 26,  2026', 'old_team');
+    const newer = sample('October 17,  2026', 'new_team');
+    expect(pickFresherAnalysis(older, newer)).toBe(newer);
+    expect(pickFresherAnalysis(newer, older)).toBe(newer);
+    expect(pickFresherAnalysis(older, {})).toBe(older);
+    // On equal dates, keeps the first candidate (`all/`).
+    const same = sample('August 26,  2026', 'second_team');
+    expect(pickFresherAnalysis(older, same)).toBe(older);
+  });
+});
+
+describe('parsePreviewSeason & withRankDeltas', () => {
+  it('detects active PvPoke next-season preview banner and computes rank deltas', () => {
+    const active = `<?php if(true): ?><div class="header-ticker"><a href="https://pvpoke.com/daydream-destinations/rankings/">Preview next season</a></div><?php endif; ?>`;
+    expect(parsePreviewSeason(active)).toEqual({ slug: 'daydream-destinations', title: 'Daydream Destinations' });
+    const inactive = `<?php if(false): ?><div class="header-ticker"><a href="https://pvpoke.com/daydream-destinations/rankings/">Preview next season</a></div><?php endif; ?>`;
+    expect(parsePreviewSeason(inactive)).toBeNull();
+
+    const cur = [
+      { speciesId: 'a', name: 'A', dex: 1, atk: 1, def: 1, hp: 1, shadow: false, league: 'great' as const, rank: 10, of: 100, score: 90, scores: {}, moveset: [], wins: [], losses: [] },
+      { speciesId: 'b', name: 'B', dex: 2, atk: 1, def: 1, hp: 1, shadow: false, league: 'great' as const, rank: 2, of: 100, score: 95, scores: {}, moveset: [], wins: [], losses: [] },
+    ];
+    const prev = [
+      { ...cur[0]!, rank: 1 },
+      { ...cur[1]!, rank: 5 },
+      { ...cur[0]!, speciesId: 'c', rank: 8 },
+    ];
+    expect(withRankDeltas(prev, cur).map((x) => [x.speciesId, x.delta])).toEqual([
+      ['a', 9],
+      ['b', -3],
+      ['c', null],
+    ]);
   });
 });

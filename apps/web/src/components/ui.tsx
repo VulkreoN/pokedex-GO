@@ -212,7 +212,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </IconButton>
         </div>
-        <div className="max-h-[75vh] overflow-y-auto pb-4">{children}</div>
+        <div className="max-h-[75vh] overflow-y-auto overflow-x-hidden pb-4">{children}</div>
       </div>
     </dialog>
   );

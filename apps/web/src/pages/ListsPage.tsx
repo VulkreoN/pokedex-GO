@@ -5,9 +5,12 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { ListSummary, ListVisibility } from '@mydexpogo/shared';
 import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { useToast } from '../components/toast.js';
+import { useDataset } from '../lib/dataset.js';
+import { LIST_TEMPLATES, buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
 import { useAllFriendLists } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
-import { useCreateList, useLists, usePinList, useReorderLists } from '../lib/lists.js';
+import { useCreateList, useLists, usePinList, useReorderLists, useUpsertEntries } from '../lib/lists.js';
 import { feedback } from '../lib/feedback.js';
 
 export function VisibilityField({ value, onChange }: { value: ListVisibility; onChange: (v: ListVisibility) => void }) {
@@ -43,15 +46,21 @@ export function VisibilityIcon({ v }: { v: ListVisibility }) {
 
 export function ListsPage() {
   const t = useT();
+  const toast = useToast();
+  const dataset = useDataset();
   const lists = useLists();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'friends' ? 'friends' : 'mine';
   const friendLists = useAllFriendLists(tab === 'friends');
   const create = useCreateList();
+  const upsert = useUpsertEntries();
   const [open, setOpen] = useState(false);
+  const [listQuery, setListQuery] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] = useState<ListVisibility>('friends');
+  const [template, setTemplate] = useState<ListTemplateId>('empty');
+  const [filling, setFilling] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const reorder = useReorderLists();
   const move = (i: number, by: number) => {
@@ -73,13 +82,34 @@ export function ListsPage() {
     reorder.mutate(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
   };
 
+  const pickTemplate = (id: ListTemplateId) => {
+    const prevAuto = template !== 'empty' ? (t.templates[template] ?? '') : '';
+    setTemplate(id);
+    if (id !== 'empty' && (!name.trim() || name.trim() === prevAuto)) {
+      setName((t.templates[id] ?? '').slice(0, 60));
+    }
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await create.mutateAsync({ name: name.trim(), description: description.trim() || null, visibility });
-    setOpen(false);
-    setName('');
-    setDescription('');
+    setFilling(true);
+    try {
+      const r = await create.mutateAsync({ name: name.trim(), description: description.trim() || null, visibility });
+      if (template !== 'empty' && dataset.data) {
+        const entries = buildTemplateEntries(dataset.data, template);
+        for (let k = 0; k < entries.length; k += 1000) {
+          await upsert.mutateAsync({ id: r.list.id, entries: entries.slice(k, k + 1000) });
+        }
+        if (entries.length) toast(t.template_count(entries.length));
+      }
+      setOpen(false);
+      setName('');
+      setDescription('');
+      setTemplate('empty');
+    } finally {
+      setFilling(false);
+    }
   };
 
   return (
@@ -113,6 +143,22 @@ export function ListsPage() {
             <Button tone="primary" className="mt-4" onClick={() => setOpen(true)}>{t.new_list}</Button>
           </Empty>
         )}
+        {(lists.data?.length ?? 0) > 6 && !ordering && (
+          <div className="relative pt-2">
+            <input
+              type="search"
+              inputMode="search"
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder={t.search_placeholder}
+              aria-label={t.my_lists}
+              className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+            />
+            {listQuery && (
+              <button type="button" onClick={() => setListQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 mt-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">✕</button>
+            )}
+          </div>
+        )}
         {(lists.data?.length ?? 0) > 1 && (
           <div className="flex items-center gap-3 py-2">
             <p className="min-w-0 flex-1 text-xs text-ink-3">{ordering ? t.reorder_hint : ''}</p>
@@ -131,7 +177,9 @@ export function ListsPage() {
           </DndContext>
         ) : (
           <ul className="stagger space-y-2">
-            {lists.data?.map((l) => <ListCard key={l.id} l={l} />)}
+            {(lists.data ?? [])
+              .filter((l) => !listQuery.trim() || `${l.name} ${l.description ?? ''}`.toLowerCase().includes(listQuery.trim().toLowerCase()))
+              .map((l) => <ListCard key={l.id} l={l} />)}
           </ul>
         )}
       </main>
@@ -148,12 +196,27 @@ export function ListsPage() {
         </div>
       )}
       <Sheet open={open} onClose={() => setOpen(false)} title={t.new_list}>
-        <form onSubmit={submit} className="space-y-3">
-          <TextField label={t.list_name} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required autoFocus />
-          <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-          <VisibilityField value={visibility} onChange={setVisibility} />
-          <Button tone="primary" className="w-full" type="submit" disabled={create.isPending || !name.trim()}>{t.create}</Button>
-        </form>
+        {open && (
+          <form onSubmit={submit} className="space-y-3">
+            <TextField label={t.list_name} value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required autoFocus />
+            <TextField label={t.list_description} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink-2">{t.template_title}</p>
+              <p className="mb-2 text-xs text-ink-3">{t.template_hint}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {LIST_TEMPLATES.map((id) => (
+                  <Chip key={id} active={template === id} onClick={() => pickTemplate(id)} className="min-h-8 px-2.5 text-xs">
+                    {t.templates[id] ?? id}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <VisibilityField value={visibility} onChange={setVisibility} />
+            <Button tone="primary" className="w-full" type="submit" disabled={filling || create.isPending || !name.trim()}>
+              {filling ? t.template_filling : t.create}
+            </Button>
+          </form>
+        )}
       </Sheet>
     </>
   );
@@ -196,12 +259,14 @@ function SortableRow({ l, first, last, onMove }: { l: ListSummary; first: boolea
 function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSummary; showVisibility?: boolean; pinnable?: boolean }) {
   const t = useT();
   const pin = usePinList();
+  const complete = l.entryCount > 0 && l.doneCount === l.entryCount;
+  const pct = l.entryCount ? Math.round((l.doneCount / l.entryCount) * 100) : 0;
   return (
     <li className="relative">
-      <Link to={`/lists/${l.id}`} className="card block p-3 transition hover:brightness-[0.98]">
+      <Link to={`/lists/${l.id}`} className={`card block p-3 transition hover:brightness-[0.98] ${complete ? 'ring-1 ring-go/45' : ''}`}>
         <div className="flex items-center gap-2">
           <span className={`min-w-0 flex-1 truncate text-[17px] font-bold ${pinnable ? 'pr-9' : ''}`}>
-            {l.entryCount > 0 && l.doneCount === l.entryCount && (
+            {complete && (
               <span className="mr-1.5 inline-block text-shiny" role="img" aria-label={t.collection_complete} title={t.collection_complete}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="-mt-1 inline" aria-hidden="true"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5Z" /></svg>
               </span>
@@ -213,7 +278,9 @@ function ListCard({ l, showVisibility = true, pinnable = false }: { l: ListSumma
         {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
         <div className="mt-2 flex items-center gap-3">
           <Progress done={l.doneCount} total={l.entryCount} />
-          <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{l.entryCount ? t.progress(l.doneCount, l.entryCount) : t.list_empty_short}</span>
+          <span className="tnum shrink-0 text-xs font-semibold text-ink-2">
+            {l.entryCount ? `${t.progress(l.doneCount, l.entryCount)} · ${pct}%` : t.list_empty_short}
+          </span>
         </div>
       </Link>
       {pinnable && <PinButton on={!!l.favorite} label={l.favorite ? t.unpin : t.pin} onClick={() => pin.mutate({ id: l.id, on: !l.favorite })} className="absolute right-1.5 top-1.5" />}

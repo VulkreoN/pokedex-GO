@@ -18,7 +18,44 @@ export function variantForGender(group: VariantGroup, gender: GenderFilter): Var
   return group.variants.find((v) => v.gender === gender) ?? group.variants[0]!;
 }
 
-export function VariantCard({ idx, species, group, shiny, gender = 'all', showSpecies = false, selectable = false, selected = false, showPvp = false, openOnTap = false, pick, onPick, onAdd, onManage }: { idx: DatasetIndex; species: Species; group: VariantGroup; shiny: boolean; gender?: GenderFilter; showSpecies?: boolean; selectable?: boolean; selected?: boolean; showPvp?: boolean; /** Search results: a tap opens the Pokémon, adding is the button under it. */ openOnTap?: boolean; pick?: DexPick; onPick?: (p: DexPick) => void; onAdd: (g: VariantGroup) => void; onManage?: (g: VariantGroup) => void }) {
+export function VariantCard({
+  idx,
+  species,
+  group,
+  shiny,
+  gender = 'all',
+  showSpecies = false,
+  selectable = false,
+  selected = false,
+  showPvp = false,
+  openOnTap = false,
+  speciesLinkSuffix = '',
+  inCollection = false,
+  pick,
+  onPick,
+  onAdd,
+  onManage,
+}: {
+  idx: DatasetIndex;
+  species: Species;
+  group: VariantGroup;
+  shiny: boolean;
+  gender?: GenderFilter;
+  showSpecies?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  showPvp?: boolean;
+  /** Search results: a tap opens the Pokémon, adding is the button under it. */
+  openOnTap?: boolean;
+  /** Preserves query context (e.g. `?to=<listId>`) when navigating to the species page. */
+  speciesLinkSuffix?: string;
+  /** Shows a subtle badge when this variant is already present or caught in the active/player collections. */
+  inCollection?: 'caught' | 'present' | false;
+  pick?: DexPick;
+  onPick?: (p: DexPick) => void;
+  onAdd: (g: VariantGroup) => void;
+  onManage?: (g: VariantGroup) => void;
+}) {
   const t = useT();
   const { lang } = useLang();
   const v = variantForGender(group, gender);
@@ -42,6 +79,17 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
           })()}
           {shiny && v.hasShiny && <Sparkle className="absolute -left-2 top-0 text-shiny" />}
           {showSpecies && <span className="tnum absolute -left-2 -top-1 text-[10px] font-semibold text-ink-3">#{species.dex}</span>}
+          {inCollection && (
+            <span
+              className={`absolute -right-2 bottom-0 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ${
+                inCollection === 'caught' ? 'bg-go text-white' : 'bg-sky text-white'
+              }`}
+              title={inCollection === 'caught' ? t.already_caught_short : t.already_in_list}
+              aria-label={inCollection === 'caught' ? t.already_caught_short : t.already_in_list}
+            >
+              {inCollection === 'caught' ? '✓' : '•'}
+            </span>
+          )}
         </div>
         {showSpecies && <span className="mt-1 w-full truncate text-[12px] font-bold leading-tight">{localized(species.name, lang)}</span>}
         <span className={`line-clamp-2 w-full text-[12px] leading-tight ${showSpecies ? 'text-ink-2' : 'mt-1 font-semibold'}`}>{label || (showSpecies ? t.normal : localized(species.name, lang))}</span>
@@ -60,7 +108,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
   return (
     <div className="flex h-full flex-col">
       {opens ? (
-        <Link to={`/dex/${species.dex}`} className={look} aria-label={`${localized(species.name, lang)} ${label}`}>{body}</Link>
+        <Link to={`/dex/${species.dex}${speciesLinkSuffix}`} className={look} aria-label={`${localized(species.name, lang)} ${label}`}>{body}</Link>
       ) : (
         <button type="button" onClick={() => onAdd(group)} className={look} aria-label={`${t.add} ${localized(species.name, lang)} ${label}`} aria-pressed={selectable ? selected : undefined}>
           {body}
@@ -71,7 +119,7 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
       {opens ? (
         <button type="button" onClick={() => onAdd(group)} aria-label={`${t.add} ${localized(species.name, lang)} ${label}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-go-ink hover:bg-paper-2">+ {t.add}</button>
       ) : showSpecies && !selectable ? (
-        <Link to={`/dex/${species.dex}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
+        <Link to={`/dex/${species.dex}${speciesLinkSuffix}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
       ) : null}
       {onManage && (
         <button type="button" onClick={() => onManage(group)} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-[11px] font-semibold text-sky hover:bg-paper-2">

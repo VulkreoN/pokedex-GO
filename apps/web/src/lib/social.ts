@@ -14,6 +14,7 @@ export function useOffer(listId: string) {
     onSuccess: (r) => {
       qc.setQueryData(['list', listId], (old: { list: ListDetail; access: string } | undefined) => (old ? { ...old, list: r.list } : old));
       void qc.invalidateQueries({ queryKey: ['list', listId, 'history'] });
+      void qc.invalidateQueries({ queryKey: ['friend-matches'] });
     },
   });
 }
@@ -92,10 +93,12 @@ export function useRealtime(loggedIn: boolean) {
       if (e.type === 'list') {
         void qc.invalidateQueries({ queryKey: ['list', e.listId] });
         void qc.invalidateQueries({ queryKey: ['lists'] });
+        void qc.invalidateQueries({ queryKey: ['lists-membership'] });
         void qc.invalidateQueries({ queryKey: ['friends-lists'] });
         void qc.invalidateQueries({ queryKey: ['friend-lists', e.ownerId] });
+        void qc.invalidateQueries({ queryKey: ['friend-matches'] });
       } else if (e.type === 'friends') {
-        for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists']) void qc.invalidateQueries({ queryKey: [k] });
+        for (const k of ['friends', 'friend-requests', 'friends-lists', 'friend-lists', 'friend-matches']) void qc.invalidateQueries({ queryKey: [k] });
       } else if (e.type === 'notification') {
         void qc.invalidateQueries({ queryKey: ['notifications'] });
       } else if (e.type === 'announcement') {

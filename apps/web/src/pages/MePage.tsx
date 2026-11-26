@@ -2,28 +2,27 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Chip, HoldButton, PasswordField, Sheet, SwitchThumb, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, CopyButton, HoldButton, PasswordField, Sheet, SwitchThumb, TopBar } from '../components/ui.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { InstallBanner } from '../components/InstallBanner.js';
-import { Badge } from '../components/ui.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
 import { useLogout, useMe } from '../lib/auth.js';
-import { useDataset } from '../lib/dataset.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { applyTheme, getTheme, type Theme } from '../lib/theme.js';
+import { useFriends, useLists } from '../lib/lists.js';
+import { applyTheme, getTheme, useTheme, type Theme } from '../lib/theme.js';
 import { fmtCode } from '../lib/errors.js';
-import { relativeTime, useAdminStats, useDataStatus } from '../lib/admin.js';
-import type { Role } from '@mydexpogo/shared';
+import { useAdminStats, useDataStatus } from '../lib/admin.js';
 import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
-import { TEAMS, setTeam, useTeam } from '../lib/team.js';
+import { TEAMS, TEAM_META, setTeam, useTeam } from '../lib/team.js';
 
 export function MePage() {
   const t = useT();
   const { lang, setLang } = useLang();
   const me = useMe();
   const logout = useLogout();
-  const dataset = useDataset();
+  const lists = useLists();
+  const friends = useFriends();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [theme, setTheme] = useState<Theme>(getTheme());
@@ -32,14 +31,18 @@ export function MePage() {
   const [curPw, setCurPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [newPw2, setNewPw2] = useState('');
+  const [pwError, setPwError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+  const [delError, setDelError] = useState<string | null>(null);
   const status = useDataStatus();
   const isAdmin = me.data?.role === 'admin';
   const toast = useToast();
 
   const pick = (th: Theme) => { setTheme(th); applyTheme(th); };
+  const { dark } = useTheme();
   const team = useTeam();
-  const ds = dataset.data?.ds;
+  const totalEntries = (lists.data ?? []).reduce((n, l) => n + l.entryCount, 0);
+  const totalDone = (lists.data ?? []).reduce((n, l) => n + l.doneCount, 0);
 
   return (
     <>
@@ -47,12 +50,29 @@ export function MePage() {
       <main className="mx-auto max-w-3xl space-y-6 px-3 pb-24">
         <InstallBanner dismissible={false} />
         {me.data ? (
-          <section className="rounded-card border border-line p-4">
+          <section className="card p-4">
             <div className="flex items-center gap-2 text-[22px] font-bold">{me.data.username} {me.data.role !== 'user' && <Badge tone="grass">{t[`role_${me.data.role}`]}</Badge>}</div>
-            <div className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</span>
+              <CopyButton text={me.data.friendCode} className="min-h-8 px-2.5 text-xs" />
+            </div>
+            {(lists.data || friends.data) && (
+              <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
+                {lists.data && (
+                  <Link to="/lists" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
+                    {t.me_stats_lists(lists.data.length)}{totalEntries > 0 ? ` · ${t.progress(totalDone, totalEntries)}` : ''}
+                  </Link>
+                )}
+                {friends.data && (
+                  <Link to="/friends" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
+                    {t.me_stats_friends(friends.data.length)}
+                  </Link>
+                )}
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
-              <Button tone="ghost" onClick={() => setChanging(true)}>{t.change_password}</Button>
+              <Button tone="ghost" onClick={() => { setPwError(null); setChanging(true); }}>{t.change_password}</Button>
             </div>
           </section>
         ) : null}
@@ -105,13 +125,32 @@ export function MePage() {
             ))}
           </div>
           <h3 className="mb-2 mt-4 text-sm font-semibold text-ink-2">{t.team_colour}</h3>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.team_colour}>
-            {TEAMS.map((tm) => (
-              <Chip key={tm} active={team === tm} onClick={() => setTeam(tm)}>
-                {tm !== 'none' && <span className={`h-3 w-3 rounded-full ${{ mystic: 'bg-[var(--team-mystic)]', valor: 'bg-[var(--team-valor)]', instinct: 'bg-[var(--team-instinct)]' }[tm]}`} aria-hidden="true" />}
-                {t.team_names[tm]}
-              </Chip>
-            ))}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-label={t.team_colour}>
+            {TEAMS.map((tm) => {
+              const p = TEAM_META[tm].preview;
+              const active = team === tm;
+              return (
+                <button
+                  key={tm}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTeam(tm)}
+                  className={`card flex flex-col overflow-hidden p-0 text-left transition active:scale-[0.98] ${active ? 'ring-2 ring-go' : 'hover:brightness-[0.98]'}`}
+                >
+                  <div className="flex h-10 w-full flex-col justify-between p-1.5" style={{ background: dark ? p.darkPaper : p.paper }}>
+                    <div className="h-3 w-full rounded-sm" style={{ background: `linear-gradient(135deg, ${p.top}, ${p.bottom})` }} />
+                    <div className="flex items-center gap-1">
+                      <span className="h-2.5 w-8 rounded-full" style={{ background: dark ? p.darkAccent : p.accent }} />
+                      <span className="h-2 w-4 rounded-full opacity-35" style={{ background: dark ? '#fff' : '#000' }} />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold">
+                    <span className="min-w-0 flex-1 truncate">{t.team_names[tm]}</span>
+                    {active && <span className="text-go-ink dark:text-go" aria-hidden="true">✓</span>}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
 
@@ -126,44 +165,54 @@ export function MePage() {
         {/* Out of the way, at the very end of the page. */}
         {me.data && (
           <div className="pt-4 text-center">
-            <button type="button" onClick={() => setDeleting(true)} className="text-sm font-semibold text-berry hover:underline">{t.delete_account}</button>
+            <button type="button" onClick={() => { setDelError(null); setDeleting(true); }} className="text-sm font-semibold text-berry hover:underline">{t.delete_account}</button>
           </div>
         )}
 
       </main>
       <Sheet open={changing} onClose={() => setChanging(false)} title={t.change_password}>
-        <div className="space-y-3">
-          <PasswordField label={t.current_password} value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
-          <PasswordField label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
-          <PasswordField label={t.password_confirm} value={newPw2} onChange={(e) => setNewPw2(e.target.value)} autoComplete="new-password" minLength={8} aria-invalid={!!newPw2 && newPw2 !== newPw} />
-          {!!newPw2 && newPw2 !== newPw && <p role="alert" className="text-sm text-berry">{t.password_mismatch}</p>}
-          <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8 || newPw2 !== newPw} onClick={async () => {
-            try {
-              await api('/auth/password', { body: { current: curPw, password: newPw } });
-              toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw(''); setNewPw2('');
-            } catch { alert(t.err_invalid_credentials); }
-          }}>{t.save}</Button>
-        </div>
+        {changing && (
+          <div className="space-y-3">
+            <PasswordField label={t.current_password} value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwError(null); }} autoComplete="current-password" />
+            <PasswordField label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
+            <PasswordField label={t.password_confirm} value={newPw2} onChange={(e) => setNewPw2(e.target.value)} autoComplete="new-password" minLength={8} aria-invalid={!!newPw2 && newPw2 !== newPw} />
+            {!!newPw2 && newPw2 !== newPw && <p role="alert" className="text-sm text-berry">{t.password_mismatch}</p>}
+            {pwError && <p role="alert" className="text-sm text-berry">{pwError}</p>}
+            <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8 || newPw2 !== newPw} onClick={async () => {
+              setPwError(null);
+              try {
+                await api('/auth/password', { body: { current: curPw, password: newPw } });
+                toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw(''); setNewPw2('');
+              } catch { setPwError(t.err_invalid_credentials); }
+            }}>{t.save}</Button>
+          </div>
+        )}
       </Sheet>
       <Sheet open={deleting} onClose={() => setDeleting(false)} title={t.delete_account}>
-        <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
-        <PasswordField label={t.password} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-        <HoldButton
-          className="mt-3 w-full"
-          disabled={!password}
-          onConfirm={async () => {
-            try {
-              await api('/auth/me', { method: 'DELETE', body: { password } });
-              qc.clear();
-              setDeleting(false);
-              navigate('/');
-            } catch {
-              alert(t.err_invalid_credentials);
-            }
-          }}
-        >
-          {t.delete_account}
-        </HoldButton>
+        {deleting && (
+          <>
+            <p className="mb-3 text-sm text-ink-2">{t.confirm_delete_account}</p>
+            <PasswordField label={t.password} value={password} onChange={(e) => { setPassword(e.target.value); setDelError(null); }} autoComplete="current-password" />
+            {delError && <p role="alert" className="mt-2 text-sm text-berry">{delError}</p>}
+            <HoldButton
+              className="mt-3 w-full"
+              disabled={!password}
+              onConfirm={async () => {
+                setDelError(null);
+                try {
+                  await api('/auth/me', { method: 'DELETE', body: { password } });
+                  qc.clear();
+                  setDeleting(false);
+                  navigate('/');
+                } catch {
+                  setDelError(t.err_invalid_credentials);
+                }
+              }}
+            >
+              {t.delete_account}
+            </HoldButton>
+          </>
+        )}
       </Sheet>
     </>
   );

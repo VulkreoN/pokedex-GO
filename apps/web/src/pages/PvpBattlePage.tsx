@@ -4,7 +4,7 @@ import { bestUnderCap, buildFighter, defaultIvs, shieldMatrix, simulate, type Ba
 import { LeagueIcon } from '../components/PvpTops.js';
 import { Sprite } from '../components/Sprite.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Chip, Empty, Spinner, TopBar } from '../components/ui.js';
+import { Chip, CopyButton, Empty, Spinner, TopBar } from '../components/ui.js';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { LEAGUE_CP, LEAGUE_LIST, leagueName, moveName, speciesFor, useBattleData, type BattleData, type League } from '../lib/pvpoke.js';
@@ -86,17 +86,39 @@ export function PvpBattlePage() {
   const nameOf = (s: ReturnType<typeof useFighter>) => (s.form ? `${localized(s.form.name, lang)}${s.shadow ? ` ${t.tag_shadow.toLowerCase()}` : ''}` : '');
   const pvpokeLink = a.built && b.built ? `https://pvpoke.com/battle/${LEAGUE_CP[league]}/${a.built.species.speciesId}/${b.built.species.speciesId}/${a.built.fighter.shields}${b.built.fighter.shields}/` : null;
 
+  const swapSides = () => {
+    const suffixKeys = ['', 'sh', 'm', 'iv', 'lv', 's', 'bait'];
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const k of suffixKeys) {
+        const va = prev.get(`a${k}`);
+        const vb = prev.get(`b${k}`);
+        if (vb === null) next.delete(`a${k}`);
+        else next.set(`a${k}`, vb);
+        if (va === null) next.delete(`b${k}`);
+        else next.set(`b${k}`, va);
+      }
+      return next;
+    }, { replace: true });
+  };
+
   return (
     <>
       <TopBar title={t.battle_title} back />
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           {LEAGUE_LIST.map((l) => (
             <Chip key={l} active={league === l} onClick={() => setParams((prev) => { const n = new URLSearchParams(prev); n.set('l', l); return n; }, { replace: true })}>
               <LeagueIcon league={l} size={16} />
               {leagueName(t, l)}
             </Chip>
           ))}
+          {(a.form || b.form) && (
+            <div className="ml-auto flex items-center gap-1.5">
+              <Chip onClick={swapSides} className="min-h-8 px-2.5 text-xs">⇄ {t.battle_swap}</Chip>
+              {a.form && b.form && <CopyButton text={window.location.href} label={t.battle_share} className="min-h-8 px-2.5 text-xs" />}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">

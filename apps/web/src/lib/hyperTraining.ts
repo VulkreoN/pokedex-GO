@@ -114,7 +114,14 @@ const fr: Record<HtStat, string[]> = {
 
 export const HYPER_TRAINING = { en, fr };
 
+import { keyword, type GameLang } from '@mydexpogo/shared';
+
 /** Pokémon with at least two perfect stats, not already 15/15/15, not shadow (shadows can't be trained). */
-export function candidateSearch(shinyOnly: boolean): string {
-  return `4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow${shinyOnly ? '&shiny' : ''}`;
+export function candidateSearch(shinyOnly: boolean, lang: GameLang = 'en'): string {
+  const atk = keyword('attack', lang);
+  const def = keyword('defense', lang);
+  const hp = keyword('hp', lang);
+  const shadow = keyword('shadow', lang);
+  const shiny = keyword('shiny', lang);
+  return `4${atk},4${def}&4${atk},4${hp}&4${def},4${hp}&!4*&!${shadow}${shinyOnly ? `&${shiny}` : ''}`;
 }

@@ -66,7 +66,7 @@ export const gameRoutes = new Hono<AuthEnv>()
   .get('/pvp-rankings/:dex{[0-9]+}', async (c) => {
     try {
       c.header('cache-control', 'public, max-age=3600');
-      return c.json({ rankings: await getPvpDetails(Number(c.req.param('dex'))) });
+      return c.json(await getPvpDetails(Number(c.req.param('dex'))));
     } catch (e) {
       return c.json({ rankings: [], error: (e as Error).message }, 502);
     }

@@ -193,10 +193,13 @@ test.describe('game tab', () => {
     await page.getByRole('tab', { name: 'Outils', exact: true }).click();
     await expect(page).toHaveURL(/\/game\?tab=tools$/); // kept when coming back
     await page.getByRole('button', { name: 'Capsules', exact: true }).click();
+    await expect(page).toHaveURL(/\/game\?tab=tools&tool=caps$/); // tool persisted in URL
     await page.getByRole('button', { name: 'Copier', exact: true }).click();
     expect(await clipboard(page)).toBe('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow&shiny');
     await page.getByRole('button', { name: 'Chromatiques seulement' }).click();
     await expect(page.locator('code')).toHaveText('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow');
+    await page.getByRole('button', { name: 'Français', exact: true }).click();
+    await expect(page.locator('code')).toHaveText('4attaque,4défense&4attaque,4pv&4défense,4pv&!4*&!obscur');
     await page.getByRole('button', { name: 'PV', exact: true }).click();
     await page.locator('main input[type=range]').fill('13');
     await expect(page.getByText('2 tâches pour atteindre 15')).toBeVisible();
@@ -510,6 +513,10 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   await page.getByRole('button', { name: /^#150 Mewtwo/ }).click();
   const counters = page.getByRole('region', { name: 'Contres de Mewtwo' });
   await expect(counters.getByRole('listitem')).toHaveCount(12);
+  await expect(counters.getByText(/Ailes de l’Aurore/)).toBeVisible();
+  // Progress bars never overflow 100% and never trigger horizontal scroll inside the sheet.
+  const overflow = await counters.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+  expect(overflow).toBe(false);
   await expect(page.getByRole('link', { name: 'Voir sa fiche dans le Pokédex' })).toHaveAttribute('href', '/dex/150');
   await expect(counters.getByText('Faible contre')).toBeVisible();
   // They open over the page; closed to go on.
@@ -520,6 +527,13 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   await expect(page.getByText('Prochaines pleines lunes (heure de ton téléphone)')).toBeVisible();
   await page.getByRole('button', { name: /Avec un objectif à remplir/ }).click();
   await expect(page.getByText(/Fais 10\s+Excellents lancers/)).toBeVisible();
+  await expect(page.getByText(/Gagne 70\s+cœurs avec ton copain/)).toBeVisible();
+  // Random multi-outcome evolutions (Eevee, Cherubi, Clamperl…) and Tyrogue by HP.
+  await page.getByRole('button', { name: /Au hasard/ }).click();
+  await expect(page.getByText(/Ceribou → Ceriflor/).first()).toBeVisible();
+  await expect(page.getByText(/Évoli → Aquali/)).toBeVisible();
+  await page.getByRole('button', { name: /Selon ses IV/ }).click();
+  await expect(page.getByText(/si les PV sont son meilleur IV/)).toBeVisible();
   // Searching opens the groups with a match.
   await page.getByRole('searchbox', { name: 'Chercher un Pokémon dans les évolutions' }).fill('sepiatop');
   await expect(page.getByText(/téléphone tenu à l’envers/)).toBeVisible();
@@ -567,4 +581,126 @@ test('back from a Pokémon, the Pokédex is where it was: same search, same plac
   await expect(page).toHaveURL(/\/dex\/\d+$/);
   await page.goBack();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 400);
+});
+
+test('Pokédex 1-tap Shiny, +family and range search, type/rarity filters, and species ♂/♀ + direct multi-select', async ({ page }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+  const listId = (await (await page.request.post('/api/lists', { data: { name: 'Multi Direct' } })).json()).list.id;
+
+  await page.goto('/dex');
+  await expect(page.locator('main ul > li').first()).toBeVisible();
+
+  // 1-tap Shiny chip right on the Pokédex bar.
+  const shinyBtn = page.getByRole('button', { name: 'Shiny', exact: true });
+  await shinyBtn.click();
+  await expect(shinyBtn).toHaveAttribute('aria-pressed', 'true');
+  await shinyBtn.click();
+
+  // +family search shows the whole evolution family in stage order; clear button wipes the search.
+  const search = page.getByPlaceholder('Nom ou numéro');
+  await search.fill('+bulbizarre');
+  await expect(page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ajouter Herbizarre', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ajouter Florizarre', exact: true })).toBeVisible();
+  await search.fill('+pikachu');
+  await expect(page.getByRole('button', { name: /^Ajouter Pichu/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ajouter Pikachu/ }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Effacer la recherche' }).click();
+  await expect(search).toHaveValue('');
+
+  // Dex range search "1-3" shows Bulbasaur, Ivysaur, Venusaur only.
+  await search.fill('1-3');
+  await expect(page.getByRole('button', { name: 'Ajouter Bulbizarre', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ajouter Florizarre', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Ajouter Salamèche/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Effacer la recherche' }).click();
+
+  // Type + Rarity filters inside Filters sheet (Electric + Legendary -> Zapdos).
+  await page.getByRole('button', { name: 'Filtres' }).click();
+  const filters = page.locator('dialog[open]');
+  await filters.getByRole('button', { name: 'Électrik', exact: true }).click();
+  await filters.getByRole('button', { name: 'Légendaire', exact: true }).click();
+  await filters.getByRole('button', { name: /^Voir / }).click();
+  await expect(page.getByRole('link', { name: /Électhor/ }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: /Bulbizarre/ })).toHaveCount(0);
+
+  // Species page: ♂/♀ preview switch + multi-select direct add into a collection without going through the basket.
+  await page.goto('/dex/25');
+  const femaleBtn = page.getByRole('button', { name: 'Femelle', exact: true });
+  await femaleBtn.click();
+  await expect(femaleBtn).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Sélection multiple' }).click();
+  await page.getByRole('button', { name: /^Ajouter Pikachu/ }).nth(0).click();
+  await page.getByRole('button', { name: /^Ajouter Pikachu/ }).nth(1).click();
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
+  const bulk = page.locator('dialog[open]');
+  await bulk.getByLabel(/Multi Direct/).check();
+  await bulk.getByRole('button', { name: /^Ajouter · \d+ sélectionnée/ }).click();
+  await expect(page.getByText(/Ajouté à 1 collection/)).toBeVisible();
+
+  const detail = (await (await page.request.get(`/api/lists/${listId}`)).json()).list;
+  expect(detail.entries.length).toBeGreaterThanOrEqual(2);
+});
+
+test('PvP IV steppers/presets, battle swap, and Me profile stats + inline password error', async ({ page }) => {
+  const { apiRegister } = await import('../fixtures.js');
+  await apiRegister(page.request);
+
+  // PvP IV stepper buttons & quick presets (Rang 1, 15/15/15) + link to Pokédex page.
+  await page.goto('/pvp/184?a=0&d=15&s=14');
+  await page.getByRole('button', { name: 'Augmenter PV' }).click();
+  await expect(page).toHaveURL(/s=15/);
+  await page.getByRole('button', { name: '15/15/15', exact: true }).click();
+  await expect(page).toHaveURL(/a=15&d=15&s=15/);
+  await expect(page.getByRole('link', { name: /Fiche Pokédex/ })).toHaveAttribute('href', '/dex/184');
+
+  // Battle swap swaps sides A and B in the URL.
+  await page.goto('/pvp/battle?l=great&a=184&b=308');
+  await page.getByRole('button', { name: /Inverser/ }).click();
+  await expect(page).toHaveURL(/a=308&b=184/);
+
+  // Me page: copyable friend code, stats pill, new full-app theme picker, and inline error instead of native alert().
+  await page.goto('/me');
+  await expect(page.getByRole('link', { name: /0 collection/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Team Rocket' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-team', 'rocket');
+  await page.getByRole('button', { name: 'Changer mon mot de passe' }).click();
+  const sheet = page.locator('dialog[open]');
+  await sheet.getByLabel('Mot de passe actuel').fill('wrong-password');
+  await sheet.getByLabel('Nouveau mot de passe', { exact: true }).fill('new-password-123');
+  await sheet.getByLabel('Confirme le mot de passe').fill('new-password-123');
+  await sheet.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(sheet.getByRole('alert')).toBeVisible();
+});
+
+test('game eggs: unified distance filters, source explanations, search, and clean rarity tiers', async ({ page }) => {
+  await page.route('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/eggs.json', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { name: 'Bulbasaur', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm1.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 4 },
+        { name: 'Charmander', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm4.icon.png', eggType: '1 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 4 },
+        { name: 'Galarian Corsola', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm222.fGALARIAN.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+        { name: 'Hisuian Sneasel', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm215.fHISUIAN.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: true, canBeShiny: true, rarity: 1 },
+        { name: 'White-Striped Basculin', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm550.fWHITE_STRIPED.icon.png', eggType: '7 km', isAdventureSync: false, isRegional: false, isGiftExchange: true, canBeShiny: false, rarity: 4 },
+        { name: 'Riolu', image: 'https://cdn.leekduck.com/assets/img/pokemon_icons/pm447.icon.png', eggType: '5 km', isAdventureSync: true, isRegional: false, isGiftExchange: false, canBeShiny: true, rarity: 1 },
+      ]),
+    }),
+  );
+  await page.goto('/game?tab=eggs');
+  // 1 km pool has a single rarity tier -> no cluttered tier header inside it, clear daily source subtitle.
+  await expect(page.getByText('Œuf quotidien (incubateur d’aventure)')).toBeVisible();
+  // Tapping 7 km shows BOTH friend gifts and Mateo Routes together, with mixed rarity tiers clearly labeled.
+  await page.getByRole('button', { name: '7 km', exact: true }).click();
+  await expect(page.getByText('Cadeaux d’amis')).toBeVisible();
+  await expect(page.getByText('Échange de cadeau avec Mateo en fin de Route')).toBeVisible();
+  await expect(page.getByText('Très fréquent')).toBeVisible();
+  await expect(page.getByText('Rare', { exact: true })).toBeVisible();
+  // Reset distance filter and verify Adventure Sync French label + search across all egg pools.
+  await page.getByRole('button', { name: 'Tous', exact: true }).click();
+  await expect(page.getByText(/5 km · Suivi d’exploration/)).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Chercher un Pokémon dans les œufs' }).fill('riolu');
+  await expect(page.getByText('Riolu')).toBeVisible();
+  await expect(page.getByText('Bulbizarre')).toHaveCount(0);
 });

@@ -1,13 +1,16 @@
 import { useFollowList } from '../lib/social.js';
 import { useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
+import type { TradeMatch } from '@mydexpogo/shared';
+import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Button, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { entryVariant, genderSymbol, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { errorMessage, fmtCode } from '../lib/errors.js';
 import { useMe, useSetFriendCode } from '../lib/auth.js';
-import { useLang, useT } from '../lib/i18n.js';
+import { localized, useLang, useT } from '../lib/i18n.js';
 import { PinButton } from './ListsPage.js';
-import { useFriendLists, useFriendRequests, useFriends, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest , type Friend } from '../lib/lists.js';
+import { useFriendLists, useFriendMatches, useFriendRequests, useFriends, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest, type Friend } from '../lib/lists.js';
 import { VisibilityIcon } from './ListsPage.js';
 import { FriendQr, QrScanSheet } from '../components/FriendQr.js';
 
@@ -213,34 +216,145 @@ export function FriendsPage() {
 export function FriendListsPage() {
   const t = useT();
   const { id } = useParams<{ id: string }>();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'trades' ? 'trades' : 'lists';
   const q = useFriendLists(id!);
+  const matches = useFriendMatches(id!);
+  const dataset = useDataset();
+  const totalMatches = (matches.data?.theyHaveForMe.length ?? 0) + (matches.data?.iHaveForThem.length ?? 0);
+
   return (
     <>
-      <TopBar title={q.data ? t.friend_lists(q.data.friend.username) : t.friends} back />
+      <TopBar title={q.data ? t.friend_lists(q.data.friend.username) : t.friends} back>
+        <div className="mx-auto flex max-w-3xl gap-2 px-3 pb-2">
+          <Chip active={tab === 'lists'} onClick={() => setParams({}, { replace: true })}>{t.friend_tab_lists}</Chip>
+          <Chip active={tab === 'trades'} onClick={() => setParams({ tab: 'trades' }, { replace: true })}>
+            {t.friend_tab_trades}
+            {totalMatches > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[11px] font-bold leading-4 text-white">{totalMatches}</span>}
+          </Chip>
+        </div>
+      </TopBar>
       <main className="mx-auto max-w-3xl px-3 pb-24">
-        {q.isPending && <Spinner />}
-        {q.isError && <Empty>{t.err_not_found}</Empty>}
-        {q.data?.lists.length === 0 && <Empty>{t.nothing_here}</Empty>}
-        <ul className="space-y-2">
-          {q.data?.lists.map((l) => (
-            <li key={l.id}>
-              <Link to={`/lists/${l.id}`} className="card block p-3 hover:brightness-[0.98]">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[17px] font-bold">{l.name}</span>
-                  <VisibilityIcon v={l.visibility} />
-                </div>
-                {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
-                <div className="mt-2 flex items-center gap-3">
-                  <Progress done={l.doneCount} total={l.entryCount} />
-                  <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{l.entryCount ? t.progress(l.doneCount, l.entryCount) : t.list_empty_short}</span>
-                </div>
-              </Link>
-              {l.following !== undefined && <FollowButton listId={l.id} following={l.following} />}
-            </li>
-          ))}
-        </ul>
+        {tab === 'lists' ? (
+          <>
+            {q.isPending && <Spinner />}
+            {q.isError && <Empty>{t.err_not_found}</Empty>}
+            {q.data?.lists.length === 0 && <Empty>{t.nothing_here}</Empty>}
+            <ul className="space-y-2">
+              {q.data?.lists.map((l) => (
+                <li key={l.id}>
+                  <Link to={`/lists/${l.id}`} className="card block p-3 hover:brightness-[0.98]">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[17px] font-bold">{l.name}</span>
+                      <VisibilityIcon v={l.visibility} />
+                    </div>
+                    {l.description && <p className="mt-0.5 truncate text-sm text-ink-2">{l.description}</p>}
+                    <div className="mt-2 flex items-center gap-3">
+                      <Progress done={l.doneCount} total={l.entryCount} />
+                      <span className="tnum shrink-0 text-xs font-semibold text-ink-2">{l.entryCount ? t.progress(l.doneCount, l.entryCount) : t.list_empty_short}</span>
+                    </div>
+                  </Link>
+                  {l.following !== undefined && <FollowButton listId={l.id} following={l.following} />}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <FriendTrades
+            friendName={matches.data?.friend.username ?? q.data?.friend.username ?? ''}
+            theyHaveForMe={matches.data?.theyHaveForMe}
+            iHaveForThem={matches.data?.iHaveForThem}
+            pending={matches.isPending || dataset.isPending}
+            error={matches.isError}
+            idx={dataset.data}
+          />
+        )}
       </main>
     </>
+  );
+}
+
+/** Shows automatic & offered trade matches in both directions between the player and a friend. */
+function FriendTrades({
+  friendName,
+  theyHaveForMe,
+  iHaveForThem,
+  pending,
+  error,
+  idx,
+}: {
+  friendName: string;
+  theyHaveForMe?: TradeMatch[];
+  iHaveForThem?: TradeMatch[];
+  pending: boolean;
+  error: boolean;
+  idx?: DatasetIndex;
+}) {
+  const t = useT();
+  if (pending) return <Spinner />;
+  if (error || !idx) return <Empty>{t.err_not_found}</Empty>;
+  const forMe = theyHaveForMe ?? [];
+  const forThem = iHaveForThem ?? [];
+  if (!forMe.length && !forThem.length) return <Empty>{t.trades_empty}</Empty>;
+
+  return (
+    <div className="space-y-5">
+      {forMe.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-base font-bold">
+            {t.trades_for_me(friendName)} <span className="tnum font-normal text-ink-3">{forMe.length}</span>
+          </h2>
+          <TradeMatchList items={forMe} idx={idx} />
+        </section>
+      )}
+      {forThem.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-base font-bold">
+            {t.trades_for_them(friendName)} <span className="tnum font-normal text-ink-3">{forThem.length}</span>
+          </h2>
+          <TradeMatchList items={forThem} idx={idx} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function TradeMatchList({ items, idx }: { items: TradeMatch[]; idx: DatasetIndex }) {
+  const t = useT();
+  const { lang } = useLang();
+  return (
+    <ul className="space-y-2">
+      {items.map((m) => {
+        const v = entryVariant(idx, m.variantKey, m.gender);
+        const sp = v && idx.speciesByDex.get(v.dex);
+        if (!v || !sp) return null;
+        return (
+          <li key={`${m.listId}|${m.variantKey}|${m.gender}|${m.shiny}|${m.tag}`}>
+            <Link to={`/lists/${m.listId}`} className="card flex items-center gap-3 p-2.5 transition hover:brightness-[0.98]">
+              <span className="relative shrink-0">
+                <Sprite idx={idx} variant={v} shiny={m.shiny} size={48} />
+                {m.shiny && <Sparkle className="absolute -right-0.5 top-0 text-shiny" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <span className="truncate">{localized(sp.name, lang)}{m.gender ? ` ${genderSymbol(m.gender)}` : ''}</span>
+                  {m.offered && <Badge tone="grass">{t.trades_offered_badge}</Badge>}
+                </span>
+                <span className="flex flex-wrap items-center gap-1 text-xs text-ink-2">
+                  {v.label && <span>{localized(v.label, lang)}</span>}
+                  {m.tag && <Badge tone="muted">{tagLabel(idx, m.tag, t)}</Badge>}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-ink-3">
+                  {t.trades_wanted_in(m.listName)}
+                  {m.sourceListName ? ` · ${t.trades_from(m.sourceListName)}` : ''}
+                </span>
+              </span>
+              <span aria-hidden="true" className="text-ink-3">›</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

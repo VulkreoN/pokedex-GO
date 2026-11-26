@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import type { AppNotification } from '@mydexpogo/shared';
-import { Button, Empty, HoldButton, IconButton, Spinner, TopBar } from '../components/ui.js';
+import type { AppNotification, EntryGender } from '@mydexpogo/shared';
+import { Sparkle, Sprite } from '../components/Sprite.js';
+import { Button, Chip, Empty, HoldButton, IconButton, Spinner, TopBar } from '../components/ui.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { useDataset } from '../lib/dataset.js';
+import { entryVariant, useDataset } from '../lib/dataset.js';
 import { useDeleteNotification, useMarkRead, useNotifications } from '../lib/social.js';
 import { useMe } from '../lib/auth.js';
 import { useFriendRequests, useRespondFriendRequest } from '../lib/lists.js';
@@ -31,6 +32,7 @@ export function NotificationsPage() {
   const dataset = useDataset();
   const read = useMarkRead();
   const clear = useDeleteNotification();
+  const [filter, setFilter] = useState<'all' | 'social' | 'game'>('all');
   const unread = q.data?.unread ?? 0;
   // Opening the inbox counts as seeing it; rows stay highlighted until the next visit.
   useEffect(() => {
@@ -69,6 +71,32 @@ export function NotificationsPage() {
     });
   };
   const when = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const isSocial = (n: AppNotification) => n.type === 'friend_request' || n.type === 'friend_accepted' || n.type === 'offer' || n.type === 'offer_caught';
+  const isGame = (n: AppNotification) => n.type === 'raid' || n.type === 'spawn' || n.type === 'quest';
+  const allItems = q.data?.items ?? [];
+  const hasCategories = allItems.some(isSocial) && allItems.some(isGame);
+  const shownItems = filter === 'all' ? allItems : allItems.filter(filter === 'social' ? isSocial : isGame);
+
+  /** Mini-sprites extracted from offer / raid notifications when the Pokédex is loaded. */
+  const spritesOf = (n: AppNotification) => {
+    const idx = dataset.data;
+    if (!idx) return [];
+    if (n.type === 'offer' || n.type === 'offer_caught') {
+      const vs = (n.data.variants as { key: string; gender?: EntryGender; shiny?: boolean }[] | undefined) ?? [];
+      return vs.slice(0, 4).flatMap((x) => {
+        const v = entryVariant(idx, x.key, x.gender ?? '');
+        return v ? [{ v, shiny: !!x.shiny, id: `${x.key}-${x.gender ?? ''}-${x.shiny ? 1 : 0}` }] : [];
+      });
+    }
+    if (n.type === 'raid') {
+      const bs = (n.data.bosses as { key: string }[] | undefined) ?? [];
+      return bs.slice(0, 4).flatMap((b) => {
+        const v = idx.variantByKey.get(b.key) ?? idx.coverOf.get(Number(b.key.split('.')[0]));
+        return v ? [{ v, shiny: false, id: b.key }] : [];
+      });
+    }
+    return [];
+  };
 
   return (
     <>
@@ -76,34 +104,58 @@ export function NotificationsPage() {
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-2">
         {q.isPending && <Spinner />}
         {q.data?.items.length === 0 && <Empty>{t.notifications_empty}</Empty>}
-        {!!q.data?.items.length && (
-          <div className="mb-2 flex justify-end gap-2">
-            {unread > 0 && <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
-            <HoldButton small ms={800} className="whitespace-nowrap" onConfirm={() => clear.mutate(undefined)}>{t.notifications_clear}</HoldButton>
+        {!!allItems.length && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {hasCategories && (
+              <div className="mr-auto flex gap-1.5">
+                {(['all', 'social', 'game'] as const).map((f) => (
+                  <Chip key={f} active={filter === f} onClick={() => setFilter(f)} className="min-h-8 px-2.5 text-xs">
+                    {t[`notif_filter_${f}`]}
+                  </Chip>
+                ))}
+              </div>
+            )}
+            <div className="ml-auto flex gap-2">
+              {unread > 0 && <Button tone="ghost" className="min-h-9 whitespace-nowrap px-3 text-sm" onClick={() => read.mutate(undefined)}>{t.notifications_read_all}</Button>}
+              <HoldButton small ms={800} className="whitespace-nowrap" onConfirm={() => clear.mutate(undefined)}>{t.notifications_clear}</HoldButton>
+            </div>
           </div>
         )}
         <ul className="space-y-2">
-          {q.data?.items.map((n) => (
-            <li key={n.id} className="relative">
-              <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 pr-12 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold">{text(n)}</span>
-                  <span className="tnum block text-xs text-ink-3">{when.format(new Date(n.createdAt))}</span>
-                </span>
-              </Link>
-              {/* A friend request still waiting: answered from here. */}
-              {n.type === 'friend_request' && n.actor && pendingFrom.get(n.actor.id) && (
-                <div className="mt-1.5 flex gap-2 pl-8">
-                  <Button tone="primary" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'accept' })}>{t.accept}</Button>
-                  <Button tone="ghost" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'decline' })}>{t.decline}</Button>
-                </div>
-              )}
-              <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </IconButton>
-            </li>
-          ))}
+          {shownItems.map((n) => {
+            const thumbs = spritesOf(n);
+            return (
+              <li key={n.id} className="relative">
+                <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 pr-12 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{text(n)}</span>
+                    {thumbs.length > 0 && dataset.data && (
+                      <span className="mt-1 flex items-center gap-1">
+                        {thumbs.map((th, i) => (
+                          <span key={`${th.id}-${i}`} className="relative">
+                            <Sprite idx={dataset.data} variant={th.v} shiny={th.shiny} size={32} />
+                            {th.shiny && <Sparkle className="absolute -right-0.5 top-0 h-2.5 w-2.5 text-shiny" />}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                    <span className="tnum block text-xs text-ink-3">{when.format(new Date(n.createdAt))}</span>
+                  </span>
+                </Link>
+                {/* A friend request still waiting: answered from here. */}
+                {n.type === 'friend_request' && n.actor && pendingFrom.get(n.actor.id) && (
+                  <div className="mt-1.5 flex gap-2 pl-8">
+                    <Button tone="primary" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'accept' })}>{t.accept}</Button>
+                    <Button tone="ghost" className="min-h-9 flex-1 text-sm" disabled={respond.isPending} onClick={() => respond.mutate({ id: pendingFrom.get(n.actor!.id)!, action: 'decline' })}>{t.decline}</Button>
+                  </div>
+                )}
+                <IconButton label={t.notification_delete} className="absolute right-1 top-1.5 h-9 w-9" onClick={() => clear.mutate(n.id)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </IconButton>
+              </li>
+            );
+          })}
         </ul>
       </main>
     </>

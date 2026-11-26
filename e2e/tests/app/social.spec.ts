@@ -173,9 +173,11 @@ test('a long list: every card in compact pictures, and a PDF even when the searc
   await expect(page.getByText(/^\d+ images enregistrées$/)).toBeVisible({ timeout: 60_000 });
   await expect.poll(() => downloads.length).toBeGreaterThan(1);
   expect(downloads[0]).toBe('longue-1.png');
+  // Multi-image export keeps the per-page download tray open for mobile browsers that drop downloads 2..N.
+  await expect(sheet.getByRole('button', { name: /^Image 1\/\d+$/ })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^Image 2\/\d+$/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Partager', exact: true }).click();
-  const [pdf] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), page.getByRole('button', { name: 'Exporter en PDF' }).click()]);
+  const [pdf] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), sheet.getByRole('button', { name: 'Exporter en PDF' }).click()]);
   const bytes = await readFile((await pdf.path())!);
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   // Pictures are shrunk: a few hundred Pokémon stay a reasonable file.
@@ -285,4 +287,54 @@ test('my friend code can be replaced by the one of the game', async ({ page }) =
   await sheet.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(page.getByText('Code ami mis à jour')).toBeVisible();
   await expect(page.getByText(game.replace(/(\d{4})(?=\d)/g, '$1 '), { exact: true })).toBeVisible();
+});
+
+test('friend Trades tab crosses caught vs missing lists and explicit offers in both directions', async ({ browser }) => {
+  const { owner, friend, uf, listId, close } = await friends(browser, 29);
+  try {
+    // Owner has caught Bulbasaur (1:m) and is missing Charmander (4:m), Lucky Squirtle (7:m), Pikachu (25:m).
+    await owner.request.delete(`/api/lists/${listId}/entries`, {
+      data: { entries: [{ variantKey: '7', gender: 'm', shiny: false, tag: '' }] },
+    });
+    await owner.request.put(`/api/lists/${listId}/entries`, {
+      data: {
+        entries: [
+          { variantKey: '1', gender: 'm', shiny: false, tag: '', done: true },
+          { variantKey: '7', gender: 'm', shiny: false, tag: 'lucky', done: false },
+        ],
+      },
+    });
+    // Friend has caught Charmander (4:m) and regular Squirtle (7:m, satisfies Owner's Lucky hunt), and is missing Bulbasaur (1:m).
+    const friendList = (await (await friend.request.post('/api/lists', { data: { name: 'Dex Kanto', visibility: 'friends' } })).json()).list;
+    await friend.request.put(`/api/lists/${friendList.id}/entries`, {
+      data: {
+        entries: [
+          { variantKey: '1', gender: 'm', shiny: false, tag: '', done: false },
+          { variantKey: '4', gender: 'm', shiny: false, tag: '', done: true },
+          { variantKey: '7', gender: 'm', shiny: false, tag: '', done: true },
+        ],
+      },
+    });
+    // Friend also explicitly offers Pikachu (25:m) on Owner's list.
+    await friend.request.post(`/api/lists/${listId}/offers`, {
+      data: { variantKey: '25', gender: 'm', shiny: false, tag: '', on: true },
+    });
+
+    await owner.goto(`/friends/${uf.id}`);
+    const tradesTab = owner.getByRole('button', { name: /Échanges/ });
+    await expect(tradesTab).toBeVisible();
+    await tradesTab.click();
+    await expect(owner).toHaveURL(new RegExp(`/friends/${uf.id}\\?tab=trades$`));
+
+    await expect(owner.getByRole('heading', { name: new RegExp(`${uf.username} a pour toi`) })).toBeVisible();
+    await expect(owner.getByText('Salamèche ♂')).toBeVisible();
+    await expect(owner.getByText('Carapuce ♂')).toBeVisible();
+    await expect(owner.getByText('Pikachu ♂')).toBeVisible();
+    await expect(owner.getByText('Proposé')).toBeVisible();
+
+    await expect(owner.getByRole('heading', { name: new RegExp(`Tu as pour ${uf.username}`) })).toBeVisible();
+    await expect(owner.getByText('Bulbizarre ♂')).toBeVisible();
+  } finally {
+    await close();
+  }
 });

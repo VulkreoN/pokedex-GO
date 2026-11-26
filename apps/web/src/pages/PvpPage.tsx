@@ -57,22 +57,36 @@ function PvpSearch() {
   const [query, setQuery] = useState('');
   const rankings = usePvpRankings();
   const [league, setLeague] = useState<League>('great');
+  const [season, setSeason] = useState<'current' | 'preview'>('current');
+  const preview = rankings.data?.preview;
+  const activeSeason = season === 'preview' && preview ? 'preview' : 'current';
   const picks = useMemo(() => {
     if (!pvp) return { recent: [], popular: [], top: [] };
     const recent = recentPvp().flatMap((k) => byKey.get(k) ?? []);
     const popular = POPULAR_DEX.flatMap((dex) => byKey.get(String(dex)) ?? pvp.pokemon.find((p) => p.dex === dex) ?? []).filter((p) => !recent.includes(p));
-    const top = (rankings.data?.[league] ?? []).slice(0, 20).flatMap((r) => {
+    const list = activeSeason === 'preview' && preview ? preview[league] : rankings.data?.[league];
+    const top = (list ?? []).slice(0, 20).flatMap((r) => {
       const p = formOf(pvp, r);
       return p ? [{ p, r }] : [];
     });
     return { recent, popular, top };
-  }, [pvp, byKey, rankings.data, league]);
+  }, [pvp, byKey, rankings.data, preview, activeSeason, league]);
   const tile = (p: PvpPokemon, r?: RankedPokemon) => {
     const v = ds.data && picture(ds.data, p);
+    const delta = activeSeason === 'preview' ? r?.delta : undefined;
     return (
       <li key={r ? r.speciesId : p.key}>
         <Link to={`/pvp/${encodeURIComponent(p.key)}`} className="card relative flex flex-col items-center px-1 pb-2 pt-1 hover:brightness-[0.98]">
           {r && <span className="tnum absolute left-1.5 top-1 text-[11px] font-bold text-ink-3">#{r.rank}</span>}
+          {delta !== undefined && (
+            <span
+              className={`tnum absolute right-1 top-1 rounded px-1 text-[9px] font-bold leading-3.5 ${
+                delta === null ? 'bg-info-soft text-info-ink' : delta > 0 ? 'bg-go-soft text-go-ink' : delta < 0 ? 'bg-berry/15 text-berry' : 'text-ink-3'
+              }`}
+            >
+              {delta === null ? t.pvp_preview_new : delta > 0 ? `▲${delta}` : delta < 0 ? `▼${Math.abs(delta)}` : '–'}
+            </span>
+          )}
           {v && ds.data && <Sprite idx={ds.data} variant={v} size={60} />}
           {(() => {
             // "Corayon (de Galar)": the form on a line of its own, small tiles cut long names.
@@ -98,17 +112,29 @@ function PvpSearch() {
     <>
       <TopBar title={t.nav_pvp}>
         <div className="mx-auto max-w-3xl px-3 pb-2">
-          <input
-            type="search"
-            inputMode="search"
-            // Ready to type on a computer; on a phone the keyboard would cover the page at once.
-            autoFocus={matchMedia('(pointer: fine)').matches}
-            placeholder={t.pvp_search}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3"
-            aria-label={t.pvp_search}
-          />
+          <div className="relative">
+            <input
+              type="search"
+              inputMode="search"
+              // Ready to type on a computer; on a phone the keyboard would cover the page at once.
+              autoFocus={matchMedia('(pointer: fine)').matches}
+              placeholder={t.pvp_search}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-h-11 w-full rounded-xl border px-3 pr-10 text-[16px] shadow-card placeholder:text-ink-3"
+              aria-label={t.pvp_search}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label={t.search_clear}
+                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2 hover:text-ink"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </TopBar>
       <main className="mx-auto max-w-3xl px-3 pb-24 pt-3">
@@ -144,7 +170,20 @@ function PvpSearch() {
             )}
             {picks.top.length > 0 ? (
               <section>
-                <h2 className="mb-2 text-base font-bold">{t.pvp_top}</h2>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h2 className="mr-auto text-base font-bold">{t.pvp_top}</h2>
+                  {preview && (
+                    <div className="flex gap-1">
+                      <Chip active={activeSeason === 'current'} onClick={() => setSeason('current')} className="min-h-8 px-2.5 text-xs">{t.pvp_season_current}</Chip>
+                      <Chip active={activeSeason === 'preview'} onClick={() => setSeason('preview')} className="min-h-8 px-2.5 text-xs">✨ {t.pvp_season_preview}</Chip>
+                    </div>
+                  )}
+                </div>
+                {activeSeason === 'preview' && preview && (
+                  <p className="mb-2 rounded-xl bg-info-soft px-3 py-1.5 text-xs font-medium text-info-ink">
+                    {t.pvp_preview_banner(preview.title)}
+                  </p>
+                )}
                 <div className="mb-2 flex flex-wrap gap-2">
                   {LEAGUE_LIST.map((l) => (
                     <Chip key={l} active={league === l} onClick={() => setLeague(l)}>
@@ -155,7 +194,10 @@ function PvpSearch() {
                 </div>
                 <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6">{picks.top.map(({ p, r }) => tile(p, r))}</ul>
                 <p className="mt-2 text-xs text-ink-3">
-                  {t.pvp_source} <a href={PVPOKE_URL} target="_blank" rel="noreferrer" className="font-semibold text-sky">PvPoke</a>
+                  {t.pvp_source}{' '}
+                  <a href={activeSeason === 'preview' && preview ? preview.url : PVPOKE_URL} target="_blank" rel="noreferrer" className="font-semibold text-sky">
+                    {activeSeason === 'preview' && preview ? `PvPoke · ${preview.title}` : 'PvPoke'}
+                  </a>
                 </p>
               </section>
             ) : (
@@ -274,10 +316,37 @@ function PvpDetail({ pkey }: { pkey: string }) {
                 ) : null;
               })()}
             </div>
-            <button type="button" onClick={() => navigate('/pvp')} className="shrink-0 text-sm font-semibold text-sky">{t.pvp_change}</button>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <button type="button" onClick={() => navigate('/pvp')} className="text-sm font-semibold text-sky">{t.pvp_change}</button>
+              <Link to={`/dex/${me.dex}`} className="text-xs font-semibold text-ink-3 hover:text-sky">{t.pvp_view_dex} ›</Link>
+            </div>
           </div>
 
-          <h2 className="mt-4 text-sm font-semibold text-ink-2">{t.pvp_your_ivs}</h2>
+          <div className="mt-4 flex flex-wrap items-center gap-1.5">
+            <h2 className="mr-auto text-sm font-semibold text-ink-2">{t.pvp_your_ivs}</h2>
+            {(() => {
+              const target = line[line.length - 1] ?? me;
+              const bestTop = target.top?.great ?? target.top?.ultra ?? me.top?.great ?? me.top?.ultra;
+              const presets: { label: string; a: number; d: number; s: number }[] = [
+                ...(bestTop ? [{ label: t.pvp_rank1_preset, a: bestTop[0], d: bestTop[1], s: bestTop[2] }] : []),
+                { label: '0/15/15', a: 0, d: 15, s: 15 },
+                { label: '15/15/15', a: 15, d: 15, s: 15 },
+              ];
+              return presets.map((pr) => {
+                const active = iv.atk === pr.a && iv.def === pr.d && iv.sta === pr.s;
+                return (
+                  <Chip
+                    key={pr.label}
+                    active={active}
+                    onClick={() => set({ a: String(pr.a), d: String(pr.d), s: String(pr.s) })}
+                    className="tnum min-h-7 px-2 text-xs"
+                  >
+                    {pr.label}
+                  </Chip>
+                );
+              });
+            })()}
+          </div>
           <div className="mt-2 space-y-2">
             <IvSlider label={t.stat_atk} value={iv.atk} onChange={(v) => set({ a: String(v) })} />
             <IvSlider label={t.stat_def} value={iv.def} onChange={(v) => set({ d: String(v) })} />
@@ -350,12 +419,33 @@ function PvpDetail({ pkey }: { pkey: string }) {
 }
 
 function IvSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const t = useT();
   return (
-    <label className="flex items-center gap-3">
-      <span className="w-16 shrink-0 text-sm font-medium text-ink-2">{label}</span>
-      <input type="range" min={0} max={15} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8 flex-1 accent-go" />
-      <span className={`tnum w-7 shrink-0 text-right text-lg font-bold ${value === 15 ? 'text-go-ink dark:text-go' : ''}`}>{value}</span>
-    </label>
+    <div className="flex items-center gap-2">
+      <label className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="w-16 shrink-0 text-sm font-medium text-ink-2">{label}</span>
+        <button
+          type="button"
+          disabled={value <= 0}
+          aria-label={t.pvp_iv_dec(label)}
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-base font-bold text-ink transition active:scale-95 disabled:opacity-35"
+        >
+          −
+        </button>
+        <input type="range" min={0} max={15} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8 min-w-0 flex-1 accent-go" />
+        <button
+          type="button"
+          disabled={value >= 15}
+          aria-label={t.pvp_iv_inc(label)}
+          onClick={() => onChange(Math.min(15, value + 1))}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-base font-bold text-ink transition active:scale-95 disabled:opacity-35"
+        >
+          +
+        </button>
+      </label>
+      <span className={`tnum w-6 shrink-0 text-right text-lg font-bold ${value === 15 ? 'text-go-ink dark:text-go' : ''}`}>{value}</span>
+    </div>
   );
 }
 
@@ -369,7 +459,7 @@ function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex;
   const details = usePvpDetails(p.dex);
   // PvPoke's view of this form per league (the normal one when Shadow is ranked too): its recommended moves.
   const pvpokeIn = (l: League) => {
-    const mine = (details.data ?? []).filter((r) => r.league === l && formOf(pvp, r)?.key === p.key);
+    const mine = (details.data?.rankings ?? []).filter((r) => r.league === l && formOf(pvp, r)?.key === p.key);
     return mine.find((r) => !r.shadow) ?? mine[0];
   };
   return (
@@ -638,15 +728,29 @@ function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey
   const { lang } = useLang();
   const q = useMyPvp();
   const [all, setAll] = useState(false);
+  const [leagueFilter, setLeagueFilter] = useState<'all' | 'great' | 'ultra'>('all');
   const rows = useMemo(
     () => (q.data ?? []).flatMap((m) => { const b = bestUse(pvp, byKey, m); return b ? [{ m, ...b }] : []; }).sort((a, b) => a.r.rank - b.r.rank),
     [q.data, pvp, byKey],
   );
   if (!rows.length) return null;
-  const shown = all ? rows : rows.slice(0, 6);
+  const hasBothLeagues = rows.some((x) => x.league === 'great') && rows.some((x) => x.league === 'ultra');
+  const filtered = leagueFilter === 'all' ? rows : rows.filter((x) => x.league === leagueFilter);
+  const shown = all ? filtered : filtered.slice(0, 6);
   return (
     <section className="mb-5">
-      <h2 className="mb-2 text-base font-bold">{t.pvp_mine_title} <span className="tnum font-normal text-ink-3">{rows.length}</span></h2>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h2 className="mr-auto text-base font-bold">{t.pvp_mine_title} <span className="tnum font-normal text-ink-3">{filtered.length}</span></h2>
+        {hasBothLeagues && (
+          <div className="flex gap-1">
+            {(['all', 'great', 'ultra'] as const).map((lf) => (
+              <Chip key={lf} active={leagueFilter === lf} onClick={() => setLeagueFilter(lf)} className="min-h-7 px-2 text-xs">
+                {lf === 'all' ? t.filter_all : leagueName(t, lf)}
+              </Chip>
+            ))}
+          </div>
+        )}
+      </div>
       <ul className="space-y-2">
         {shown.map(({ m, start, form, league, r }) => {
           const v = picture(idx, start);
@@ -672,8 +776,8 @@ function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey
           );
         })}
       </ul>
-      {rows.length > 6 && (
-        <button type="button" className="mt-2 text-sm font-semibold text-sky" onClick={() => setAll((x) => !x)}>{all ? t.pvp_mine_less : t.pvp_mine_all(rows.length)}</button>
+      {filtered.length > 6 && (
+        <button type="button" className="mt-2 text-sm font-semibold text-sky" onClick={() => setAll((x) => !x)}>{all ? t.pvp_mine_less : t.pvp_mine_all(filtered.length)}</button>
       )}
     </section>
   );

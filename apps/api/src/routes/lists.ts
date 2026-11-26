@@ -153,6 +153,23 @@ async function copyList(source: typeof schema.lists.$inferSelect, owner: AuthUse
 export const listRoutes = new Hono<AuthEnv>()
   .use(requireAuth)
   .get('/', async (c) => c.json({ lists: await listSummaries(eq(schema.lists.ownerId, c.get('user').id)) }))
+  /** Compact index of every entry across my collections, for "already in list" badges in the Pokédex. */
+  .get('/membership', async (c) => {
+    const me = c.get('user');
+    const rows = await db
+      .select({
+        listId: schema.listEntries.listId,
+        variantKey: schema.listEntries.variantKey,
+        gender: schema.listEntries.gender,
+        shiny: schema.listEntries.shiny,
+        tag: schema.listEntries.tag,
+        done: schema.listEntries.done,
+      })
+      .from(schema.listEntries)
+      .innerJoin(schema.lists, eq(schema.lists.id, schema.listEntries.listId))
+      .where(eq(schema.lists.ownerId, me.id));
+    return c.json({ entries: rows });
+  })
   /** Lists my friends show, read-only, minus the ones I stopped following. */
   .get('/friends', async (c) => {
     const me = c.get('user');
