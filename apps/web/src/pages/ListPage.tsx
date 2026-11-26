@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
+import { ExportSheet } from '../components/ExportSheet.js';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
-import { FormBlindWarning, SearchSettingsPanel, SearchStrings, useSearchSettings } from '../components/SearchStrings.js';
+import { SearchStrings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, TextField, TopBar, useRolling } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -16,9 +17,6 @@ import { useUpsertEntries } from '../lib/lists.js';
 import { VisibilityField } from './ListsPage.js';
 import { useFollowList, useOffer } from '../lib/social.js';
 import { CARD_SORTS, cardDone, cardMissing, cardsOf, sortCards, type CardSort, type EntryCard } from '../lib/cards.js';
-import { exportListPdf, fileSlug } from '../lib/pdf.js';
-import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, renderListImages, sharePictures, type ImageLayout } from '../lib/shareImage.js';
-import { exportSearch } from '../lib/searchString.js';
 import { selection } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
 import { useProgressive } from '../lib/progressive.js';
@@ -68,12 +66,12 @@ function ListView({ query, id, token }: { query: Q; id?: string; token?: string 
       </>
     );
   }
-  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} following={query.data.following} id={id} token={token} loggedIn={!!me.data} meName={me.data?.username} />;
+  return <ListBody idx={dataset.data} list={query.data.list} access={query.data.access} following={query.data.following} id={id} token={token} loggedIn={!!me.data} meName={me.data?.username} meFriendCode={me.data?.friendCode} />;
 }
 
 type View = 'missing' | 'caught' | 'all';
 
-function ListBody({ idx, list, access, following, id, token, loggedIn, meName }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; following?: boolean; id?: string; token?: string; loggedIn: boolean; meName?: string }) {
+function ListBody({ idx, list, access, following, id, token, loggedIn, meName, meFriendCode }: { idx: DatasetIndex; list: ListDetail; access: ListAccess; following?: boolean; id?: string; token?: string; loggedIn: boolean; meName?: string; meFriendCode?: string }) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
@@ -82,24 +80,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   const friend = access === 'friend';
   const offer = useOffer(list.id);
   const follow = useFollowList(list.id);
-  const [exporting, setExporting] = useState<'save' | 'copy' | 'share' | 'pdf' | null>(null);
-  const [imageLayout, setImageLayout] = useState<ImageLayout>('preview');
   const [sharing, setSharing] = useState(false);
-  const [exportMissing, setExportMissing] = useState(true);
-  // The game search and its QR code at the end of the picture / PDF: on unless the player turned it off (kept).
-  const [withSearch, setWithSearchState] = useState(() => {
-    try {
-      return localStorage.getItem('exportWithSearch') !== '0';
-    } catch {
-      return true;
-    }
-  });
-  const setWithSearch = (on: boolean) => {
-    setWithSearchState(on);
-    try {
-      localStorage.setItem('exportWithSearch', on ? '1' : '0');
-    } catch {}
-  };
   const [view, setView] = useState<View>('missing');
   const [query, setQuery] = useState('');
   const [strings, setStrings] = useState(false);
@@ -210,11 +191,6 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       for (const m of open) if (!!m.offeredByMe !== on) setOffer(m, on);
     } else if (owner) setDone(c.members, cardMissing(c));
   };
-  // The same settings as "Copy for the game", always for the missing ones.
-  const searchSettings = useSearchSettings();
-  const ss = { ...searchSettings.settings, onlyMissing: true };
-  const exportedSearch = useMemo(() => exportSearch(idx, list.entries, ss), [idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength]);
-  const search = exportedSearch.text;
 
   const memberId = (c: EntryCard, m: ListDetailEntry) => `${c.id}|${m.gender}`;
   const fits = (c: EntryCard, m: ListDetailEntry, sex = pickSex, version = pickVersion) =>
@@ -276,33 +252,6 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
     toast(t.added_to_selection(entries.length));
     stopPicking();
   };
-  /** Image: saved, copied or shared, each on its own (no silent fallback that would do it twice). */
-  const exportAs = async (kind: 'save' | 'copy' | 'share' | 'pdf') => {
-    setExporting(kind);
-    try {
-      if (kind === 'pdf') await exportListPdf(idx, list, lang, t, { onlyMissing: exportMissing, search: withSearch ? search : null });
-      else {
-        const blobs = await renderListImages(idx, list, lang, t, { onlyMissing: exportMissing, search: withSearch ? search : null, layout: imageLayout });
-        const names = blobs.map((_, i) => `${fileSlug(list.name)}${blobs.length > 1 ? `-${i + 1}` : ''}.png`);
-        if (kind === 'save') {
-          blobs.forEach((b, i) => downloadBlob(b, names[i]!));
-          toast(t.images_saved(blobs.length));
-        } else if (kind === 'copy') {
-          if (blobs.length > 1) {
-            toast(t.image_copy_pages(blobs.length));
-            return;
-          }
-          await copyPicture(blobs[0]!);
-          toast(t.image_copied);
-        } else if (!(await sharePictures(blobs, names, list.name))) return;
-      }
-      setSharing(false);
-    } catch {
-      toast(t.err_generic);
-    } finally {
-      setExporting(null);
-    }
-  };
 
   const shareUrl = list.shareToken ? `${location.origin}/s/${list.shareToken}` : null;
 
@@ -350,7 +299,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
             {t.copy_for_game}
           </Button>
-            <Button tone="ghost" className="gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => { setExportMissing(view !== 'all'); setSharing(true); }} disabled={list.entries.length === 0}>
+            <Button tone="ghost" className="gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setSharing(true)} disabled={list.entries.length === 0}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
               {t.export_share}
             </Button>
@@ -567,63 +516,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
         </div>
       )}
 
-      <Sheet open={sharing} onClose={() => setSharing(false)} title={t.export_title}>
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-1.5">
-            <Chip active={exportMissing} onClick={() => setExportMissing(true)}>{t.export_scope_missing}</Chip>
-            <Chip active={!exportMissing} onClick={() => setExportMissing(false)}>{t.export_scope_all}</Chip>
-          </div>
-          <section className="card space-y-3 p-3" aria-label={t.export_image}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-go-ink">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></svg>
-              </span>
-              <span>
-                <span className="block font-semibold">{t.export_image}</span>
-                <span className="block text-xs text-ink-3">{t.export_image_hint}</span>
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Chip active={imageLayout === 'preview'} onClick={() => setImageLayout('preview')} className="min-h-8 px-2.5 text-xs">{t.export_layout_preview}</Chip>
-              <Chip active={imageLayout === 'compact'} onClick={() => setImageLayout('compact')} className="min-h-8 px-2.5 text-xs">{t.export_layout_compact}</Chip>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('save')}>{exporting === 'save' ? t.export_working : t.export_save}</Button>
-              {canCopyPicture() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('copy')}>{exporting === 'copy' ? t.export_working : t.copy}</Button>}
-              {canSharePictures() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('share')}>{exporting === 'share' ? t.export_working : t.share}</Button>}
-            </div>
-          </section>
-          <button
-            type="button"
-            disabled={!!exporting}
-            onClick={() => exportAs('pdf')}
-            aria-label={t.export_pdf}
-            className="card flex w-full items-center gap-3 p-3 text-left transition hover:brightness-[0.98] active:scale-[0.98] disabled:opacity-60"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-go-ink">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
-            </span>
-            <span>
-              <span className="block font-semibold">{exporting === 'pdf' ? t.export_working : t.export_pdf_short}</span>
-              <span className="block text-xs text-ink-3">{t.export_pdf_hint}</span>
-            </span>
-          </button>
-          <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
-              <span className="block text-xs text-ink-3">{t.export_with_search}</span>
-            </span>
-            <SwitchThumb on={withSearch} />
-          </button>
-          {withSearch && (
-            <>
-              {!search && <p className="text-xs text-ink-3">{t.export_search_empty}</p>}
-              {search && exportedSearch.blind.length > 0 && <FormBlindWarning idx={idx} variants={exportedSearch.blind} />}
-              <SearchSettingsPanel s={searchSettings} showOnlyMissing={false} />
-            </>
-          )}
-        </div>
-      </Sheet>
+      <ExportSheet open={sharing} onClose={() => setSharing(false)} idx={idx} list={list} defaultOnlyMissing={view !== 'all'} friendCode={owner ? meFriendCode : undefined} />
 
       {owner && (
         <Sheet open={importing} onClose={() => setImporting(false)} title={t.import_title}>

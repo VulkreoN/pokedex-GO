@@ -184,6 +184,53 @@ test('a long list: every card in compact pictures, and a PDF even when the searc
   await ctx.close();
 });
 
+test('image and PDF exports support custom styles (shiny, lucky…), custom note, and friend code', async ({ browser }) => {
+  const ctx = await browser.newContext({ acceptDownloads: true, extraHTTPHeaders: {} });
+  const page = await ctx.newPage();
+  const user = await apiRegister(page.request, uniq('style'));
+  const list = (await (await page.request.post('/api/lists', { data: { name: 'Chasse Shiny' } })).json()).list;
+  await page.request.put(`/api/lists/${list.id}/entries`, {
+    data: { entries: [{ variantKey: '1', gender: 'm', shiny: true }, { variantKey: '4', gender: 'm', shiny: true }] },
+  });
+  await page.goto(`/lists/${list.id}`);
+  await expect(page.locator('main img').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  const sheet = page.locator('dialog[open]');
+
+  // Auto mode picks the Shiny theme for a shiny list and previews it live.
+  await expect(sheet.getByRole('button', { name: 'Auto · Shiny' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.locator('[data-export-theme="shiny"]')).toBeVisible();
+
+  // Switching to Female and Lucky updates the live preview and remembers the choice.
+  await sheet.getByRole('button', { name: 'Femelle ♀', exact: true }).click();
+  await expect(sheet.locator('[data-export-theme="female"]')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Mâle ♂', exact: true }).click();
+  await expect(sheet.locator('[data-export-theme="male"]')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Chanceux', exact: true }).click();
+  await expect(sheet.locator('[data-export-theme="lucky"]')).toBeVisible();
+  await sheet.getByLabel('Message sur le visuel (optionnel)').fill('MP Discord pour trade');
+  await sheet.getByRole('button', { name: /Afficher mon code ami/ }).click();
+  await expect(sheet.locator('[data-export-theme="lucky"]')).toContainText('MP Discord pour trade');
+
+  // Export themed PNG.
+  const [pngDl] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), sheet.getByRole('button', { name: 'Enregistrer' }).click()]);
+  const png = await readFile((await pngDl.path())!);
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
+  expect(png.readUInt32BE(16)).toBe(1080);
+
+  // Reopen: chosen style & friend-code switch stayed saved; export themed PDF with note & friend code.
+  await page.getByRole('button', { name: 'Partager', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: 'Chanceux', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await sheet.getByLabel('Message sur le visuel (optionnel)').fill('MP Discord pour trade');
+  const [pdfDl] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), sheet.getByRole('button', { name: 'Exporter en PDF' }).click()]);
+  const pdf = await readFile((await pdfDl.path())!);
+  expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  const pdfStr = pdf.toString('latin1');
+  expect(pdfStr).toContain('MP Discord pour trade');
+  expect(pdfStr).toContain(user.friendCode.replace(/(\d{4})(?=\d)/g, '$1 '));
+  await ctx.close();
+});
+
 test('notification settings: one switch per kind, saved on the account', async ({ page }) => {
   await apiRegister(page.request);
   await page.goto('/me');

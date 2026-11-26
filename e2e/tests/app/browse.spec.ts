@@ -279,6 +279,7 @@ test('family order puts Pichu before Pikachu and Raichu, at #25', async ({ page 
   await page.locator('dialog[open]').getByRole('button', { name: 'Famille', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: /Famille ✕/ })).toBeVisible();
+  await expect(page.locator('main ul > li').first()).toBeVisible();
   const names = await page.locator('main ul > li').evaluateAll((lis) => lis.slice(0, 40).map((li) => li.textContent ?? ''));
   const at = (n: string) => names.findIndex((x) => x.includes(n));
   expect(at('Pichu')).toBeGreaterThan(-1);
