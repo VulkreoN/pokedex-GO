@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import type { ListDetail, ListDetailEntry, ListEntry, ListVisibility } from '@mydexpogo/shared';
 import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
-import { SearchSettingsPanel, SearchStrings, useSearchSettings } from '../components/SearchStrings.js';
+import { FormBlindWarning, SearchSettingsPanel, SearchStrings, useSearchSettings } from '../components/SearchStrings.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
@@ -18,7 +18,7 @@ import { useFollowList, useOffer } from '../lib/social.js';
 import { CARD_SORTS, cardDone, cardMissing, cardsOf, sortCards, type CardSort, type EntryCard } from '../lib/cards.js';
 import { exportListPdf, fileSlug } from '../lib/pdf.js';
 import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, renderListImages, sharePictures, type ImageLayout } from '../lib/shareImage.js';
-import { exportSearchText } from '../lib/searchString.js';
+import { exportSearch } from '../lib/searchString.js';
 import { selection } from '../lib/selection.js';
 import { celebrate, feedback } from '../lib/feedback.js';
 import { useProgressive } from '../lib/progressive.js';
@@ -213,7 +213,8 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
   // The same settings as "Copy for the game", always for the missing ones.
   const searchSettings = useSearchSettings();
   const ss = { ...searchSettings.settings, onlyMissing: true };
-  const search = useMemo(() => exportSearchText(idx, list.entries, ss), [idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength]);
+  const exportedSearch = useMemo(() => exportSearch(idx, list.entries, ss), [idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength]);
+  const search = exportedSearch.text;
 
   const memberId = (c: EntryCard, m: ListDetailEntry) => `${c.id}|${m.gender}`;
   const fits = (c: EntryCard, m: ListDetailEntry, sex = pickSex, version = pickVersion) =>
@@ -617,6 +618,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
           {withSearch && (
             <>
               {!search && <p className="text-xs text-ink-3">{t.export_search_empty}</p>}
+              {search && exportedSearch.blind.length > 0 && <FormBlindWarning idx={idx} variants={exportedSearch.blind} />}
               <SearchSettingsPanel s={searchSettings} showOnlyMissing={false} />
             </>
           )}

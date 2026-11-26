@@ -105,25 +105,68 @@ export function listSearch(idx: DatasetIndex, entries: ListEntry[], opts: { only
     const gender: EntryGender = e.gender && (v.genders ?? ['m', 'f']).includes(e.gender as 'm' | 'f') ? e.gender : '';
     return targetFromVariant(v, e.shiny, gender, e.tag, species.get(v.dex)?.regions ?? []);
   };
-  const all = entries
-    .filter((e) => !opts.onlyMissing || !e.done)
+  const wanted = entries.filter((e) => !opts.onlyMissing || !e.done);
+  const all = wanted
     .flatMap((e) => {
       const v = idx.variantByKey.get(e.variantKey);
       if (!v) return [];
       return [target(v, e), ...(opts.preEvolutions ? preEvolutions(idx, v).map((p) => target(p, e)) : [])];
     });
+  const keepShiny = !opts.exclude.includes('shiny');
+  const keepCostume = !opts.exclude.includes('costume');
   // Shiny and costumed entries leave the string while those are excluded, and come back when they are not.
-  const { targets, dropped } = plainTargets(all, { shiny: !opts.exclude.includes('shiny'), costume: !opts.exclude.includes('costume') });
+  const { targets, dropped } = plainTargets(all, { shiny: keepShiny, costume: keepCostume });
   const out = TRADE_EXCLUSIONS.filter((d) => opts.exclude.includes(d));
-  return { strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out, ...(opts.maxLength ? { maxLength: opts.maxLength } : {}) }), dropped };
+  const kept = wanted.filter((e) => {
+    const v = idx.variantByKey.get(e.variantKey);
+    return !!v && (keepShiny || !e.shiny) && (keepCostume || v.kind !== 'costume');
+  });
+  return {
+    strings: buildSearchStrings(targets, { lang: opts.gameLang, species, exclude: out, ...(opts.maxLength ? { maxLength: opts.maxLength } : {}) }),
+    dropped,
+    blind: formBlind(idx, kept),
+  };
+}
+
+/**
+ * The wanted Pokémon the game's search cannot tell apart from their other forms or costumes: it has no word for
+ * Squawkabilly's plumages, Minior's core colours, Vivillon's patterns, Paldean Tauros breeds, Mega forms or which hat
+ * Pikachu wears, so the search shows them all. One per form or costume.
+ */
+export function formBlind(idx: DatasetIndex, entries: ListEntry[]): Variant[] {
+  const out = new Map<string, Variant>();
+  for (const e of entries) {
+    const v = idx.variantByKey.get(e.variantKey);
+    if (!v) continue;
+    const kin = (idx.variantsByDex.get(v.dex) ?? []).filter((x) => !x.key.endsWith('.g2'));
+    const releasedForms = new Set(kin.filter((x) => x.kind === 'form' && !x.datamined).map((x) => x.form));
+    const costumes = new Set(kin.filter((x) => x.kind === 'costume').map((x) => x.costume ?? x.form ?? x.key));
+    const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
+    const sameRegion = region ? new Set(kin.filter((x) => x.kind === 'regional' && regionOfForm(x.form) === region).map((x) => x.form)) : null;
+    const gmax = new Set(kin.filter((x) => x.kind === 'gmax').map((x) => x.form));
+    const blind =
+      v.kind === 'form' ||
+      v.kind === 'mega' ||
+      (v.kind === 'base' && releasedForms.size > 0) ||
+      (v.kind === 'costume' && costumes.size > 1) ||
+      (sameRegion !== null && sameRegion.size > 1) ||
+      (v.kind === 'gmax' && gmax.size > 1);
+    const id = `${v.dex}|${v.kind}|${v.form ?? ''}|${v.costume ?? ''}`;
+    if (blind && !out.has(id)) out.set(id, v);
+  }
+  return [...out.values()].sort((a, b) => a.dex - b.dex || a.key.localeCompare(b.key));
 }
 
 export interface SearchSettings { onlyMissing: boolean; gameLang: GameLang; exclude: string[]; preEvolutions: boolean; maxLength: number }
 
 /** The search for exports, with the settings shown next to it (the same as "Copy for the game"). */
-export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], settings: SearchSettings): string | null {
-  let { strings } = listSearch(idx, entries, settings);
+export function exportSearch(idx: DatasetIndex, entries: ListEntry[], settings: SearchSettings): { text: string | null; blind: Variant[] } {
+  let res = listSearch(idx, entries, settings);
   // A collection of shinies or costumes only would get no search at all with those excluded: keep them then.
-  if (!strings.length) ({ strings } = listSearch(idx, entries, { ...settings, exclude: settings.exclude.filter((d) => d !== 'shiny' && d !== 'costume') }));
-  return strings.length ? strings.map((s) => s.text).join('\n') : null;
+  if (!res.strings.length) res = listSearch(idx, entries, { ...settings, exclude: settings.exclude.filter((d) => d !== 'shiny' && d !== 'costume') });
+  return { text: res.strings.length ? res.strings.map((s) => s.text).join('\n') : null, blind: res.strings.length ? res.blind : [] };
+}
+
+export function exportSearchText(idx: DatasetIndex, entries: ListEntry[], settings: SearchSettings): string | null {
+  return exportSearch(idx, entries, settings).text;
 }

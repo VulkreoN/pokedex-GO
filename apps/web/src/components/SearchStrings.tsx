@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { GameLang, ListEntry } from '@mydexpogo/shared';
+import type { GameLang, ListEntry, Variant } from '@mydexpogo/shared';
 import type { DatasetIndex } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { MAX_LENGTHS, TRADE_EXCLUSIONS, listSearch, saveExclusions, saveGameLang, saveMaxLength, savePreEvolutions, savedExclusions, savedGameLang, savedMaxLength, savedPreEvolutions, type SearchSettings } from '../lib/searchString.js';
+import { Sprite } from './Sprite.js';
 import { Chip, CopyButton, SwitchThumb } from './ui.js';
 
 /** The game-search settings, the same in "Copy for the game" and in the picture / PDF exports, kept on this device. */
@@ -95,7 +96,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
   const { lang } = useLang();
   const search = useSearchSettings();
   const { settings } = search;
-  const { strings, dropped } = useMemo(() => listSearch(idx, entries, settings), [entries, idx, settings.onlyMissing, settings.gameLang, settings.exclude, settings.preEvolutions, settings.maxLength]);
+  const { strings, dropped, blind } = useMemo(() => listSearch(idx, entries, settings), [entries, idx, settings.onlyMissing, settings.gameLang, settings.exclude, settings.preEvolutions, settings.maxLength]);
 
   const names: Record<string, string> = {
     shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
@@ -106,6 +107,8 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-2">{t.game_strings_help}</p>
+
+      {strings.length > 0 && blind.length > 0 && <FormBlindWarning idx={idx} variants={blind} />}
 
       {strings.length === 0 && <p className="py-6 text-center text-sm text-ink-3">{t.nothing_here}</p>}
       <ul className="space-y-2">
@@ -130,6 +133,59 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
 
       <SearchSettingsPanel s={search} />
     </div>
+  );
+}
+
+const BLIND_PREVIEW = 8;
+
+/** Warning when the search includes forms, colours or costumes the game's search bar cannot tell apart. */
+export function FormBlindWarning({ idx, variants }: { idx: DatasetIndex; variants: Variant[] }) {
+  const t = useT();
+  const { lang } = useLang();
+  const [all, setAll] = useState(false);
+  if (!variants.length) return null;
+  const shown = all ? variants : variants.slice(0, BLIND_PREVIEW);
+  return (
+    <aside role="note" className="rounded-card border border-shiny/40 bg-shiny-soft p-3 text-[#7a5a0e] dark:text-shiny">
+      <div className="flex items-start gap-2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden="true">
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          <path d="M12 9v4M12 17h.01" />
+        </svg>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold leading-snug">{t.search_blind_title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-ink-2">{t.search_blind_body}</p>
+        </div>
+      </div>
+      <ul className="mt-2.5 flex flex-wrap gap-1.5">
+        {shown.map((v) => {
+          const sp = localized(idx.speciesByDex.get(v.dex)?.name, lang) || `#${v.dex}`;
+          const rawLabel = v.label ? localized(v.label, lang).replace(/\s+/g, ' ').trim() : '';
+          const same = rawLabel.toLowerCase() === sp.toLowerCase();
+          const prefixed = rawLabel.toLowerCase().startsWith(`${sp.toLowerCase()} `);
+          const name = prefixed ? rawLabel : sp;
+          const sub = !rawLabel || same || prefixed ? '' : rawLabel;
+          return (
+            <li key={v.key} className="inline-flex max-w-full items-center gap-1 rounded-full bg-card/85 py-0.5 pl-1 pr-2.5 text-xs text-ink ring-1 ring-shiny/30">
+              <Sprite idx={idx} variant={v} size={22} className="shrink-0" />
+              <span className="truncate">
+                <span className="font-semibold">{name}</span>
+                {sub && <span className="text-ink-2"> · {sub}</span>}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {variants.length > BLIND_PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          className="mt-2 text-xs font-semibold text-[#7a5a0e] underline decoration-current/40 underline-offset-2 dark:text-shiny"
+        >
+          {all ? t.show_less : t.show_more(variants.length - BLIND_PREVIEW)}
+        </button>
+      )}
+    </aside>
   );
 }
 

@@ -189,3 +189,57 @@ test('a collection can be searched by name, number or costume', async ({ page })
   await search.fill('mewtwo');
   await expect(page.getByText('Aucun Pokémon ne correspond à « mewtwo » ici.')).toBeVisible();
 });
+
+test('game search warns when forms, colours or costumes cannot be filtered, and lists the Pokémon concerned', async ({ page }) => {
+  await apiRegister(page.request);
+  const ds = await (await page.request.get('/api/data/pokedex.json')).json();
+  const costume = (ds.variants as { key: string; kind: string; dex: number; label?: { fr?: string } }[]).find((v) => v.kind === 'costume' && v.dex === 25 && v.label?.fr)!;
+
+  // A plain list gets no warning.
+  const plainId = await apiCreateList(page.request, 'Simples', ['1', '4']);
+  await page.goto(`/lists/${plainId}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  await expect(page.locator('dialog[open]').getByRole('note')).toHaveCount(0);
+
+  // Forms (Squawkabilly, Minior), Paldean Tauros breeds and multi-costume Pikachu trigger the warning and are listed.
+  const mixedId = await apiCreateList(page.request, 'Couleurs', ['1', '931.fBLUE:m', '774.fRED', '128.fPALDEA_AQUA', `${costume.key}:m`]);
+  await page.goto(`/lists/${mixedId}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  const sheet = page.locator('dialog[open]');
+  const note = sheet.getByRole('note');
+  await expect(note).toBeVisible();
+  await expect(note).toContainText('Attention : formes ou costumes non distingués');
+  await expect(note).toContainText('Tapatoès');
+  await expect(note).toContainText('Plumage Bleu');
+  await expect(note).toContainText('Météno');
+  await expect(note).toContainText('Rouge');
+  await expect(note).toContainText('Tauros');
+  await expect(note).toContainText('Race Aquatique');
+  await expect(note).toContainText('Pikachu');
+  await expect(note).not.toContainText('Bulbizarre');
+
+  // Leaving costumes out of the search removes Pikachu from the warning too.
+  await sheet.getByRole('button', { name: 'Costumés', exact: true }).click();
+  await expect(note).not.toContainText('Pikachu');
+  await expect(note).toContainText('Tapatoès');
+  await page.keyboard.press('Escape');
+
+  // The same warning appears in the Share sheet when including the in-game search.
+  await page.getByRole('button', { name: 'Partager' }).click();
+  const shareNote = page.locator('dialog[open]').getByRole('note');
+  await expect(shareNote).toBeVisible();
+  await expect(shareNote).toContainText('Tapatoès');
+  await page.keyboard.press('Escape');
+
+  // More than 8 affected variants collapse behind a "see N more" toggle.
+  const vivs = (ds.variants as { key: string; kind: string; dex: number }[]).filter((v) => v.dex === 666 && v.kind === 'form' && !v.key.endsWith('.g2')).slice(0, 10);
+  const manyId = await apiCreateList(page.request, 'Prismillons', vivs.map((v) => `${v.key}:m`));
+  await page.goto(`/lists/${manyId}`);
+  await page.getByRole('button', { name: 'Copier pour le jeu' }).click();
+  const manyNote = page.locator('dialog[open]').getByRole('note');
+  await expect(manyNote.locator('li')).toHaveCount(8);
+  await manyNote.getByRole('button', { name: 'voir les 2 autres' }).click();
+  await expect(manyNote.locator('li')).toHaveCount(10);
+  await manyNote.getByRole('button', { name: 'voir moins' }).click();
+  await expect(manyNote.locator('li')).toHaveCount(8);
+});

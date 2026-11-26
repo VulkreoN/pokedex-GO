@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useLayoutEffect, useMemo, useState } from 'react';
 import { Link, useNavigationType } from 'react-router';
 import type { Species, Variant, VariantKind } from '@mydexpogo/shared';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
@@ -169,16 +169,24 @@ export function PokedexPage() {
   const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey, 60, restore?.built);
   // Remembered as it changes, so a Pokémon opened from here comes back to the same place.
   Object.assign(memory, { query, kinds, onlyDatamined, hideDatamined, gen, shiny, gender, forceExploded, sort, built: Math.max(shownCards.length, shownRows.length) });
-  useEffect(() => {
+  // Detach in layout cleanup before React removes the tall grid on navigation, otherwise the shorter destination page
+  // clamps window.scrollY and fires a scroll event that overwrites memory.scrollY before passive useEffect cleanup runs.
+  useLayoutEffect(() => {
+    if (!restore) memory.scrollY = 0;
     const save = () => { memory.scrollY = window.scrollY; };
     window.addEventListener('scroll', save, { passive: true });
-    return () => window.removeEventListener('scroll', save);
-  }, []);
+    return () => {
+      memory.scrollY = window.scrollY;
+      window.removeEventListener('scroll', save);
+    };
+  }, [restore]);
   // Back from a Pokémon: down to where the player was, once the cards are there.
   const ready = !!dataset.data;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!ready || !restore?.scrollY) return;
-    requestAnimationFrame(() => window.scrollTo(0, restore.scrollY));
+    window.scrollTo(0, restore.scrollY);
+    const id = requestAnimationFrame(() => window.scrollTo(0, restore.scrollY));
+    return () => cancelAnimationFrame(id);
   }, [ready, restore]);
   const check = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>;
 
