@@ -12,7 +12,7 @@ import { useLogout, useMe } from '../lib/auth.js';
 import { useDataset } from '../lib/dataset.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { applyTheme, getTheme, type Theme } from '../lib/theme.js';
-import { fmtCode } from './FriendsPage.js';
+import { fmtCode } from '../lib/errors.js';
 import { relativeTime, useAdminStats, useDataStatus } from '../lib/admin.js';
 import type { Role } from '@mydexpogo/shared';
 import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
@@ -108,7 +108,7 @@ export function MePage() {
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.team_colour}>
             {TEAMS.map((tm) => (
               <Chip key={tm} active={team === tm} onClick={() => setTeam(tm)}>
-                {tm !== 'none' && <span className={`h-3 w-3 rounded-full ${{ mystic: 'bg-[#3f8fe0]', valor: 'bg-[#e2453d]', instinct: 'bg-[#e0a010]' }[tm]}`} aria-hidden="true" />}
+                {tm !== 'none' && <span className={`h-3 w-3 rounded-full ${{ mystic: 'bg-[var(--team-mystic)]', valor: 'bg-[var(--team-valor)]', instinct: 'bg-[var(--team-instinct)]' }[tm]}`} aria-hidden="true" />}
                 {t.team_names[tm]}
               </Chip>
             ))}
@@ -136,7 +136,7 @@ export function MePage() {
           <PasswordField label={t.current_password} value={curPw} onChange={(e) => setCurPw(e.target.value)} autoComplete="current-password" />
           <PasswordField label={t.new_password} value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" minLength={8} />
           <PasswordField label={t.password_confirm} value={newPw2} onChange={(e) => setNewPw2(e.target.value)} autoComplete="new-password" minLength={8} aria-invalid={!!newPw2 && newPw2 !== newPw} />
-          {!!newPw2 && newPw2 !== newPw && <p className="text-sm text-berry">{t.password_mismatch}</p>}
+          {!!newPw2 && newPw2 !== newPw && <p role="alert" className="text-sm text-berry">{t.password_mismatch}</p>}
           <Button tone="primary" className="w-full" disabled={!curPw || newPw.length < 8 || newPw2 !== newPw} onClick={async () => {
             try {
               await api('/auth/password', { body: { current: curPw, password: newPw } });

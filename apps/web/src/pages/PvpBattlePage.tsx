@@ -155,7 +155,7 @@ function FighterCard({ side, s, idx, pvp, name, onPick }: { side: SideKey; s: Re
         <div className="mt-2 space-y-1.5 text-xs">
           {hasShadow && (
             <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={s.shadow} onChange={(e) => s.set({ sh: e.target.checked ? '1' : null, m: null })} className="h-4 w-4 accent-[var(--go)]" />
+              <input type="checkbox" checked={s.shadow} onChange={(e) => s.set({ sh: e.target.checked ? '1' : null, m: null })} className="h-4 w-4 accent-go" />
               {t.tag_shadow}
             </label>
           )}
@@ -171,11 +171,11 @@ function FighterCard({ side, s, idx, pvp, name, onPick }: { side: SideKey; s: Re
           <div className="flex items-center gap-1">
             <span className="text-ink-3">{t.battle_shields}</span>
             {[0, 1, 2].map((n) => (
-              <button key={n} type="button" aria-pressed={built.fighter.shields === n} onClick={() => s.set({ s: String(n) })} className={`h-7 w-7 rounded-full border text-xs font-bold ${built.fighter.shields === n ? 'border-ink bg-ink text-card' : 'border-line'}`}>{n}</button>
+              <button key={n} type="button" aria-pressed={built.fighter.shields === n} onClick={() => s.set({ s: String(n) })} className={`h-9 w-9 rounded-full border text-xs font-bold ${built.fighter.shields === n ? 'border-ink bg-ink text-card' : 'border-line'}`}>{n}</button>
             ))}
           </div>
           <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={built.fighter.bait} onChange={(e) => s.set({ bait: e.target.checked ? null : '0' })} className="h-4 w-4 accent-[var(--go)]" />
+            <input type="checkbox" checked={built.fighter.bait} onChange={(e) => s.set({ bait: e.target.checked ? null : '0' })} className="h-4 w-4 accent-go" />
             {t.battle_bait}
           </label>
           <p className="tnum text-ink-3">
@@ -197,7 +197,7 @@ function ResultCard({ r, names, pvp, fighters }: { r: BattleResult; names: [stri
   };
   return (
     <section className="card mt-4 p-3" aria-label={t.battle_result}>
-      <p className={`text-center text-lg font-extrabold ${r.winner === 0 ? 'text-go-ink dark:text-go' : r.winner === 1 ? 'text-berry' : ''}`}>{verdict}</p>
+      <h2 className={`text-center text-lg font-extrabold ${r.winner === 0 ? 'text-go-ink dark:text-go' : r.winner === 1 ? 'text-berry' : ''}`}>{verdict}</h2>
       <div className="mt-3 grid grid-cols-2 gap-3">
         {([0, 1] as const).map((i) => (
           <div key={i}>

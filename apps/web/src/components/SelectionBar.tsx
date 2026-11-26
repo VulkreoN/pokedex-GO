@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../pages/FriendsPage.js';
+import { errorMessage } from '../lib/errors.js';
 import { useLocation } from 'react-router';
 import { entryVariant, genderSymbol, tagLabel, useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';

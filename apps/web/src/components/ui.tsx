@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type Inp
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useMe } from '../lib/auth.js';
 import { useNotifications } from '../lib/social.js';
-import { useT } from '../lib/i18n.js';
+import { useLang, useT } from '../lib/i18n.js';
 import { useTheme } from '../lib/theme.js';
 import { copyText } from '../lib/api.js';
 import { feedback } from '../lib/feedback.js';
@@ -78,8 +78,8 @@ export function PasswordField({ label, className = '', ...props }: Omit<InputHTM
 
 export function Badge({ tone, children }: { tone: 'shiny' | 'datamined' | 'muted' | 'grass'; children: ReactNode }) {
   const cls = {
-    shiny: 'bg-shiny-soft text-[#7a5a0e] dark:text-shiny',
-    datamined: 'bg-[#dcebff] text-[#1d4bb8] dark:bg-[#24405f] dark:text-[#9bc4ff]',
+    shiny: 'bg-shiny-soft text-shiny-ink',
+    datamined: 'bg-info-soft text-info-ink',
     muted: 'bg-paper-2 text-ink-2',
     grass: 'bg-go-soft text-go-ink',
   }[tone];
@@ -202,7 +202,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[#0f2230]/50 open:animate-[sheet_.22s_ease-out]"
+      className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out]"
     >
       <div className="pb-safe px-4 pt-2">
         <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-line" />
@@ -214,13 +214,12 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         </div>
         <div className="max-h-[75vh] overflow-y-auto pb-4">{children}</div>
       </div>
-      <style>{`@keyframes sheet{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}`}</style>
     </dialog>
   );
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="mx-auto max-w-sm px-6 py-16 text-center text-[15px] text-[var(--ink-2)]">{children}</p>;
+  return <p className="mx-auto max-w-sm px-6 py-16 text-center text-[15px] text-ink-2">{children}</p>;
 }
 
 export function Spinner() {
@@ -377,7 +376,8 @@ export function useRolling(value: number): number {
 
 /** A number on an odometer: each digit rolls through its column to the new value (stats, counts). */
 export function Odometer({ value, className = '' }: { value: number; className?: string }) {
-  const text = value.toLocaleString();
+  const { lang } = useLang();
+  const text = value.toLocaleString(lang);
   // Shown at zero for one frame, so the digits roll up when the number first appears too.
   const [ready, setReady] = useState(false);
   useEffect(() => {

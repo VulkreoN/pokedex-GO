@@ -146,7 +146,7 @@ export function FormBlindWarning({ idx, variants }: { idx: DatasetIndex; variant
   if (!variants.length) return null;
   const shown = all ? variants : variants.slice(0, BLIND_PREVIEW);
   return (
-    <aside role="note" className="rounded-card border border-shiny/40 bg-shiny-soft p-3 text-[#7a5a0e] dark:text-shiny">
+    <aside role="note" className="rounded-card border border-shiny/40 bg-shiny-soft p-3 text-shiny-ink">
       <div className="flex items-start gap-2">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden="true">
           <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
@@ -180,7 +180,7 @@ export function FormBlindWarning({ idx, variants }: { idx: DatasetIndex; variant
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="mt-2 text-xs font-semibold text-[#7a5a0e] underline decoration-current/40 underline-offset-2 dark:text-shiny"
+          className="mt-2 min-h-8 text-xs font-semibold text-shiny-ink underline decoration-current/40 underline-offset-2"
         >
           {all ? t.show_less : t.show_more(variants.length - BLIND_PREVIEW)}
         </button>

@@ -20,7 +20,7 @@ export function applyTheme(theme: Theme) {
   const dark = isDark(theme);
   document.documentElement.classList.toggle('dark', dark);
   const meta = document.querySelector('meta[name="theme-color"]') ?? document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
-  meta.setAttribute('content', dark ? '#1f6d7c' : '#40c2d6');
+  meta.setAttribute('content', dark ? '#1f6d7c' : '#158296');
   try {
     if (theme === 'auto') localStorage.removeItem('theme');
     else localStorage.setItem('theme', theme);

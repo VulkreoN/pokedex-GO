@@ -204,7 +204,7 @@ export function PokedexPage() {
             onChange={(e) => setQuery(e.target.value)}
             // Opened from the app icon's "Search a Pokémon" shortcut: ready to type.
             autoFocus={new URLSearchParams(location.search).get('focus') === 'search'}
-            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
+            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3"
             aria-label={t.search_placeholder}
           />
           {/* The three ways to change what the grid shows, side by side. */}
@@ -328,7 +328,7 @@ export function PokedexPage() {
       </main>
 
       {multi && ticked.size > 0 && (
-        <div className="pb-safe fixed inset-x-0 bottom-[64px] z-20 px-3">
+        <div className="pb-safe fixed inset-x-0 bottom-[var(--nav-h)] z-20 px-3">
           <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
             <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
             {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}

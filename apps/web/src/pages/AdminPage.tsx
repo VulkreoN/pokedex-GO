@@ -27,7 +27,7 @@ import {
 } from '../lib/admin.js';
 import { useDataset } from '../lib/dataset.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
-import { errorMessage, fmtCode } from './FriendsPage.js';
+import { errorMessage, fmtCode } from '../lib/errors.js';
 
 const TABS = ['dashboard', 'health', 'users', 'signups', 'audit', 'reports', 'announcements', 'errors'] as const;
 type Tab = (typeof TABS)[number];
@@ -477,7 +477,7 @@ function Signups() {
         </div>
         <p className="mt-1.5 text-xs text-ink-3">{t.admin_mode_hint[s.mode]}</p>
         <label className="mt-3 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={s.dailyCap !== null} onChange={(e) => save.mutate({ ...s, dailyCap: e.target.checked ? 20 : null })} className="h-5 w-5 accent-[var(--go)]" />
+          <input type="checkbox" checked={s.dailyCap !== null} onChange={(e) => save.mutate({ ...s, dailyCap: e.target.checked ? 20 : null })} className="h-5 w-5 accent-go" />
           {t.admin_daily_cap}
           {s.dailyCap !== null && (
             <input type="number" min={1} max={10000} defaultValue={s.dailyCap} onBlur={(e) => { const v = Number(e.target.value); if (v >= 1 && v !== s.dailyCap) save.mutate({ ...s, dailyCap: v }); }} className="tnum w-20 rounded-lg border border-line bg-card px-2 py-1" aria-label={t.admin_daily_cap} />
@@ -736,11 +736,11 @@ function Announcements() {
         <TextField className="mt-2" label={t.announce_link} placeholder="/pvp/battle" value={link} onChange={(e) => setLink(e.target.value)} />
         {!linkOk && <p className="mt-1 text-xs text-berry">{t.announce_link_hint}</p>}
         <label className="mt-2 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={push} onChange={(e) => { setPush(e.target.checked); setConfirm(false); }} className="h-5 w-5 accent-[var(--go)]" />
+          <input type="checkbox" checked={push} onChange={(e) => { setPush(e.target.checked); setConfirm(false); }} className="h-5 w-5 accent-go" />
           {t.announce_push(q.data?.pushAccounts ?? 0)}
         </label>
         {message.trim().length >= 3 && (
-          <div className={`mt-3 rounded-xl p-2.5 text-sm ${level === 'warning' ? 'bg-shiny-soft text-[#7a5a0e] dark:text-shiny' : 'bg-sky/10 text-ink'}`}>
+          <div className={`mt-3 rounded-xl p-2.5 text-sm ${level === 'warning' ? 'bg-shiny-soft text-shiny-ink' : 'bg-sky/10 text-ink'}`}>
             <span className="text-xs font-semibold text-ink-3">{t.announce_preview} · </span>{message.trim()}
           </div>
         )}

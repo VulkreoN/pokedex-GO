@@ -5,7 +5,7 @@ import { useAuthMutation, useMe } from '../lib/auth.js';
 import { api } from '../lib/api.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useT } from '../lib/i18n.js';
-import { errorMessage } from './FriendsPage.js';
+import { errorMessage } from '../lib/errors.js';
 
 export function LoginPage() {
   const t = useT();
@@ -56,7 +56,7 @@ export function LoginPage() {
   return (
     <>
       <main className="mx-auto max-w-sm px-4 pb-24 pt-16">
-        <h2 className="text-[28px] font-bold leading-tight">{mode === 'reset' ? t.reset_title : t.welcome_title}</h2>
+        <h1 className="text-[28px] font-bold leading-tight">{mode === 'reset' ? t.reset_title : t.welcome_title}</h1>
         <p className="mb-6 mt-2 text-[15px] text-ink-2">{mode === 'reset' ? t.reset_hint : t.welcome_text}</p>
         <form onSubmit={submit} className="space-y-3">
           <TextField label={t.username} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" required minLength={3} maxLength={20} />
@@ -67,11 +67,11 @@ export function LoginPage() {
           {newPassword && (
             <>
               <PasswordField label={t.password_confirm} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required minLength={8} aria-invalid={mismatch} />
-              {mismatch && <p className="text-sm text-berry">{t.password_mismatch}</p>}
+              {mismatch && <p role="alert" className="text-sm text-berry">{t.password_mismatch}</p>}
               {password.length > 0 && password.length < 8 && <p className="text-sm text-ink-3">{t.password_too_short}</p>}
             </>
           )}
-          {error && <p className="text-sm text-berry">{error}</p>}
+          {error && <p role="alert" className="text-sm text-berry">{error}</p>}
           <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending || mismatch}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>
         </form>
         {mode === 'login' && <p className="mt-3 text-center text-sm"><button type="button" className="text-ink-2 underline" onClick={() => { setMode('reset'); setError(null); setConfirm(''); }}>{t.forgot}</button></p>}

@@ -188,12 +188,12 @@ function Raids() {
                         {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
                       </div>
                       {cpLine(b)}
-                      {b.end && <div className="text-xs font-medium text-grass">{formatUntil(b.end, lang)}</div>}
+                      {b.end && <div className="text-xs font-medium text-go-ink dark:text-go">{formatUntil(b.end, lang)}</div>}
                       {eventOf(b.image, b.name) && <div className="truncate text-xs font-semibold text-sky">{eventOf(b.image, b.name)}</div>}
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                      {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} />) : typesOf(b.image, b.name).map((ty) => <TypeBadge key={ty} type={ty} small />)}
-                      {b.boostedWeather?.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} className="opacity-70" />)}
+                      {b.types ? b.types.map((ty) => <img key={ty.name} src={ty.image} alt={ty.name} title={ty.name} width={22} height={22} loading="lazy" decoding="async" />) : typesOf(b.image, b.name).map((ty) => <TypeBadge key={ty} type={ty} small />)}
+                      {b.boostedWeather?.map((w) => <img key={w.name} src={w.image} alt={w.name} title={w.name} width={22} height={22} loading="lazy" decoding="async" className="opacity-70" />)}
                     </div>
                   </button>
                 </li>

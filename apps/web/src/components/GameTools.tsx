@@ -200,7 +200,7 @@ export function RocketTab() {
               const p = fromImage(m.image, m.name);
               return (
                 <button key={m.image} type="button" disabled={!p} onClick={() => p && setTarget(p)} title={eventOf(m.image, m.name)} aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}${eventOf(m.image, m.name) ? ` · ${eventOf(m.image, m.name)}` : ''}`} className={`rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${m.isEncounter ? 'ring-2 ring-shiny' : ''} ${eventOf(m.image, m.name) ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}>
-                  <img src={m.image} alt="" width={38} height={38} className="object-contain" />
+                  <img src={m.image} alt="" width={38} height={38} loading="lazy" decoding="async" className="object-contain" />
                 </button>
               );
             })}
@@ -266,7 +266,7 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
             <FormSprite idx={idx} p={c.pokemon} size={44} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">
-                {c.shadow && <span className="mr-1 text-[#8b3fc8] dark:text-[#c79bff]">{t.counters_shadow}</span>}
+                {c.shadow && <span className="mr-1 text-shadow-ink">{t.counters_shadow}</span>}
                 {local(c.pokemon.name, lang)}
                 {c.elite && <span className="ml-1 align-middle"><Badge tone="datamined">{t.counters_elite}</Badge></span>}
               </p>

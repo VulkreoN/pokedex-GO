@@ -3,42 +3,15 @@ import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../components/toast.js';
 import { Button, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
-import { ApiError } from '../lib/api.js';
+import { errorMessage, fmtCode } from '../lib/errors.js';
 import { useMe, useSetFriendCode } from '../lib/auth.js';
-import { useLang, useT, type T } from '../lib/i18n.js';
+import { useLang, useT } from '../lib/i18n.js';
 import { PinButton } from './ListsPage.js';
 import { useFriendLists, useFriendRequests, useFriends, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest , type Friend } from '../lib/lists.js';
 import { VisibilityIcon } from './ListsPage.js';
 import { FriendQr, QrScanSheet } from '../components/FriendQr.js';
 
-export const fmtCode = (c: string) => c.replace(/(\d{4})(?=\d)/g, '$1 ');
-
-export function errorMessage(t: T, e: unknown): string {
-  if (e instanceof ApiError) {
-    const map: Record<string, string> = {
-      invalid_credentials: t.err_invalid_credentials,
-      username_taken: t.err_username_taken,
-      invalid_code: t.err_invalid_code,
-      friend_code_taken: t.err_friend_code_taken,
-      not_found: t.err_not_found,
-      already_friends: t.err_already_friends,
-      already_requested: t.err_already_requested,
-      self: t.err_self,
-      validation: t.err_validation,
-      suspended: t.err_suspended,
-      unknown_variant: t.err_unknown_variant,
-      invalid_gender: t.err_invalid_gender,
-      signups_closed: t.err_signups_closed,
-      signups_full: t.err_signups_full,
-      invite_required: t.err_invite_required,
-      invalid_invite: t.err_invalid_invite,
-    };
-    // A suspension for a set time says until when.
-    if (e.code === 'suspended' && typeof e.data.until === 'string') return t.err_suspended_until(new Date(e.data.until).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }));
-    return map[e.code] ?? t.err_generic;
-  }
-  return t.err_generic;
-}
+export { errorMessage, fmtCode };
 
 /**
  * Puts the friend code of the game on the account, typed or read from a screenshot of its QR code. Used in Friends
@@ -67,7 +40,7 @@ export function FriendCodeForm({ current, onSaved, note = true }: { current: str
     <>
       <form onSubmit={submit} className="space-y-3">
         <TextField label={t.my_code_game} placeholder={fmtCode(current)} inputMode="numeric" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} />
-        {error && <p className="text-sm text-berry">{error}</p>}
+        {error && <p role="alert" className="text-sm text-berry">{error}</p>}
         <div className="flex gap-2">
           <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>QR</Button>
           <Button tone="primary" type="submit" className="flex-1" disabled={save.isPending || code.replace(/\D/g, '').length !== 12}>{t.save}</Button>
@@ -162,7 +135,7 @@ export function FriendsPage() {
 
         <form onSubmit={submit} className="space-y-2">
           <TextField label={t.add_friend} placeholder={t.friend_code_placeholder} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
-          {error && <p className="text-sm text-berry">{error}</p>}
+          {error && <p role="alert" className="text-sm text-berry">{error}</p>}
           <div className="flex gap-2">
             <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" /></svg>

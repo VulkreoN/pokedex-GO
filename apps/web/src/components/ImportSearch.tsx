@@ -3,7 +3,7 @@ import { importFromSearch, parseGameSearch, type ListDetail, type Variant } from
 import { entryVariant, type DatasetIndex } from '../lib/dataset.js';
 import { useT } from '../lib/i18n.js';
 import { useUpsertEntries } from '../lib/lists.js';
-import { errorMessage } from '../pages/FriendsPage.js';
+import { errorMessage } from '../lib/errors.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { useToast } from './toast.js';
 import { Button, Chip } from './ui.js';
@@ -90,7 +90,7 @@ export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: L
           )}
         </div>
       )}
-      {error && <p className="text-sm text-berry">{error}</p>}
+      {error && <p role="alert" className="text-sm text-berry">{error}</p>}
       <Button tone="primary" className="w-full" disabled={!fresh.length || upsert.isPending} onClick={add}>
         {fresh.length ? t.import_add(fresh.length) : t.import_add_none}
       </Button>

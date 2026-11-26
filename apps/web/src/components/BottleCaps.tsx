@@ -46,7 +46,7 @@ export function BottleCaps() {
         </div>
         <label className="mt-3 flex items-center gap-3">
           <span className="shrink-0 text-sm font-medium text-ink-2">{t.caps_current_iv}</span>
-          <input type="range" min={0} max={15} value={current} onChange={(e) => setCurrent(Number(e.target.value))} className="h-8 flex-1 accent-[var(--go)]" />
+          <input type="range" min={0} max={15} value={current} onChange={(e) => setCurrent(Number(e.target.value))} className="h-8 flex-1 accent-go" />
           <span className="tnum w-7 text-right text-lg font-bold">{current}</span>
         </label>
         {current === 15 ? (

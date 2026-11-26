@@ -10,43 +10,42 @@ import { BottomNav, Spinner } from './components/ui.js';
 import { useMe } from './lib/auth.js';
 import { LangContext, detectLang } from './lib/i18n.js';
 import { applyTheme, getTheme } from './lib/theme.js';
-import { FriendListsPage, FriendsPage } from './pages/FriendsPage.js';
 import { AnnouncementBanner } from './components/AnnouncementBanner.js';
 import { useRealtime } from './lib/social.js';
 import { reportError } from './lib/errorReport.js';
-import { LastListRedirect, ListPage, SharedListPage } from './pages/ListPage.js';
-import { ListsPage } from './pages/ListsPage.js';
-import { MePage } from './pages/MePage.js';
 import { PokedexPage } from './pages/PokedexPage.js';
 import { SpeciesPage } from './pages/SpeciesPage.js';
 import { applyTeam } from './lib/team.js';
 
-/** Pages not everyone opens load on demand, then are fetched in the background once the app is idle. */
-const pageLoaders = {
+/** Secondary tabs and routes load on demand; core tabs prefetch once the app is idle. */
+const coreLoaders = {
+  ListsPage: () => import('./pages/ListsPage.js').then((m) => ({ default: m.ListsPage })),
+  ListPage: () => import('./pages/ListPage.js').then((m) => ({ default: m.ListPage })),
   GamePage: () => import('./pages/GamePage.js').then((m) => ({ default: m.GamePage })),
   PvpPage: () => import('./pages/PvpPage.js').then((m) => ({ default: m.PvpPage })),
-  PvpTeamPage: () => import('./pages/PvpTeamPage.js').then((m) => ({ default: m.PvpTeamPage })),
-  PvpBattlePage: () => import('./pages/PvpBattlePage.js').then((m) => ({ default: m.PvpBattlePage })),
-  AdminPage: () => import('./pages/AdminPage.js').then((m) => ({ default: m.AdminPage })),
-  WelcomePage: () => import('./pages/WelcomePage.js').then((m) => ({ default: m.WelcomePage })),
-  NotificationsPage: () => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })),
-  LoginPage: () => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })),
-  ReviewPage: () => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })),
-  AboutPage: () => import('./pages/AboutPage.js').then((m) => ({ default: m.AboutPage })),
+  FriendsPage: () => import('./pages/FriendsPage.js').then((m) => ({ default: m.FriendsPage })),
+  MePage: () => import('./pages/MePage.js').then((m) => ({ default: m.MePage })),
 };
-const GamePage = lazy(pageLoaders.GamePage);
-const PvpPage = lazy(pageLoaders.PvpPage);
-const PvpTeamPage = lazy(pageLoaders.PvpTeamPage);
-const PvpBattlePage = lazy(pageLoaders.PvpBattlePage);
-const AdminPage = lazy(pageLoaders.AdminPage);
-const WelcomePage = lazy(pageLoaders.WelcomePage);
-const NotificationsPage = lazy(pageLoaders.NotificationsPage);
-const LoginPage = lazy(pageLoaders.LoginPage);
-const ReviewPage = lazy(pageLoaders.ReviewPage);
-const AboutPage = lazy(pageLoaders.AboutPage);
+const ListsPage = lazy(coreLoaders.ListsPage);
+const ListPage = lazy(coreLoaders.ListPage);
+const SharedListPage = lazy(() => import('./pages/ListPage.js').then((m) => ({ default: m.SharedListPage })));
+const LastListRedirect = lazy(() => import('./pages/ListPage.js').then((m) => ({ default: m.LastListRedirect })));
+const FriendsPage = lazy(coreLoaders.FriendsPage);
+const FriendListsPage = lazy(() => import('./pages/FriendsPage.js').then((m) => ({ default: m.FriendListsPage })));
+const MePage = lazy(coreLoaders.MePage);
+const GamePage = lazy(coreLoaders.GamePage);
+const PvpPage = lazy(coreLoaders.PvpPage);
+const PvpTeamPage = lazy(() => import('./pages/PvpTeamPage.js').then((m) => ({ default: m.PvpTeamPage })));
+const PvpBattlePage = lazy(() => import('./pages/PvpBattlePage.js').then((m) => ({ default: m.PvpBattlePage })));
+const AdminPage = lazy(() => import('./pages/AdminPage.js').then((m) => ({ default: m.AdminPage })));
+const WelcomePage = lazy(() => import('./pages/WelcomePage.js').then((m) => ({ default: m.WelcomePage })));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage.js').then((m) => ({ default: m.NotificationsPage })));
+const LoginPage = lazy(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
+const ReviewPage = lazy(() => import('./pages/ReviewPage.js').then((m) => ({ default: m.ReviewPage })));
+const AboutPage = lazy(() => import('./pages/AboutPage.js').then((m) => ({ default: m.AboutPage })));
 
 function prefetchPages() {
-  const run = () => Object.values(pageLoaders).forEach((load) => void load().catch(() => {}));
+  const run = () => Object.values(coreLoaders).forEach((load) => void load().catch(() => {}));
   if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 5000 });
   else setTimeout(run, 3000);
 }
@@ -92,11 +91,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
   render() {
     if (!this.state.error) return this.props.children;
+    const fr = detectLang() === 'fr';
     return (
       <main className="mx-auto max-w-sm px-6 py-20 text-center">
-        <p className="text-lg font-bold">Oups.</p>
+        <h1 className="text-lg font-bold">{fr ? 'Oups.' : 'Oops.'}</h1>
         <p className="mt-2 text-sm text-ink-2">{this.state.error.message}</p>
-        <a href="/" className="mt-6 inline-block rounded-xl bg-sky px-4 py-3 font-semibold text-white">Recharger</a>
+        <a href="/" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-sky px-4 py-2 font-semibold text-white">{fr ? 'Recharger' : 'Reload'}</a>
       </main>
     );
   }

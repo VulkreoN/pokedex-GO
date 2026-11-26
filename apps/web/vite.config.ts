@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -6,7 +7,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 // When this build was made, for the About page.
 process.env.VITE_BUILD_DATE ??= new Date().toISOString();
 
+const noop = fileURLToPath(new URL('./src/lib/noop.ts', import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    // jsPDF declares optional html/svg rendering deps we never invoke in pdf.ts.
+    alias: { html2canvas: noop, canvg: noop, dompurify: noop },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -18,8 +25,8 @@ export default defineConfig({
         short_name: 'MyDexPoGo',
         description: 'Listes de Pokémon GO à partager entre amis',
         lang: 'fr',
-        theme_color: '#f1f5f2',
-        background_color: '#f1f5f2',
+        theme_color: '#158296',
+        background_color: '#e9f4ea',
         display: 'standalone',
         start_url: '/',
         // A long press on the app's icon (Android, Chrome and Edge on computers; iOS has none).
@@ -37,6 +44,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: ['**/jspdf*.js', '**/jsQR*.js', '**/AdminPage*.js', '**/ReviewPage*.js'],
         navigateFallbackDenylist: [/^\/api\//],
         importScripts: ['push-sw.js'],
         runtimeCaching: [

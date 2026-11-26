@@ -69,12 +69,12 @@ export function VariantCard({ idx, species, group, shiny, gender = 'all', showSp
       {selectable && selected && pick && onPick && <PickToggles pick={pick} onPick={onPick} />}
       {showPvp && <PvpTops p={pvpOf(idx, group.variants.find((x) => x.gender !== 'f') ?? v)} link />}
       {opens ? (
-        <button type="button" onClick={() => onAdd(group)} aria-label={`${t.add} ${localized(species.name, lang)} ${label}`} className="mt-0.5 w-full rounded-md py-0.5 text-center text-[11px] font-semibold text-go-ink hover:bg-paper-2">+ {t.add}</button>
+        <button type="button" onClick={() => onAdd(group)} aria-label={`${t.add} ${localized(species.name, lang)} ${label}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-go-ink hover:bg-paper-2">+ {t.add}</button>
       ) : showSpecies && !selectable ? (
-        <Link to={`/dex/${species.dex}`} className="mt-0.5 w-full rounded-md py-0.5 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
+        <Link to={`/dex/${species.dex}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
       ) : null}
       {onManage && (
-        <button type="button" onClick={() => onManage(group)} className="mt-0.5 w-full rounded-md py-0.5 text-[11px] font-semibold text-sky hover:bg-paper-2">
+        <button type="button" onClick={() => onManage(group)} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-[11px] font-semibold text-sky hover:bg-paper-2">
           {t.manage_variant}
         </button>
       )}
@@ -94,7 +94,7 @@ function PickToggles({ pick, onPick }: { pick: DexPick; onPick: (p: DexPick) => 
   };
   return (
     // One row of normal versions, one row of shiny ones.
-    <div className="mx-auto mt-1 grid grid-flow-row gap-0.5" style={{ gridTemplateColumns: `repeat(${new Set(possibleCombos(pick.group).map((c) => c.sex)).size}, minmax(0, auto))` }}>
+    <div className="mx-auto mt-1 grid grid-flow-row gap-1" style={{ gridTemplateColumns: `repeat(${new Set(possibleCombos(pick.group).map((c) => c.sex)).size}, minmax(0, auto))` }}>
       {possibleCombos(pick.group).map((c) => {
         const id = comboId(c);
         const sex = c.sex === 'm' ? '♂' : c.sex === 'f' ? '♀' : '';
@@ -107,8 +107,8 @@ function PickToggles({ pick, onPick }: { pick: DexPick; onPick: (p: DexPick) => 
             aria-label={label}
             title={label}
             onClick={() => toggle(c)}
-            className={`flex h-6 min-w-[34px] items-center justify-center rounded-full border-2 px-1 text-[11px] font-bold transition ${
-              on.has(id) ? (c.shiny ? 'border-shiny bg-shiny text-[#3a2a00]' : 'border-go bg-go text-white') : 'border-line bg-card text-ink-3'
+            className={`flex h-8 min-w-9 items-center justify-center rounded-full border-2 px-1.5 text-[11px] font-bold transition ${
+              on.has(id) ? (c.shiny ? 'border-shiny bg-shiny text-on-shiny' : 'border-go bg-go text-white') : 'border-line bg-card text-ink-3'
             }`}
           >
             {sex || (c.shiny ? '' : 'N')}

@@ -1,4 +1,4 @@
-import { errorMessage } from '../pages/FriendsPage.js';
+import { errorMessage } from '../lib/errors.js';
 import { useEffect, useState } from 'react';
 import { ENTRY_TAGS, neutralKey, type EntryGender, type EntryTag, type Variant } from '@mydexpogo/shared';
 import { Link } from 'react-router';
@@ -176,7 +176,7 @@ export function AddToListSheet({ idx, group, initialShiny, onClose }: { idx: Dat
                   <span className="relative">
                     <Sprite idx={idx} variant={o.variant} shiny={o.shiny} size={56} />
                     {o.shiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
-                    {on && <span className="absolute -left-1 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-grass text-[10px] text-white">✓</span>}
+                    {on && <span className="absolute -left-1 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-go text-[10px] text-white">✓</span>}
                   </span>
                   {optionLabel(o)}
                 </button>

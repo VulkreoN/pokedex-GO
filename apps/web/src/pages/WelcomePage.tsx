@@ -117,7 +117,7 @@ export function WelcomePage() {
           t.welcome_list_text,
           <div className="space-y-2" role="radiogroup">
             {TEMPLATES.map((k) => (
-              <button key={k} type="button" role="radio" aria-checked={template === k} disabled={!!listId} onClick={() => setTemplate(k)} className={`card block w-full p-3 text-left outline-offset-0 transition disabled:opacity-60 ${template === k ? 'outline outline-2 outline-[var(--go)]' : ''}`}>
+              <button key={k} type="button" role="radio" aria-checked={template === k} disabled={!!listId} onClick={() => setTemplate(k)} className={`card block w-full p-3 text-left outline-offset-0 transition disabled:opacity-60 ${template === k ? 'outline outline-2 outline-go' : ''}`}>
                 <span className="block font-semibold">{t.welcome_templates[k].name}</span>
                 <span className="block text-sm text-ink-2">{t.welcome_templates[k].hint}</span>
               </button>

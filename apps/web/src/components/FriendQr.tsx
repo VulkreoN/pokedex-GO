@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
-import jsQR from 'jsqr';
 import { useT } from '../lib/i18n.js';
 import { Button, Sheet } from './ui.js';
 
@@ -53,6 +52,7 @@ async function readQr(source: HTMLVideoElement | HTMLImageElement, canvas: HTMLC
   if (!ctx) return null;
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { default: jsQR } = await import('jsqr');
   return jsQR(img.data, img.width, img.height)?.data ?? null;
 }
 

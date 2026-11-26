@@ -106,7 +106,7 @@ function PvpSearch() {
             placeholder={t.pvp_search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3 focus:outline-none"
+            className="min-h-11 w-full rounded-xl border px-3 text-[16px] shadow-card placeholder:text-ink-3"
             aria-label={t.pvp_search}
           />
         </div>
@@ -332,7 +332,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
             </div>
             <p className="mt-1.5 text-xs text-ink-3">{t.pvp_floor_hint}</p>
             <label className="mt-2 flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" checked={buddy} onChange={(e) => set({ b: e.target.checked ? '1' : null })} className="h-5 w-5 accent-[var(--go)]" />
+              <input type="checkbox" checked={buddy} onChange={(e) => set({ b: e.target.checked ? '1' : null })} className="h-5 w-5 accent-go" />
               {t.pvp_buddy}
             </label>
           </details>
@@ -353,7 +353,7 @@ function IvSlider({ label, value, onChange }: { label: string; value: number; on
   return (
     <label className="flex items-center gap-3">
       <span className="w-16 shrink-0 text-sm font-medium text-ink-2">{label}</span>
-      <input type="range" min={0} max={15} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8 flex-1 accent-[var(--go)]" />
+      <input type="range" min={0} max={15} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-8 flex-1 accent-go" />
       <span className={`tnum w-7 shrink-0 text-right text-lg font-bold ${value === 15 ? 'text-go-ink dark:text-go' : ''}`}>{value}</span>
     </label>
   );
@@ -416,7 +416,7 @@ function verdictOf(r: RankInfo): Verdict {
   return 'weak';
 }
 const VERDICT_STYLE: Record<Verdict, string> = {
-  perfect: 'bg-shiny-soft text-[#7a5a0e] dark:text-shiny',
+  perfect: 'bg-shiny-soft text-shiny-ink',
   excellent: 'bg-go-soft text-go-ink',
   great: 'bg-go-soft text-go-ink',
   ok: 'bg-paper-2 text-ink-2',
@@ -576,7 +576,7 @@ function Cost({ pvp, from, to }: { pvp: PvpData; from: number; to: number }) {
       <span className="tnum flex flex-wrap gap-1.5">
         <span className="rounded-md bg-sky/10 px-1.5 py-0.5 text-xs font-semibold text-sky">{n(c.stardust)} {t.stardust}</span>
         {c.candy > 0 && <span className="rounded-md bg-go-soft px-1.5 py-0.5 text-xs font-semibold text-go-ink">{n(c.candy)} {t.candy}</span>}
-        {c.xlCandy > 0 && <span className="rounded-md bg-shiny-soft px-1.5 py-0.5 text-xs font-semibold text-[#7a5a0e] dark:text-shiny">{n(c.xlCandy)} {t.xl_candy}</span>}
+        {c.xlCandy > 0 && <span className="rounded-md bg-shiny-soft px-1.5 py-0.5 text-xs font-semibold text-shiny-ink">{n(c.xlCandy)} {t.xl_candy}</span>}
       </span>
       {buddyOnly && <span className="mt-1 block text-xs text-ink-3">* {t.pvp_buddy_needed}</span>}
     </span>

@@ -380,7 +380,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
             aria-label={t.list_search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="mt-2 min-h-10 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:outline-none"
+            className="mt-2 min-h-10 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3 focus:border-sky"
           />
         )}
         {list.entries.length > 0 && cards.length === 0 && words.length > 0 && <Empty>{t.list_search_none(query.trim())}</Empty>}
@@ -430,7 +430,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                     </span>
                   )}
                   {owner && !picking && (
-                    <button type="button" onClick={() => setSelected(c)} className="absolute left-0.5 top-0.5 z-10 flex h-8 w-8 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
+                    <button type="button" onClick={() => setSelected(c)} className="absolute left-0.5 top-0.5 z-10 flex h-9 w-9 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2" aria-label={t.entry_options} title={t.entry_options}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
                     </button>
                   )}
@@ -474,7 +474,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
                             aria-pressed={picking ? picked.has(memberId(c, m)) : friend ? !!m.offeredByMe : m.done}
                             aria-label={picking ? `${label} : ${t.pick_mode}` : `${label} : ${state}`}
                             title={`${label} : ${state}`}
-                            className={`flex h-7 min-w-9 items-center justify-center gap-0.5 rounded-full border-2 px-1.5 text-[13px] font-bold transition ${
+                            className={`flex h-8 min-w-10 items-center justify-center gap-0.5 rounded-full border-2 px-1.5 text-[13px] font-bold transition ${
                               picking
                                 ? picked.has(memberId(c, m)) ? 'border-sky bg-sky text-white' : 'border-line text-ink-3'
                                 : m.done ? 'border-go bg-go text-white' : m.offeredByMe ? 'border-sky bg-sky/15 text-sky' : 'border-line text-ink-3'
@@ -520,7 +520,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       </main>
 
       {picking && (
-        <div className="pb-safe fixed inset-x-0 bottom-[64px] z-30 px-3" role="toolbar" aria-label={t.pick_count(picked.size)}>
+        <div className="pb-safe fixed inset-x-0 bottom-[var(--nav-h)] z-30 px-3" role="toolbar" aria-label={t.pick_count(picked.size)}>
           <div className="mx-auto max-w-3xl rounded-card bg-card p-2 shadow-lg ring-1 ring-line">
             <div className="flex items-center gap-2 px-1 pb-1.5">
               <p className="flex-1 text-sm font-semibold">{t.pick_count(pickedMembers.length)}</p>
@@ -553,7 +553,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName }:
       )}
 
       {owner && !picking && (
-        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[64px] z-20 px-3">
+        <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-[var(--nav-h)] z-20 px-3">
           <div className="mx-auto flex max-w-3xl justify-end gap-2">
             <button type="button" onClick={() => setImporting(true)} aria-label={t.import_title} title={t.import_title} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-card px-4 font-semibold text-ink shadow-lg ring-1 ring-line hover:brightness-[0.98]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></svg>
