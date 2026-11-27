@@ -201,15 +201,17 @@ export function resolveHeroMon(
     (event.template === 'raid_day' && /\bmega\b/i.test(event.name)) ||
     event.highlights.some((h) => /\bmega\b/i.test(h.title));
   const isGmaxEvent = event.template === 'max' && /gigantamax/i.test(event.name);
-  const alreadyMega = /\bmega\b|primal/i.test(m.name) || /\.f(?:MEGA|PRIMAL)/i.test(m.image);
+  const isPrimal = /\bprimal\b/i.test(m.name) || /\.fPRIMAL\b/i.test(m.image);
+  const alreadyMega = /\bmega\b/i.test(m.name) || /\.fMEGA\b/i.test(m.image);
   const alreadyGmax = /gigantamax/i.test(m.name) || /\.fGIGANTAMAX/i.test(m.image);
 
   let image = m.image;
   let enName = m.name;
   let variantKey = idx ? resolveLiveKey(m.image, m.name, idx.hunt) : null;
-  let promotedMega = alreadyMega;
+  let promotedMega = alreadyMega || isPrimal;
+  let synthesizedMega = false;
 
-  if (idx && dex && isMegaEvent && !alreadyMega) {
+  if (idx && dex && isMegaEvent && !alreadyMega && !isPrimal) {
     const megaV = idx.variantsByDex.get(dex)?.find((v) => v.kind === 'mega');
     if (megaV) {
       const url = imageUrl(idx, megaV, false);
@@ -217,6 +219,7 @@ export function resolveHeroMon(
       variantKey = megaV.key;
       enName = sp ? `Mega ${sp.name.en}` : `Mega ${m.name}`;
       promotedMega = true;
+      synthesizedMega = true;
     }
   } else if (idx && dex && isGmaxEvent && !alreadyGmax) {
     const gmaxV = idx.variantsByDex.get(dex)?.find((v) => v.kind === 'gmax');
@@ -228,7 +231,7 @@ export function resolveHeroMon(
     }
   }
 
-  const label = promotedMega && sp
+  const label = synthesizedMega && sp
     ? lang === 'fr'
       ? `Méga-${sp.name.fr ?? sp.name.en}`
       : `Mega ${sp.name.en}`
@@ -1106,7 +1109,7 @@ async function buildEventInfographicCanvas(
   const FOOTER_H = 74;
   const SECTION_GAP = 26;
   const bodyTotalH = sections.reduce((s, sec) => s + sec.height + SECTION_GAP, 0);
-  const H = Math.min(8200, Math.max(520, PAD + heroH + 28 + bodyTotalH + FOOTER_H));
+  const H = Math.min(14000, Math.max(520, PAD + heroH + 28 + bodyTotalH + FOOTER_H));
 
   const canvas = document.createElement('canvas');
   canvas.width = W;

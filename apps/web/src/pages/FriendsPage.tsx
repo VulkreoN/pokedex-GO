@@ -5,8 +5,9 @@ import { computeMedals, vivillonPatternFromKey, type VivillonPattern } from '@my
 import { MedalsCard } from '../components/Medals.js';
 import { Sparkle } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, Chip, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
-import { useDataset } from '../lib/dataset.js';
+import { Badge, Button, Chip, CopyButton, Empty, HoldButton, IconButton, Progress, Sheet, Spinner, TextField, TopBar, buttonClass } from '../components/ui.js';
+import { BannerSlot } from '../components/BannerSlot.js';
+import { normalize, useDataset } from '../lib/dataset.js';
 import { errorMessage, fmtCode } from '../lib/errors.js';
 import { useMe, useSetFriendCode } from '../lib/auth.js';
 import { useLang, useT } from '../lib/i18n.js';
@@ -14,9 +15,8 @@ import { PinButton } from './ListsPage.js';
 import { useFriendLists, useFriendRequests, useFriends, useLuckyFriend, useMembership, usePinFriend, useRemoveFriend, useRespondFriendRequest, useSendFriendRequest, type Friend } from '../lib/lists.js';
 import { VisibilityIcon } from './ListsPage.js';
 import { FriendQr, QrScanSheet } from '../components/FriendQr.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
-import { MyPostcardsShortcutCard, PostcardBadges, PostcardsDiscoverSection } from '../components/VivillonPostcards.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { PageTourButton } from '../components/PageTour.js';
+import { MyPostcardsCard, PostcardBadges, PostcardsDiscoverSection } from '../components/VivillonPostcards.js';
 
 function useWantedVivillonSet(): Set<VivillonPattern> {
   const me = useMe();
@@ -96,7 +96,8 @@ export function FriendsPage() {
   const toast = useToast();
   const me = useMe();
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'add' ? 'add' : 'friends';
+  const rawTab = params.get('tab');
+  const tab = rawTab === 'add' ? 'add' : rawTab === 'postcards' ? 'postcards' : 'friends';
   const friends = useFriends();
   const requests = useFriendRequests();
   const send = useSendFriendRequest();
@@ -106,6 +107,8 @@ export function FriendsPage() {
   const luckyFriend = useLuckyFriend();
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [friendQuery, setFriendQuery] = useState('');
+  const [friendFilter, setFriendFilter] = useState<'all' | 'lucky' | 'postcards'>('all');
   // Opened from the app icon's "My friend code" shortcut: the QR at once.
   const [showQr, setShowQr] = useState(() => new URLSearchParams(location.search).has('qr'));
   const [scanning, setScanning] = useState(false);
@@ -128,11 +131,21 @@ export function FriendsPage() {
 
   const incoming = requests.data?.filter((r) => r.to.id === me.data?.id) ?? [];
   const outgoing = requests.data?.filter((r) => r.from.id === me.data?.id) ?? [];
+  const allFriends = friends.data ?? [];
+  const anyLucky = allFriends.some((f) => f.lucky);
+  const anyWantedPostcard = wantedVivillon.size > 0 && allFriends.some((f) => f.postcards?.some((p) => wantedVivillon.has(p.pattern)));
+  const normFriendQ = normalize(friendQuery);
+  const visibleFriends = allFriends.filter((f) => {
+    if (friendFilter === 'lucky' && !f.lucky) return false;
+    if (friendFilter === 'postcards' && !f.postcards?.some((p) => wantedVivillon.has(p.pattern))) return false;
+    if (normFriendQ && !normalize(`${f.username} ${f.friendCode}`).includes(normFriendQ)) return false;
+    return true;
+  });
 
   return (
     <>
       <TopBar title={t.friends} actions={<PageTourButton page="friends" />}>
-        <div className="mx-auto flex max-w-6xl gap-2 px-3 pb-2 sm:px-5" role="tablist">
+        <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-2 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:px-5" role="tablist">
           <Chip role="tab" aria-selected={tab === 'friends'} active={tab === 'friends'} onClick={() => setParams({}, { replace: true })}>
             {t.friends_tab_list}
             {incoming.length > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[11px] font-bold leading-4 text-white">{incoming.length}</span>}
@@ -140,39 +153,53 @@ export function FriendsPage() {
           <Chip role="tab" aria-selected={tab === 'add'} active={tab === 'add'} onClick={() => setParams({ tab: 'add' }, { replace: true })}>
             {t.friends_tab_add}
           </Chip>
+          <Chip role="tab" aria-selected={tab === 'postcards'} active={tab === 'postcards'} onClick={() => setParams({ tab: 'postcards' }, { replace: true })}>
+            🦋 {t.friends_tab_postcards}
+          </Chip>
         </div>
       </TopBar>
       <main className="mx-auto max-w-6xl space-y-5 px-3 pb-24 sm:px-5">
-        <WhatsNewBanner />
-        <PageTourBanner page="friends" />
-        {tab === 'add' ? (
+        <BannerSlot page="friends" />
+        {tab === 'postcards' ? (
           <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
-            <div className="space-y-5">
-              <form onSubmit={submit} className="card space-y-2.5 p-4">
-                <TextField label={t.add_friend} placeholder={t.friend_code_placeholder} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
-                {error && <p role="alert" className="text-sm text-berry">{error}</p>}
-                <div className="flex gap-2">
-                  <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" /></svg>
-                    QR
-                  </Button>
-                  <Button tone="primary" type="submit" className="flex-1" disabled={send.isPending || code.replace(/\D/g, '').length !== 12}>{t.send_request}</Button>
-                </div>
-              </form>
-              <QrScanSheet
-                open={scanning}
-                onClose={() => setScanning(false)}
-                onCode={(c) => {
-                  setScanning(false);
-                  setCode(fmtCode(c));
-                  setError(null);
-                  toast(t.qr_read);
-                }}
-              />
-              <MyPostcardsShortcutCard />
-            </div>
-
+            <MyPostcardsCard />
             <PostcardsDiscoverSection />
+          </div>
+        ) : tab === 'add' ? (
+          <div className="mx-auto max-w-xl space-y-4">
+            <form onSubmit={submit} className="card space-y-2.5 p-4">
+              <TextField label={t.add_friend} placeholder={t.friend_code_placeholder} inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} />
+              {error && <p role="alert" className="text-sm text-berry">{error}</p>}
+              <div className="flex gap-2">
+                <Button type="button" className="shrink-0" onClick={() => setScanning(true)} aria-label={t.qr_scan} title={t.qr_scan}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10" /></svg>
+                  QR
+                </Button>
+                <Button tone="primary" type="submit" className="flex-1" disabled={send.isPending || code.replace(/\D/g, '').length !== 12}>{t.send_request}</Button>
+              </div>
+            </form>
+            <QrScanSheet
+              open={scanning}
+              onClose={() => setScanning(false)}
+              onCode={(c) => {
+                setScanning(false);
+                setCode(fmtCode(c));
+                setError(null);
+                toast(t.qr_read);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setParams({ tab: 'postcards' }, { replace: true })}
+              className="card flex w-full items-center gap-3 p-3.5 text-left transition hover:brightness-[0.98] active:scale-[0.99]"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky/15 text-lg" aria-hidden="true">🦋</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">{t.postcards_title}</span>
+                <span className="block text-xs text-ink-2">{t.friends_add_vivillon_hint}</span>
+              </span>
+              <span className="text-ink-3" aria-hidden="true">›</span>
+            </button>
           </div>
         ) : (
           <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
@@ -231,10 +258,42 @@ export function FriendsPage() {
                   + {t.friends_tab_add}
                 </Button>
               </div>
+              {allFriends.length > 4 && (
+                <div className="relative mb-2">
+                  <input
+                    type="search"
+                    inputMode="search"
+                    value={friendQuery}
+                    onChange={(e) => setFriendQuery(e.target.value)}
+                    placeholder={t.friends_search}
+                    aria-label={t.friends_search}
+                    className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+                  />
+                  {friendQuery && (
+                    <button type="button" onClick={() => setFriendQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">✕</button>
+                  )}
+                </div>
+              )}
+              {(anyLucky || anyWantedPostcard) && (
+                <div className="mb-2.5 flex flex-wrap gap-1.5">
+                  <Chip active={friendFilter === 'all'} onClick={() => setFriendFilter('all')} className="min-h-8 px-2.5 text-xs">{t.friends_filter_all}</Chip>
+                  {anyLucky && (
+                    <Chip active={friendFilter === 'lucky'} onClick={() => setFriendFilter(friendFilter === 'lucky' ? 'all' : 'lucky')} className="min-h-8 px-2.5 text-xs">
+                      ✨ {t.friends_filter_lucky}
+                    </Chip>
+                  )}
+                  {anyWantedPostcard && (
+                    <Chip active={friendFilter === 'postcards'} onClick={() => setFriendFilter(friendFilter === 'postcards' ? 'all' : 'postcards')} className="min-h-8 px-2.5 text-xs">
+                      🦋 {t.friends_filter_postcards}
+                    </Chip>
+                  )}
+                </div>
+              )}
               {friends.isPending && <Spinner />}
               {friends.data?.length === 0 && <Empty>{t.no_friends}</Empty>}
+              {allFriends.length > 0 && visibleFriends.length === 0 && <Empty>{t.nothing_here}</Empty>}
               <ul className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                {friends.data?.map((f) => (
+                {visibleFriends.map((f) => (
                   <li key={f.id} className={`card p-2 pl-3 ${f.lucky ? 'ring-1 ring-shiny/70' : ''}`}>
                     <div className="flex items-center gap-1.5">
                       <PinButton on={!!f.favorite} label={f.favorite ? t.unpin : t.pin} onClick={() => pinFriend.mutate({ id: f.id, on: !f.favorite })} className="-ml-1.5" />
@@ -263,7 +322,7 @@ export function FriendsPage() {
             <Sheet open={!!menuFor} onClose={() => setMenuFor(null)} title={menuFor?.username ?? ''}>
               {menuFor && (
                 <div className="space-y-2">
-                  <Link to={`/friends/${menuFor.id}`} className="block"><Button className="w-full">{t.friend_see_profile}</Button></Link>
+                  <Link to={`/friends/${menuFor.id}`} className={buttonClass('quiet', 'w-full')}>{t.friend_see_profile}</Link>
                   <Button className="w-full" onClick={() => { luckyFriend.mutate({ id: menuFor.id, on: !menuFor.lucky }); setMenuFor(null); }}>
                     ✨ {menuFor.lucky ? t.lucky_unmark : t.lucky_mark}
                   </Button>

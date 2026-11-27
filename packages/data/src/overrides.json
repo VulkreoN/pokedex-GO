@@ -69,6 +69,10 @@
       "en": "Mega Y",
       "fr": "Méga Y"
     },
+    "MEGA_Z": {
+      "en": "Mega Z",
+      "fr": "Méga Z"
+    },
     "PRIMAL": {
       "en": "Primal",
       "fr": "Primo"
@@ -309,6 +313,166 @@
       "en": "Yellow Core",
       "fr": "Noyau Jaune"
     },
+    "493.fBUG": {
+      "en": "Bug-Type",
+      "fr": "Type Insecte"
+    },
+    "493.fDARK": {
+      "en": "Dark-Type",
+      "fr": "Type Ténèbres"
+    },
+    "493.fDRAGON": {
+      "en": "Dragon-Type",
+      "fr": "Type Dragon"
+    },
+    "493.fELECTRIC": {
+      "en": "Electric-Type",
+      "fr": "Type Électrik"
+    },
+    "493.fFAIRY": {
+      "en": "Fairy-Type",
+      "fr": "Type Fée"
+    },
+    "493.fFIGHTING": {
+      "en": "Fighting-Type",
+      "fr": "Type Combat"
+    },
+    "493.fFIRE": {
+      "en": "Fire-Type",
+      "fr": "Type Feu"
+    },
+    "493.fFLYING": {
+      "en": "Flying-Type",
+      "fr": "Type Vol"
+    },
+    "493.fGHOST": {
+      "en": "Ghost-Type",
+      "fr": "Type Spectre"
+    },
+    "493.fGRASS": {
+      "en": "Grass-Type",
+      "fr": "Type Plante"
+    },
+    "493.fGROUND": {
+      "en": "Ground-Type",
+      "fr": "Type Sol"
+    },
+    "493.fICE": {
+      "en": "Ice-Type",
+      "fr": "Type Glace"
+    },
+    "493.fPOISON": {
+      "en": "Poison-Type",
+      "fr": "Type Poison"
+    },
+    "493.fPSYCHIC": {
+      "en": "Psychic-Type",
+      "fr": "Type Psy"
+    },
+    "493.fROCK": {
+      "en": "Rock-Type",
+      "fr": "Type Roche"
+    },
+    "493.fSTEEL": {
+      "en": "Steel-Type",
+      "fr": "Type Acier"
+    },
+    "493.fWATER": {
+      "en": "Water-Type",
+      "fr": "Type Eau"
+    },
+    "716.fNEUTRAL": {
+      "en": "Neutral Mode",
+      "fr": "Mode Paisible"
+    },
+    "746.fSOLO": {
+      "en": "Solo Form",
+      "fr": "Forme Solitaire"
+    },
+    "710.fSMALL.cFALL_2022": {
+      "en": "Fall 2022 (Small)",
+      "fr": "Automne 2022 (Mini)"
+    },
+    "710.fAVERAGE.cFALL_2022": {
+      "en": "Fall 2022 (Average)",
+      "fr": "Automne 2022 (Normal)"
+    },
+    "710.fLARGE.cFALL_2022": {
+      "en": "Fall 2022 (Large)",
+      "fr": "Automne 2022 (Maxi)"
+    },
+    "710.fSUPER.cFALL_2022": {
+      "en": "Fall 2022 (Super)",
+      "fr": "Automne 2022 (Ultra)"
+    },
+    "711.fSMALL.cFALL_2022": {
+      "en": "Fall 2022 (Small)",
+      "fr": "Automne 2022 (Mini)"
+    },
+    "711.fAVERAGE.cFALL_2022": {
+      "en": "Fall 2022 (Average)",
+      "fr": "Automne 2022 (Normal)"
+    },
+    "711.fLARGE.cFALL_2022": {
+      "en": "Fall 2022 (Large)",
+      "fr": "Automne 2022 (Maxi)"
+    },
+    "711.fSUPER.cFALL_2022": {
+      "en": "Fall 2022 (Super)",
+      "fr": "Automne 2022 (Ultra)"
+    },
+    "25.fFLYING_02": {
+      "en": "Flying (2)",
+      "fr": "Volant (2)"
+    },
+    "25.fFLYING_03": {
+      "en": "Flying (3)",
+      "fr": "Volant (3)"
+    },
+    "25.fFLYING_04": {
+      "en": "Flying (4)",
+      "fr": "Volant (4)"
+    },
+    "25.fTSHIRT_01": {
+      "en": "T-shirt (1)",
+      "fr": "T-shirt (1)"
+    },
+    "25.fTSHIRT_02": {
+      "en": "T-shirt (2)",
+      "fr": "T-shirt (2)"
+    },
+    "25.fTSHIRT_03": {
+      "en": "T-shirt (3)",
+      "fr": "T-shirt (3)"
+    },
+    "25.fGOTOUR_2024_A_02": {
+      "en": "GO Tour 2024 A (2)",
+      "fr": "GO Tour 2024 A (2)"
+    },
+    "25.fGOTOUR_2024_B_02": {
+      "en": "GO Tour 2024 B (2)",
+      "fr": "GO Tour 2024 B (2)"
+    },
+    "25.fGOTOUR_2025_A_02": {
+      "en": "GO Tour 2025 A (2)",
+      "fr": "GO Tour 2025 A (2)"
+    },
+    "25.fGOTOUR_2025_B_02": {
+      "en": "GO Tour 2025 B (2)",
+      "fr": "GO Tour 2025 B (2)"
+    },
+    "25.fGOTOUR_2026_A_02": {
+      "en": "GO Tour 2026 A (2)",
+      "fr": "GO Tour 2026 A (2)"
+    },
+    "25.fGOTOUR_2026_B_02": {
+      "en": "GO Tour 2026 B (2)",
+      "fr": "GO Tour 2026 B (2)"
+    },
+    "25.fGOTOUR_2026_C_02": {
+      "en": "GO Tour 2026 C (2)",
+      "fr": "GO Tour 2026 C (2)"
+    },
     "774.fGREEN": {
       "en": "Green Core",
       "fr": "Noyau Vert"
@@ -328,6 +492,34 @@
     "MEGA_Z": {
       "en": "Mega Z",
       "fr": "Méga Z"
+    },
+    "978.fMEGA_CURLY": {
+      "en": "Mega (Curly Form)",
+      "fr": "Méga (Forme Courbée)"
+    },
+    "978.fMEGA_DROOPY": {
+      "en": "Mega (Droopy Form)",
+      "fr": "Méga (Forme Affalée)"
+    },
+    "978.fMEGA_STRETCHY": {
+      "en": "Mega (Stretchy Form)",
+      "fr": "Méga (Forme Raide)"
+    },
+    "1012.fARTISAN": {
+      "en": "Artisan Form",
+      "fr": "Forme Onéreuse"
+    },
+    "1012.fCOUNTERFEIT": {
+      "en": "Counterfeit Form",
+      "fr": "Forme Contrefaçon"
+    },
+    "1013.fMASTERPIECE": {
+      "en": "Masterpiece Form",
+      "fr": "Forme Exceptionnelle"
+    },
+    "1013.fUNREMARKABLE": {
+      "en": "Unremarkable Form",
+      "fr": "Forme Médiocre"
     }
   },
   "status": {
@@ -408,12 +600,69 @@
   },
   "gendersNotes": "Genders checked by hand for costumes the published game master does not describe yet (key: gender-neutral variant key). Managers can also set them from the app. 2026-11-22: Crobat Halloween 2026 only comes from Golbat Halloween 2026, which has a female picture (gender is kept on evolution), so both genders.",
   "speciesNames": {
+    "1009": {
+      "en": "Walking Wake",
+      "fr": "Serpente-Eau"
+    },
+    "1010": {
+      "en": "Iron Leaves",
+      "fr": "Vert-de-Fer"
+    },
     "1011": {
       "fr": "Pomdramour"
     },
+    "1012": {
+      "en": "Poltchageist",
+      "fr": "Poltchageist"
+    },
+    "1013": {
+      "fr": "Théffroyable"
+    },
+    "1014": {
+      "fr": "Félicanis"
+    },
+    "1015": {
+      "fr": "Fortusimia"
+    },
+    "1016": {
+      "fr": "Favianos"
+    },
+    "1017": {
+      "en": "Ogerpon",
+      "fr": "Ogerpon"
+    },
+    "1018": {
+      "fr": "Pondralugon"
+    },
     "1019": {
       "fr": "Pomdorochi"
+    },
+    "1020": {
+      "en": "Gouging Fire",
+      "fr": "Feu-Perçant"
+    },
+    "1021": {
+      "en": "Raging Bolt",
+      "fr": "Ire-Foudre"
+    },
+    "1022": {
+      "en": "Iron Boulder",
+      "fr": "Roc-de-Fer"
+    },
+    "1023": {
+      "en": "Iron Crown",
+      "fr": "Chef-de-Fer"
+    },
+    "1024": {
+      "en": "Terapagos",
+      "fr": "Terapagos"
+    },
+    "1025": {
+      "fr": "Pêchaminus"
     }
+  },
+  "aliases": {
+    "978.fMEGA": "978.fMEGA_CURLY"
   },
   "battleForms": {
     "$comment": "Forms a Pokemon only takes during a battle: never caught, so not in the collection (PvP keeps them). Key -> the form it is caught in.",
@@ -478,7 +727,9 @@
       "807.fMEGA",
       "952.fMEGA",
       "970.fMEGA",
-      "978.fMEGA",
+      "978.fMEGA_CURLY",
+      "978.fMEGA_DROOPY",
+      "978.fMEGA_STRETCHY",
       "998.fMEGA",
       "359.fMEGA_Z",
       "445.fMEGA_Z",
@@ -528,7 +779,9 @@
       "807.fMEGA": 10319,
       "952.fMEGA": 10320,
       "970.fMEGA": 10321,
-      "978.fMEGA": 10322,
+      "978.fMEGA_CURLY": 10322,
+      "978.fMEGA_DROOPY": 10323,
+      "978.fMEGA_STRETCHY": 10324,
       "998.fMEGA": 10325,
       "359.fMEGA_Z": 10307,
       "445.fMEGA_Z": 10309,
@@ -549,7 +802,9 @@
       "892.fGIGANTAMAX": 10226
     },
     "noShinyArtwork": [
-      "978.fMEGA",
+      "978.fMEGA_CURLY",
+      "978.fMEGA_DROOPY",
+      "978.fMEGA_STRETCHY",
       "445.fMEGA_Z"
     ]
   }

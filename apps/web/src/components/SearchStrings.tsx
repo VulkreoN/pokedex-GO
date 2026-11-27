@@ -99,7 +99,7 @@ export function SearchStrings({ idx, entries }: { idx: DatasetIndex; entries: Li
   const { strings, dropped, blind } = useMemo(() => listSearch(idx, entries, settings), [entries, idx, settings.onlyMissing, settings.gameLang, settings.exclude, settings.preEvolutions, settings.maxLength]);
 
   const names: Record<string, string> = {
-    shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: 'Gigamax', lucky: t.tag_lucky, background: t.tag_background,
+    shiny: t.shiny, costume: t.filter_costumes, female: '♀', male: '♂', gigantamax: t.kinds.gmax ?? 'Gigantamax', lucky: t.tag_lucky, background: t.tag_background,
     shadow: t.tag_shadow, purified: t.tag_purified, dynamax: t.tag_dynamax, xxl: t.tag_xxl, xxs: t.tag_xxs, alola: 'Alola', galar: 'Galar', hisui: 'Hisui', paldea: 'Paldea',
   };
   const name = (m: string) => (m.startsWith('!') ? t.without(names[m.slice(1)] ?? m.slice(1)) : (names[m] ?? m));

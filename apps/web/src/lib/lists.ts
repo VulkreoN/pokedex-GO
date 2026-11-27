@@ -52,7 +52,11 @@ export const useDeleteList = () =>
 
 export const useUpsertEntries = () =>
   useListMutation(
-    (vars: { id: string; entries: EntryInput[] }) => api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, { method: 'PUT', body: { entries: vars.entries } }),
+    (vars: { id: string; entries: EntryInput[]; insertOnly?: boolean }) =>
+      api<{ list: ListDetail }>(`/lists/${vars.id}/entries`, {
+        method: 'PUT',
+        body: { entries: vars.entries, ...(vars.insertOnly ? { insertOnly: true } : {}) },
+      }),
     (vars) => [['lists'], ['list', vars.id], ['lists-membership'], ['postcards-discover']],
   );
 
@@ -76,8 +80,8 @@ export const useCopyList = () =>
   );
 
 export const useFriends = () => useQuery({ queryKey: ['friends'], queryFn: () => api<{ friends: Friend[] }>('/friends').then((r) => r.friends) });
-export const useFriendRequests = () =>
-  useQuery({ queryKey: ['friend-requests'], queryFn: () => api<{ requests: FriendRequest[] }>('/friends/requests').then((r) => r.requests) });
+export const useFriendRequests = (enabled = true) =>
+  useQuery({ queryKey: ['friend-requests'], queryFn: () => api<{ requests: FriendRequest[] }>('/friends/requests').then((r) => r.requests), enabled });
 export const useFriendLists = (id: string) =>
   useQuery({
     queryKey: ['friend-lists', id],

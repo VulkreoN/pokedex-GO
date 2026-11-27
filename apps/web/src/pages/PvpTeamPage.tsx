@@ -6,9 +6,10 @@ import { LeagueIcon } from '../components/PvpTops.js';
 import { Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Button, Chip, Empty, IconButton, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
+import { Button, Chip, Empty, HoldButton, Sheet, Spinner, TextField, TopBar } from '../components/ui.js';
 import { useMe } from '../lib/auth.js';
 import { normalize } from '../lib/dataset.js';
+import { errorMessage } from '../lib/errors.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useDeletePvpTeam, useMyPvp, usePvpTeams, useSavePvpTeam } from '../lib/myPvp.js';
 import { LEAGUE_LIST, formOf, leagueName, usePopularTeams, usePvpRankings, type League, type RankedDetail } from '../lib/pvpoke.js';
@@ -160,9 +161,13 @@ export function PvpTeamPage() {
               e.preventDefault();
               const clean = teamName.trim();
               if (!clean || !members.length) return;
-              await saveTeam.mutateAsync({ name: clean, league, members: members.map((m) => m.key) });
-              toast(t.pvp_team_saved);
-              setSavingOpen(false);
+              try {
+                await saveTeam.mutateAsync({ name: clean, league, members: members.map((m) => m.key) });
+                toast(t.pvp_team_saved);
+                setSavingOpen(false);
+              } catch (err) {
+                toast(errorMessage(t, err));
+              }
             }}
           >
             <TextField
@@ -192,14 +197,25 @@ export function PvpTeamPage() {
           {list.slice(0, 12).map(({ ref, n }) => {
             const p = formOf(pvp!, ref);
             const v = p && picture(idx, p);
+            const inner = (
+              <>
+                {n > 1 && <span className={`tnum absolute right-1 top-0 rounded-md px-1 text-[10px] font-bold ${tone === 'berry' ? 'bg-berry/15 text-berry' : 'bg-go-soft text-go-ink'}`}>×{n}</span>}
+                {v && <Sprite idx={idx} variant={v} size={44} />}
+                <span className="w-full truncate text-[11px] font-semibold leading-tight">{p ? localized(p.name, lang).replace(/ \(.*\)$/, '') : ref.name}</span>
+                {ref.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
+              </>
+            );
             return (
               <li key={ref.speciesId}>
-                <Link to={p ? `/pvp/${encodeURIComponent(p.key)}` : '#'} className="relative flex flex-col items-center rounded-lg py-1 text-center hover:bg-paper-2">
-                  {n > 1 && <span className={`tnum absolute right-1 top-0 rounded-md px-1 text-[10px] font-bold ${tone === 'berry' ? 'bg-berry/15 text-berry' : 'bg-go-soft text-go-ink'}`}>×{n}</span>}
-                  {v && <Sprite idx={idx} variant={v} size={44} />}
-                  <span className="w-full truncate text-[11px] font-semibold leading-tight">{p ? localized(p.name, lang).replace(/ \(.*\)$/, '') : ref.name}</span>
-                  {ref.shadow && <span className="text-[10px] font-semibold leading-tight text-berry">{t.tag_shadow}</span>}
-                </Link>
+                {p ? (
+                  <Link to={`/pvp/${encodeURIComponent(p.key)}`} className="relative flex flex-col items-center rounded-lg py-1 text-center hover:bg-paper-2">
+                    {inner}
+                  </Link>
+                ) : (
+                  <div className="relative flex flex-col items-center rounded-lg py-1 text-center">
+                    {inner}
+                  </div>
+                )}
               </li>
             );
           })}
@@ -235,33 +251,79 @@ export function PickSheet({ open, league, onClose, onPick, onClear }: { open: bo
   const mine = useMyPvp();
   const rankings = usePvpRankings();
   const [q, setQ] = useState('');
-  const list = useMemo(() => {
-    if (!pvp) return [];
+  const { searchList, mineList, metaList } = useMemo(() => {
+    if (!pvp) return { searchList: [] as PvpPokemon[], mineList: [] as { p: PvpPokemon; shadow: boolean; iv: string }[], metaList: [] as PvpPokemon[] };
     const nq = normalize(q);
-    if (nq) return pvp.pokemon.filter((p) => normalize(`${p.dex} ${p.name.en} ${p.name.fr ?? ''}`).includes(nq)).slice(0, 30);
-    const seen = new Set<string>();
-    const out: PvpPokemon[] = [];
-    for (const m of mine.data ?? []) { const p = byKey.get(m.formKey); if (p && !seen.has(p.key)) { seen.add(p.key); out.push(p); } }
-    for (const r of rankings.data?.[league] ?? []) { const p = formOf(pvp, r); if (p && !seen.has(p.key)) { seen.add(p.key); out.push(p); } if (out.length >= 30) break; }
-    return out;
+    if (nq) {
+      return {
+        searchList: pvp.pokemon.filter((p) => normalize(`${p.dex} ${p.name.en} ${p.name.fr ?? ''}`).includes(nq)).slice(0, 30),
+        mineList: [],
+        metaList: [],
+      };
+    }
+    const mineSeen = new Set<string>();
+    const mineOut: { p: PvpPokemon; shadow: boolean; iv: string }[] = [];
+    for (const m of mine.data ?? []) {
+      const p = byKey.get(m.formKey);
+      if (p && !mineSeen.has(p.key)) {
+        mineSeen.add(p.key);
+        mineOut.push({ p, shadow: m.shadow, iv: `${m.atk}/${m.def}/${m.sta}` });
+      }
+    }
+    const metaSeen = new Set<string>();
+    const metaOut: PvpPokemon[] = [];
+    for (const r of rankings.data?.[league] ?? []) {
+      const p = formOf(pvp, r);
+      if (p && !metaSeen.has(p.key)) {
+        metaSeen.add(p.key);
+        metaOut.push(p);
+      }
+      if (metaOut.length >= 28) break;
+    }
+    return { searchList: [], mineList: mineOut, metaList: metaOut };
   }, [pvp, q, mine.data, rankings.data, league, byKey]);
+
+  const tile = (p: PvpPokemon, sub?: string, shadow?: boolean) => {
+    const v = ds.data ? picture(ds.data, p) : undefined;
+    return (
+      <li key={p.key}>
+        <button type="button" onClick={() => { setQ(''); onPick(p.key); }} className="flex w-full flex-col items-center rounded-lg py-1 hover:bg-paper-2">
+          {v && ds.data && <Sprite idx={ds.data} variant={v} size={48} />}
+          <span className="w-full truncate text-center text-[11px] font-semibold">{localized(p.name, lang)}</span>
+          {sub && <span className="tnum text-[10px] text-ink-3">{sub}</span>}
+          {shadow && <span className="text-[9px] font-semibold text-berry">{t.tag_shadow}</span>}
+        </button>
+      </li>
+    );
+  };
+
   return (
     <Sheet open={open} onClose={onClose} title={t.team_pick}>
       <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.pvp_search} aria-label={t.pvp_search} className="mb-2 min-h-11 w-full rounded-xl border border-line bg-card px-3 text-[16px] placeholder:text-ink-3" />
-      {!q && <p className="mb-2 text-xs text-ink-3">{t.team_pick_hint}</p>}
-      <ul className="grid grid-cols-4 gap-1.5">
-        {ds.data && list.map((p) => {
-          const v = picture(ds.data!, p);
-          return (
-            <li key={p.key}>
-              <button type="button" onClick={() => { setQ(''); onPick(p.key); }} className="flex w-full flex-col items-center rounded-lg py-1 hover:bg-paper-2">
-                {v && <Sprite idx={ds.data!} variant={v} size={48} />}
-                <span className="w-full truncate text-center text-[11px] font-semibold">{localized(p.name, lang)}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {q.trim() ? (
+        <ul className="grid grid-cols-4 gap-1.5">
+          {searchList.map((p) => tile(p))}
+        </ul>
+      ) : (
+        <div className="space-y-3">
+          {mineList.length > 0 && (
+            <section>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-3">{t.pvp_pick_mine}</p>
+              <ul className="grid grid-cols-4 gap-1.5">
+                {mineList.map(({ p, iv, shadow }) => tile(p, iv, shadow))}
+              </ul>
+            </section>
+          )}
+          {metaList.length > 0 && (
+            <section>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-3">{t.pvp_pick_meta}</p>
+              <ul className="grid grid-cols-4 gap-1.5">
+                {metaList.map((p) => tile(p))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
       {onClear && <button type="button" onClick={onClear} className="mt-3 w-full rounded-xl py-2 text-sm font-semibold text-berry hover:bg-berry/10">{t.team_remove}</button>}
     </Sheet>
   );
@@ -308,17 +370,22 @@ function SavedTeams({ league, onLoad }: { league: League; onLoad: (keys: string[
                 })}
               </div>
             </button>
-            <IconButton
-              label={`${t.delete} ${saved.name}`}
+            <HoldButton
+              small
+              ms={700}
               disabled={remove.isPending}
-              onClick={async () => {
-                await remove.mutateAsync(saved.id);
-                toast(t.pvp_team_deleted);
+              onConfirm={async () => {
+                try {
+                  await remove.mutateAsync(saved.id);
+                  toast(t.pvp_team_deleted);
+                } catch (err) {
+                  toast(errorMessage(t, err));
+                }
               }}
-              className="shrink-0 text-berry"
+              className="shrink-0"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>
-            </IconButton>
+              {t.delete}
+            </HoldButton>
           </li>
         ))}
       </ul>

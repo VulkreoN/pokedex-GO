@@ -51,6 +51,11 @@ class FeedService {
     }
   }
 
+  async refreshPending(): Promise<number> {
+    this.status.pending = await this.pendingCount();
+    return this.status.pending;
+  }
+
   private async pendingCount(): Promise<number> {
     const rows = await db.select({ id: schema.feedItems.id }).from(schema.feedItems).where(eq(schema.feedItems.status, 'new'));
     return rows.length;

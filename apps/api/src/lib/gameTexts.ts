@@ -30,10 +30,11 @@ export function buildTexts(en: Map<string, string>, fr: Map<string, string>): Te
     const f = fr.get(k);
     if (!f) continue;
     if (/^item_.*_name$/.test(k)) items.set(v.toLowerCase(), f);
-    if (!/^(quest_|badge_)/.test(k) || v.includes(': ') || /\{[^0-9]/.test(v)) continue;
+    if (!/^(quest_|badge_)/.test(k) || k.startsWith('quest_special_dialogue_') || v.includes(': ') || /\{[^0-9]/.test(v) || /\{[1-9]\}/.test(v)) continue;
     const plain = v.replace(/\.$/, '');
     try {
-      quests.push({ re: new RegExp(`^${esc(plain).replace(/\\\{(\d)\\\}/g, '(?<p$1>.+?)')}\\.?$`, 'i'), fr: f.trim(), literal: plain.replace(/\{\d\}/g, '').length });
+      // Research & badge count placeholders ({0}) are numeric only so "Catch 5 Weather Boosted Pokémon" never matches "Catch {0} Pokémon".
+      quests.push({ re: new RegExp(`^${esc(plain).replace(/\\\{(\d)\\\}/g, '(?<p$1>\\d[\\d,]*)')}\\.?$`, 'i'), fr: f.trim(), literal: plain.replace(/\{\d\}/g, '').length });
     } catch {}
   }
   // The most literal template wins ("Make {0} Great Curveball Throws in a row" before "Make {0} Throws").

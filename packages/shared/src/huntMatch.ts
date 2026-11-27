@@ -195,7 +195,7 @@ export function resolveLiveKey(image: string, name = '', known?: LiveKnown): str
   const speciesText = plainName
     .replace(/^(Gigantamax|Dynamax|Mega|Primal) /i, '')
     .replace(/^(Alolan|Galarian|Hisuian|Paldean) /i, '')
-    .replace(/ [XY]$/, '')
+    .replace(/ [XYZ]$/, '')
     .replace(/\s*\(.*\)$/, '')
     .trim();
   const dex = known.dexOf(speciesText);
@@ -205,8 +205,21 @@ export function resolveLiveKey(image: string, name = '', known?: LiveKnown): str
 
 function resolveFromDexAndName(dex: number, plainName: string, known?: LiveKnown): string {
   if (/^Gigantamax /i.test(plainName)) return canonicalAlias(`${dex}.fGIGANTAMAX`, known);
-  const mega = /^Mega (.+?)( [XY])?$/i.exec(plainName);
-  if (mega) return canonicalAlias(`${dex}.fMEGA${mega[2] ? `_${mega[2].trim().toUpperCase()}` : ''}`, known);
+  const mega = /^Mega (.+?)(?: ([XYZ]))?(?:\s*\(([^)]+)\))?$/i.exec(plainName);
+  if (mega) {
+    if (mega[2]) return canonicalAlias(`${dex}.fMEGA_${mega[2].toUpperCase()}`, known);
+    if (mega[3]) {
+      const cleaned = mega[3].replace(/\bFormes?\b|\bForms?\b/gi, '').trim();
+      const fullWord = cleaned.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const firstTok = cleaned.split(/\s+/)[0]?.toUpperCase() ?? '';
+      for (const cand of [fullWord, firstTok]) {
+        if (!cand || cand === 'NORMAL') continue;
+        const k = canonicalAlias(`${dex}.fMEGA_${cand}`, known);
+        if (!known || known.has(k)) return k;
+      }
+    }
+    return canonicalAlias(`${dex}.fMEGA`, known);
+  }
   if (/^Primal /i.test(plainName)) return canonicalAlias(`${dex}.fPRIMAL`, known);
 
   const firstWord = plainName.split(/\s+/)[0] ?? '';
@@ -236,7 +249,7 @@ function resolveFromDexAndName(dex: number, plainName: string, known?: LiveKnown
   return canonicalAlias(String(dex), known);
 }
 
-const MEGA_SUFFIX_RE = /\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/;
+const MEGA_SUFFIX_RE = /\.f(MEGA(?:_[A-Z0-9]+)*|PRIMAL)$/;
 
 /** Refines a generic raid/max source using the resolved key & name (Mega Raid, Shadow Raid, Gigantamax). */
 export function inferHuntSource(base: HuntSource, key: string, name = ''): HuntSource {

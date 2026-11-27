@@ -93,7 +93,7 @@ test('a player changes their password, logs back in, then deletes the account', 
   await expect(page.getByText('Pseudo ou mot de passe incorrect.')).toBeVisible();
   await uiLogin(page, user.username, 'a-brand-new-one');
 
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('button', { name: 'Supprimer mon compte' }).click();
   await page.locator('dialog[open]').getByLabel('Mot de passe', { exact: true }).fill('a-brand-new-one');
   // Held, not tapped.
@@ -114,7 +114,7 @@ test('friends add each other by code and see each other’s lists', async ({ bro
   await apiCreateList(pa.request, 'Ma collection Kanto', ['1:m', '4:m', '7:m']);
 
   await pb.goto('/friends');
-  await pb.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
+  await pb.getByRole('tab', { name: 'Ajouter', exact: true }).click();
   await pb.getByPlaceholder('Code ami à 12 chiffres').fill(ua.friendCode);
   await pb.getByRole('button', { name: 'Envoyer' }).click();
   await pb.getByRole('tab', { name: 'Mes amis' }).click();
@@ -353,7 +353,7 @@ test('the welcome tour: game language, a first list, friends, notifications; not
   await page.goto('/dex');
   await expect(page.getByRole('link', { name: 'Continuer' })).toHaveCount(0);
   // It can be replayed from Me.
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('link', { name: /Revoir la visite guidée/ }).click();
   await expect(page).toHaveURL(/\/welcome$/);
 });

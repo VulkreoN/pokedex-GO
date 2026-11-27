@@ -387,6 +387,64 @@ describe('lists', () => {
     const mine = (await bob.get('/lists')).body.lists;
     expect(mine.every((l: any) => l.ownerId === bob.user.id)).toBe(true);
   });
+
+  it('lets the owner undo reversible operations from the collection history', async () => {
+    const [a, b] = keys();
+    const created = (await alice.post('/lists', { name: 'Undo Test', visibility: 'friends' })).body.list;
+    const lid = created.id as string;
+
+    // 1. Add entries, then catch one, then remove it, then rename and toggle visibility.
+    await alice.put(`/lists/${lid}/entries`, { entries: [{ variantKey: a, shiny: false }, { variantKey: b, shiny: false }] });
+    await alice.put(`/lists/${lid}/entries`, { entries: [{ variantKey: a, shiny: false, done: true, note: 'garder' }] });
+    await alice.del(`/lists/${lid}/entries`, { entries: [{ variantKey: a, shiny: false }] });
+    await alice.patch(`/lists/${lid}`, { name: 'Undo Renommé', visibility: 'private' });
+
+    const history = (await alice.get(`/lists/${lid}/history`)).body.events as Array<{ id: number; kind: string; undoable?: boolean; undoneAt?: string | null }>;
+    const ev = (kind: string) => history.find((e) => e.kind === kind)!;
+    expect(ev('created').undoable).toBeFalsy();
+    expect(ev('added').undoable).toBe(true);
+    expect(ev('caught').undoable).toBe(true);
+    expect(ev('removed').undoable).toBe(true);
+    expect(ev('renamed').undoable).toBe(true);
+    expect(ev('visibility').undoable).toBe(true);
+
+    // Non-owner cannot undo.
+    expect((await bob.post(`/lists/${lid}/history/${ev('renamed').id}/undo`)).status).toBe(404);
+
+    // Undo visibility & rename.
+    let res = await alice.post(`/lists/${lid}/history/${ev('visibility').id}/undo`);
+    expect(res.status).toBe(200);
+    expect(res.body.list.visibility).toBe('friends');
+    // Cannot undo the same event twice.
+    expect((await alice.post(`/lists/${lid}/history/${ev('visibility').id}/undo`)).status).toBe(400);
+
+    res = await alice.post(`/lists/${lid}/history/${ev('renamed').id}/undo`);
+    expect(res.status).toBe(200);
+    expect(res.body.list.name).toBe('Undo Test');
+
+    // Undo removal restores the exact row (including done + note!).
+    res = await alice.post(`/lists/${lid}/history/${ev('removed').id}/undo`);
+    expect(res.status).toBe(200);
+    const restored = res.body.list.entries.find((e: any) => e.variantKey === a && !e.shiny);
+    expect(restored).toMatchObject({ done: true, note: 'garder' });
+
+    // Undo caught flips it back to uncaught.
+    res = await alice.post(`/lists/${lid}/history/${ev('caught').id}/undo`);
+    expect(res.status).toBe(200);
+    expect(res.body.list.entries.find((e: any) => e.variantKey === a && !e.shiny).done).toBe(false);
+
+    // Undo added removes the added entries.
+    res = await alice.post(`/lists/${lid}/history/${ev('added').id}/undo`);
+    expect(res.status).toBe(200);
+    expect(res.body.list.entries).toHaveLength(0);
+
+    // Undone events are marked with undoneAt and no longer undoable.
+    const afterHistory = (await alice.get(`/lists/${lid}/history`)).body.events as Array<{ id: number; kind: string; undoable?: boolean; undoneAt?: string | null }>;
+    expect(afterHistory.find((e) => e.id === ev('added').id)?.undoneAt).toBeTruthy();
+    expect(afterHistory.find((e) => e.id === ev('added').id)?.undoable).toBe(false);
+
+    await alice.del(`/lists/${lid}`);
+  });
 });
 
 describe('genders in lists', () => {
@@ -886,6 +944,52 @@ describe('admin panel', () => {
     expect(after.find((o: any) => o.variantKey === keys[0]).label).toEqual({ en: 'Kept name' });
     await admin.patch('/overrides', { keys, shinyReleased: null, noMega: null });
     await admin.del(`/overrides/${encodeURIComponent(keys[0]!)}`);
+  });
+
+  it('supports FR-only names, syncs users collections when a manager marks shiny unavailable, and restores them on audit undo', async () => {
+    const target = ds.variants.find((v) => v.kind === 'costume' && v.hasShiny && v.shinyReleased !== false && !v.datamined && !v.key.endsWith('.g2'))!;
+    expect(target).toBeTruthy();
+
+    // Alice puts both shiny and non-shiny of this variant in her collection.
+    const lid = (await alice.post('/lists', { name: 'Sync Override Test' })).body.list.id as string;
+    await alice.put(`/lists/${lid}/entries`, {
+      entries: [
+        { variantKey: target.key, shiny: false },
+        { variantKey: target.key, shiny: true, done: true, note: 'à restaurer' },
+      ],
+    });
+    expect((await alice.get(`/lists/${lid}`)).body.list.entries.some((e: any) => e.variantKey === target.key && e.shiny)).toBe(true);
+
+    // Manager sets FR-only display name + marks shiny unavailable -> shiny entry is removed from Alice's list, non-shiny stays.
+    const put = await admin.put(`/overrides/${encodeURIComponent(target.key)}`, {
+      label: { fr: 'Chapeau spécial' },
+      shinyReleased: false,
+    });
+    expect(put.status).toBe(200);
+    expect(put.body.removedEntries).toBeGreaterThanOrEqual(1);
+    expect(put.body.updatedLists).toBeGreaterThanOrEqual(1);
+
+    const updatedDs = (await anon.get('/data/pokedex.json')).body as Dataset;
+    const v = updatedDs.variants.find((x) => x.key === target.key)!;
+    expect(v.label?.fr).toBe('Chapeau spécial');
+    expect(v.shinyReleased).toBe(false);
+
+    const afterEntries = (await alice.get(`/lists/${lid}`)).body.list.entries as Array<{ variantKey: string; shiny: boolean }>;
+    expect(afterEntries.some((e) => e.variantKey === target.key && e.shiny)).toBe(false);
+    expect(afterEntries.some((e) => e.variantKey === target.key && !e.shiny)).toBe(true);
+
+    // Undoing the audit entry restores both the override AND the pruned shiny entry!
+    const entry = (await admin.get('/admin/audit?kind=data')).body.entries.find(
+      (e: any) => e.action === 'override.set' && e.targetId === target.key,
+    );
+    expect(entry?.undoable).toBe(true);
+    expect((await admin.post(`/admin/audit/${entry.id}/undo`)).status).toBe(200);
+
+    const restoredEntries = (await alice.get(`/lists/${lid}`)).body.list.entries as Array<{ variantKey: string; shiny: boolean; done: boolean; note: string | null }>;
+    const restoredShiny = restoredEntries.find((e) => e.variantKey === target.key && e.shiny);
+    expect(restoredShiny).toMatchObject({ done: true, note: 'à restaurer' });
+
+    await alice.del(`/lists/${lid}`);
   });
 
   it('takes players reports for managers, and shows one announcement banner to everyone', async () => {

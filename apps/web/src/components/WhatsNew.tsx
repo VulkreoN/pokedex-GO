@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMe } from '../lib/auth.js';
-import { CHANGELOG, markChangelogSeen, unseenChangelog, type ChangelogEntry } from '../lib/changelog.js';
+import { CHANGELOG, markChangelogSeen, useUnseenChangelog, type ChangelogEntry } from '../lib/changelog.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { applySwUpdate, dismissSwUpdate, useSwUpdate } from '../lib/swUpdate.js';
 import { Badge, Button, Chip, IconButton, Sheet } from './ui.js';
@@ -11,7 +11,7 @@ export function WhatsNewBanner() {
   const t = useT();
   const { lang } = useLang();
   const me = useMe();
-  const [entries, setEntries] = useState(() => unseenChangelog());
+  const entries = useUnseenChangelog();
   const [open, setOpen] = useState(false);
   if (!me.data || !entries.length) return null;
 
@@ -20,7 +20,6 @@ export function WhatsNewBanner() {
   const dateLabel = new Date(`${latest.date}T12:00:00`).toLocaleDateString(lang, { day: 'numeric', month: 'short' });
   const close = () => {
     markChangelogSeen();
-    setEntries([]);
     setOpen(false);
   };
   return (

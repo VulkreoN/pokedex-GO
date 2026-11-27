@@ -83,7 +83,12 @@ export function PvpBattlePage() {
   if (ds.isPending) return <Spinner />;
   if (!pvp || !ds.data) return <Empty>{t.pvp_unavailable}</Empty>;
   const idx = ds.data;
-  const nameOf = (s: ReturnType<typeof useFighter>) => (s.form ? `${localized(s.form.name, lang)}${s.shadow ? ` ${t.tag_shadow.toLowerCase()}` : ''}` : '');
+  const nameOf = (s: ReturnType<typeof useFighter>) => {
+    if (!s.form) return '';
+    const base = localized(s.form.name, lang);
+    if (!s.shadow) return base;
+    return lang === 'fr' ? `${base} ${t.tag_shadow.toLowerCase()}` : `${t.tag_shadow} ${base}`;
+  };
   const pvpokeLink = a.built && b.built ? `https://pvpoke.com/battle/${LEAGUE_CP[league]}/${a.built.species.speciesId}/${b.built.species.speciesId}/${a.built.fighter.shields}${b.built.fighter.shields}/` : null;
 
   const swapSides = () => {
@@ -217,7 +222,8 @@ function ResultCard({ r, names, pvp, fighters }: { r: BattleResult; names: [stri
   const verdict = r.winner === null ? t.battle_draw : t.battle_wins(names[r.winner]);
   const moveLabel = (side: 0 | 1, id: string) => {
     const m = fighters[side].charged.find((c) => c.id === id) ?? Object.values(fighters[side].forms ?? {}).flatMap((f) => f.charged).find((c) => c.id === id);
-    return m ? moveName(pvp, { id, name: id, type: m.type, power: 0, energy: 0, energyGain: 0 }, lang) : id;
+    const fallback = id.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    return m ? moveName(pvp, { id, name: fallback, type: m.type, power: 0, energy: 0, energyGain: 0 }, lang) : fallback;
   };
   return (
     <section className="card mt-4 p-3" aria-label={t.battle_result}>
@@ -227,7 +233,7 @@ function ResultCard({ r, names, pvp, fighters }: { r: BattleResult; names: [stri
           <div key={i}>
             <div className="flex items-baseline justify-between text-xs">
               <span className="truncate font-semibold">{names[i]}</span>
-              <span className="tnum text-ink-3">{r.hp[i]}/{r.hpMax[i]} PV</span>
+              <span className="tnum text-ink-3">{r.hp[i]}/{r.hpMax[i]} {lang === 'fr' ? 'PV' : 'HP'}</span>
             </div>
             <div className="track mt-1 h-2 overflow-hidden rounded-full bg-paper-2">
               <div className={`h-full rounded-full ${r.hp[i] / r.hpMax[i] > 0.5 ? 'bg-go' : r.hp[i] / r.hpMax[i] > 0.2 ? 'bg-shiny' : 'bg-berry'}`} style={{ width: `${(100 * r.hp[i]) / r.hpMax[i]}%` }} />

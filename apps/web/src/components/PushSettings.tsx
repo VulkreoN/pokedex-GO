@@ -3,7 +3,7 @@ import type { NotificationType } from '@mydexpogo/shared';
 import { useMe } from '../lib/auth.js';
 import { useT } from '../lib/i18n.js';
 import { disablePush, enablePush, pushState, useNotifyPrefs, useSetNotifyPrefs, type PushState } from '../lib/social.js';
-import { Button } from './ui.js';
+import { Button, SwitchThumb } from './ui.js';
 import { useToast } from './toast.js';
 
 /** Account changes are not here: they always reach the player. Staff alerts only for managers and admins. */
@@ -49,26 +49,30 @@ export function PushSettings() {
       {state === 'needs-install' && <p className="mt-1 text-sm text-ink-2">{t.push_needs_install}</p>}
       {state === 'unsupported' && <p className="mt-1 text-sm text-ink-2">{t.push_unsupported}</p>}
 
-      <h3 className="mb-1 mt-4 text-sm font-semibold text-ink-2">{t.push_kinds}</h3>
-      <ul className="space-y-1">
-        {KINDS.filter((k) => k !== 'admin' || staff).map((k) => (
-          <li key={k}>
-            <label className="flex min-h-10 cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                className="h-5 w-5 shrink-0 accent-go"
-                checked={local[k] ?? prefs.data?.[k] ?? true}
+      <h3 className="mt-4 text-sm font-semibold text-ink-2">{t.push_kinds}</h3>
+      <p className="mb-2 text-xs text-ink-3">{t.push_kinds_hint}</p>
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+        {KINDS.filter((k) => k !== 'admin' || staff).map((k) => {
+          const on = local[k] ?? prefs.data?.[k] ?? true;
+          return (
+            <li key={k}>
+              <button
+                type="button"
+                aria-pressed={on}
                 disabled={!prefs.data}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setLocal((l) => ({ ...l, [k]: on }));
-                  setPrefs.mutate({ [k]: on }, { onError: () => setLocal((l) => ({ ...l, [k]: !on })) });
+                onClick={() => {
+                  const next = !on;
+                  setLocal((l) => ({ ...l, [k]: next }));
+                  setPrefs.mutate({ [k]: next }, { onError: () => setLocal((l) => ({ ...l, [k]: !next })) });
                 }}
-              />
-              <span className="text-sm">{t[`push_kind_${k}`]}</span>
-            </label>
-          </li>
-        ))}
+                className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-paper-2/50 disabled:opacity-50"
+              >
+                <span className="min-w-0 flex-1 text-sm">{t[`push_kind_${k}`]}</span>
+                <SwitchThumb on={on} />
+              </button>
+            </li>
+          );
+        })}
       </ul>
       <p className="mt-2 text-xs text-ink-3">{t.push_quiet} {t.push_account_always}</p>
     </section>

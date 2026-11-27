@@ -5,10 +5,11 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { ListSummary, ListVisibility } from '@mydexpogo/shared';
 import { Button, Chip, Empty, IconButton, Progress, Sheet, Spinner, SwitchThumb, TextField, TopBar } from '../components/ui.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { BannerSlot } from '../components/BannerSlot.js';
+import { PageTourButton } from '../components/PageTour.js';
 import { useToast } from '../components/toast.js';
-import { useDataset } from '../lib/dataset.js';
+import { normalize, useDataset } from '../lib/dataset.js';
+import { errorMessage } from '../lib/errors.js';
 import { LIST_TEMPLATES, buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
 import { useAllFriendLists } from '../lib/social.js';
 import { useT } from '../lib/i18n.js';
@@ -97,12 +98,14 @@ export function ListsPage() {
     e.preventDefault();
     if (!name.trim()) return;
     setFilling(true);
+    let createdId: string | null = null;
     try {
       const r = await create.mutateAsync({ name: name.trim(), description: description.trim() || null, visibility, alertPreEvolutions });
+      createdId = r.list.id;
       if (template !== 'empty' && dataset.data) {
         const entries = buildTemplateEntries(dataset.data, template);
         for (let k = 0; k < entries.length; k += 1000) {
-          await upsert.mutateAsync({ id: r.list.id, entries: entries.slice(k, k + 1000) });
+          await upsert.mutateAsync({ id: r.list.id, entries: entries.slice(k, k + 1000), insertOnly: true });
         }
         if (entries.length) toast(t.template_count(entries.length));
       }
@@ -111,6 +114,15 @@ export function ListsPage() {
       setDescription('');
       setAlertPreEvolutions(false);
       setTemplate('empty');
+    } catch (err) {
+      toast(errorMessage(t, err));
+      if (createdId) {
+        setOpen(false);
+        setName('');
+        setDescription('');
+        setAlertPreEvolutions(false);
+        setTemplate('empty');
+      }
     } finally {
       setFilling(false);
     }
@@ -129,13 +141,12 @@ export function ListsPage() {
       </TopBar>
       {tab === 'friends' ? (
         <main className="mx-auto max-w-6xl px-3 pb-24 sm:px-5">
-          <PageTourBanner page="lists" />
+          <BannerSlot page="lists" />
           <FriendLists lists={friendLists.data} pending={friendLists.isPending} />
         </main>
       ) : (
       <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${ordering ? 'pb-40' : 'pb-24'}`}>
-        <WhatsNewBanner />
-        <PageTourBanner page="lists" />
+        <BannerSlot page="lists" />
         {lists.isPending && <Spinner />}
         {lists.data?.length === 0 && (
           <Empty>
@@ -190,7 +201,7 @@ export function ListsPage() {
         ) : (
           <ul className="stagger grid grid-cols-1 gap-2 md:grid-cols-2">
             {(lists.data ?? [])
-              .filter((l) => !listQuery.trim() || `${l.name} ${l.description ?? ''}`.toLowerCase().includes(listQuery.trim().toLowerCase()))
+              .filter((l) => !listQuery.trim() || normalize(`${l.name} ${l.description ?? ''}`).includes(normalize(listQuery)))
               .map((l) => <ListCard key={l.id} l={l} />)}
           </ul>
         )}

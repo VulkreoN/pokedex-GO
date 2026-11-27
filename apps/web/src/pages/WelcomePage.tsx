@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import type { GameLang } from '@mydexpogo/shared';
@@ -9,8 +9,11 @@ import { useToast } from '../components/toast.js';
 import { Button, Chip, CopyButton, Spinner, SwitchThumb } from '../components/ui.js';
 import { api } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
+import { markChangelogSeen } from '../lib/changelog.js';
+import { useDataset } from '../lib/dataset.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { useCreateList } from '../lib/lists.js';
+import { buildTemplateEntries, type ListTemplateId } from '../lib/listTemplates.js';
+import { useCreateList, useUpsertEntries } from '../lib/lists.js';
 import { saveGameLang, savedGameLang } from '../lib/searchString.js';
 import { enableGuidedTours } from '../lib/tour.js';
 import { FriendCodeForm, fmtCode } from './FriendsPage.js';
@@ -18,22 +21,37 @@ import { FriendCodeForm, fmtCode } from './FriendsPage.js';
 const STEPS = ['hello', 'game', 'list', 'friends', 'notify'] as const;
 type Step = (typeof STEPS)[number];
 const TEMPLATES = ['shiny', 'lucky', 'dex', 'empty'] as const;
+const TEMPLATE_MAP: Record<(typeof TEMPLATES)[number], ListTemplateId> = {
+  shiny: 'shiny_released',
+  lucky: 'lucky_released',
+  dex: 'living_released',
+  empty: 'empty',
+};
 
 /** First steps of a new account: what the app does, the game's language, a first list, friends, notifications. */
 export function WelcomePage() {
   const t = useT();
   const { lang } = useLang();
   const me = useMe();
+  const dataset = useDataset();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
   const create = useCreateList();
+  const upsert = useUpsertEntries();
   const [step, setStep] = useState<Step>('hello');
   const [gameLang, setGameLang] = useState<GameLang>(() => savedGameLang(lang));
   const [template, setTemplate] = useState<(typeof TEMPLATES)[number] | null>('shiny');
+  const [prefill, setPrefill] = useState(true);
+  const [creatingList, setCreatingList] = useState(false);
   const [listId, setListId] = useState<string | null>(null);
   const [codeSaved, setCodeSaved] = useState(false);
   const [guidesOn, setGuidesOn] = useState(true);
+
+  const previewEntries = useMemo(() => {
+    if (!template || template === 'empty' || !dataset.data) return [];
+    return buildTemplateEntries(dataset.data, TEMPLATE_MAP[template]);
+  }, [template, dataset.data]);
 
   if (me.isPending) return <Spinner />;
   if (!me.data) return <Navigate to="/login" replace />;
@@ -43,7 +61,10 @@ export function WelcomePage() {
 
   /** Done or skipped: not shown again; the new list if one was made, the Pokédex otherwise. */
   const finish = async (opts?: { to?: string; skipped?: boolean }) => {
-    if (!opts?.skipped && guidesOn) enableGuidedTours(true);
+    if (!opts?.skipped && guidesOn) {
+      enableGuidedTours(true);
+      markChangelogSeen();
+    }
     await api('/auth/onboarded', { method: 'POST' }).catch(() => {});
     qc.setQueryData(['me'], { ...me.data, onboarded: true });
     navigate(opts?.to ?? (listId ? `/lists/${listId}` : '/dex'), { replace: true });
@@ -51,16 +72,26 @@ export function WelcomePage() {
 
   const makeList = async () => {
     if (listId || !template) return next();
-    {
-      try {
-        const r = await create.mutateAsync({ name: t.welcome_templates[template].name, description: t.welcome_templates[template].description || null, visibility: 'friends' });
-        setListId(r.list.id);
-      } catch {
-        toast(t.err_generic);
-        return;
+    setCreatingList(true);
+    try {
+      const r = await create.mutateAsync({
+        name: t.welcome_templates[template].name,
+        description: t.welcome_templates[template].description || null,
+        visibility: 'friends',
+      });
+      if (prefill && template !== 'empty' && dataset.data) {
+        const entries = buildTemplateEntries(dataset.data, TEMPLATE_MAP[template]);
+        for (let k = 0; k < entries.length; k += 1000) {
+          await upsert.mutateAsync({ id: r.list.id, entries: entries.slice(k, k + 1000), insertOnly: true });
+        }
       }
+      setListId(r.list.id);
+      next();
+    } catch {
+      toast(t.err_generic);
+    } finally {
+      setCreatingList(false);
     }
-    next();
   };
 
   const page = (title: string, text: ReactNode, body: ReactNode, action: ReactNode) => (
@@ -120,16 +151,35 @@ export function WelcomePage() {
           t.welcome_list_text,
           <div className="space-y-2" role="radiogroup">
             {TEMPLATES.map((k) => (
-              <button key={k} type="button" role="radio" aria-checked={template === k} disabled={!!listId} onClick={() => setTemplate(k)} className={`card block w-full p-3 text-left outline-offset-0 transition disabled:opacity-60 ${template === k ? 'outline outline-2 outline-go' : ''}`}>
+              <button key={k} type="button" role="radio" aria-checked={template === k} disabled={!!listId || creatingList} onClick={() => setTemplate(k)} className={`card block w-full p-3 text-left outline-offset-0 transition disabled:opacity-60 ${template === k ? 'outline outline-2 outline-go' : ''}`}>
                 <span className="block font-semibold">{t.welcome_templates[k].name}</span>
                 <span className="block text-sm text-ink-2">{t.welcome_templates[k].hint}</span>
               </button>
             ))}
+            {template && template !== 'empty' && !listId && (
+              <button
+                type="button"
+                aria-pressed={prefill}
+                disabled={creatingList}
+                onClick={() => setPrefill((v) => !v)}
+                className="flex w-full items-center gap-3 rounded-card border border-line bg-paper-2/50 px-3 py-2.5 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{t.welcome_prefill_toggle}</span>
+                  {previewEntries.length > 0 && (
+                    <span className="tnum block text-xs text-ink-3">{t.welcome_prefill_count(previewEntries.length)}</span>
+                  )}
+                </span>
+                <SwitchThumb on={prefill} />
+              </button>
+            )}
             {listId && <p className="text-sm font-semibold text-go-ink dark:text-go">{t.welcome_list_done}</p>}
           </div>,
           <>
-            <Button tone="ghost" onClick={() => { setTemplate(null); next(); }}>{t.welcome_later}</Button>
-            <Button tone="primary" className="flex-1" disabled={create.isPending} onClick={makeList}>{listId ? t.welcome_next : t.welcome_list_create}</Button>
+            <Button tone="ghost" disabled={creatingList} onClick={() => { setTemplate(null); next(); }}>{t.welcome_later}</Button>
+            <Button tone="primary" className="flex-1" disabled={create.isPending || creatingList} onClick={makeList}>
+              {creatingList ? t.template_filling : listId ? t.welcome_next : t.welcome_list_create}
+            </Button>
           </>,
         )}
 

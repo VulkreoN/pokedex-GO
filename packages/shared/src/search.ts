@@ -90,12 +90,25 @@ export function regionOfForm(form: string | null): Region | null {
   return null;
 }
 
+/** Region of a variant: checks the form token first, then its label when a manager reclassified it as regional. */
+export function regionOfVariant(v: Pick<Variant, 'kind' | 'form' | 'label'>): Region | null {
+  if (v.kind !== 'regional') return null;
+  const fromForm = regionOfForm(v.form);
+  if (fromForm) return fromForm;
+  const text = `${v.label?.en ?? ''} ${v.label?.fr ?? ''}`.toLowerCase();
+  if (/\balola/.test(text)) return 'alola';
+  if (/\bgalar/.test(text)) return 'galar';
+  if (/\bhisui/.test(text)) return 'hisui';
+  if (/\bpaldea/.test(text)) return 'paldea';
+  return null;
+}
+
 /**
  * Turns a list entry's variant into a search target. The gender filter is only added when the variant exists in
  * both genders: a female-only Pokémon needs no "female".
  */
 export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGender | null, tag: EntryTag = '', speciesRegions: Region[] = []): SearchTarget {
-  const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
+  const region = regionOfVariant(v);
   // Exact: a normal entry is not shiny, a plain or regional form is not a costume.
   const both = (v.genders ?? ['m', 'f']).length > 1;
   return {
@@ -114,8 +127,7 @@ export function targetFromVariant(v: Variant, shiny: boolean, gender: EntryGende
 export function regionsByDex(variants: Variant[]): Map<number, Region[]> {
   const out = new Map<number, Region[]>();
   for (const v of variants) {
-    if (v.kind !== 'regional') continue;
-    const r = regionOfForm(v.form);
+    const r = regionOfVariant(v);
     if (!r) continue;
     const list = out.get(v.dex) ?? [];
     if (!list.includes(r)) list.push(r);
@@ -149,7 +161,7 @@ const KEYWORDS: Record<GameLang, Record<string, string | null>> = {
     hisui: 'hisui',
     paldea: 'paldea',
     background: null,
-    dynamax: null,
+    dynamax: 'dynamax',
     gigantamax: 'gigamax',
     // Appraisal stars per stat: "0-1attaque&3-4défense&3-4pv".
     attack: 'attaque',
@@ -178,7 +190,7 @@ export function speciesSearchInfo(variants: Variant[]): Map<number, SpeciesSearc
   const out = new Map<number, SpeciesSearchInfo>();
   for (const v of variants) {
     const info = out.get(v.dex) ?? { regions: [], costumes: false, genders: [] };
-    const r = v.kind === 'regional' ? regionOfForm(v.form) : null;
+    const r = regionOfVariant(v);
     if (r && !info.regions.includes(r)) info.regions.push(r);
     if (v.kind === 'costume') info.costumes = true;
     for (const g of v.genders ?? ['m', 'f']) if (!info.genders.includes(g)) info.genders.push(g);

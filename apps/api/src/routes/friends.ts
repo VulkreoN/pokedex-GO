@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { VIVILLON_PATTERNS, isVivillonPattern, vivillonPatternFromKey, type PostcardFriendSuggestion, type UserPostcard, type VivillonPattern } from '@mydexpogo/shared';
+import { MEDAL_MIN_LIST_ENTRIES, VIVILLON_PATTERNS, isVivillonPattern, vivillonPatternFromKey, type PostcardFriendSuggestion, type UserPostcard, type VivillonPattern } from '@mydexpogo/shared';
 import { and, asc, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -272,14 +272,16 @@ export const friendRoutes = new Hono<AuthEnv>()
     const users = ids.length ? await db.select().from(schema.users).where(inArray(schema.users.id, ids)) : [];
     const byId = new Map(users.map((u) => [u.id, pub(u)]));
     return c.json({
-      requests: rows.map((r) => ({ id: r.id, from: byId.get(r.fromId), to: byId.get(r.toId), status: r.status, createdAt: r.createdAt.toISOString() })),
+      requests: rows
+        .filter((r) => byId.has(r.fromId) && byId.has(r.toId))
+        .map((r) => ({ id: r.id, from: byId.get(r.fromId)!, to: byId.get(r.toId)!, status: r.status, createdAt: r.createdAt.toISOString() })),
     });
   })
   .post('/requests', rateLimit({ windowMs: 60_000, max: 20 }), zValidator('json', z.object({ friendCode: z.string().max(40) })), async (c) => {
     const me = c.get('user');
     const code = normalizeFriendCode(c.req.valid('json').friendCode);
     if (!code) return c.json({ error: 'invalid_code' }, 400);
-    const [target] = await db.select().from(schema.users).where(eq(schema.users.friendCode, code)).limit(1);
+    const [target] = await db.select().from(schema.users).where(and(eq(schema.users.friendCode, code), isNull(schema.users.suspendedAt))).limit(1);
     if (!target) return c.json({ error: 'not_found' }, 404);
     if (target.id === me.id) return c.json({ error: 'self' }, 400);
     if (await areFriends(me.id, target.id)) return c.json({ error: 'already_friends' }, 409);
@@ -392,7 +394,7 @@ export const friendRoutes = new Hono<AuthEnv>()
       profile: {
         friendsCount: friendCount?.n ?? 0,
         pvpCount: (pvpMonCount?.n ?? 0) + (pvpTeamCount?.n ?? 0),
-        completedLists: lists.filter((l) => l.entryCount > 0 && l.doneCount === l.entryCount).length,
+        completedLists: lists.filter((l) => l.entryCount >= MEDAL_MIN_LIST_ENTRIES && l.doneCount === l.entryCount).length,
         entries: caughtRows,
       },
     });

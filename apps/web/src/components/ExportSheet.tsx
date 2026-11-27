@@ -34,20 +34,18 @@ interface ExportSheetProps {
 }
 
 export function ExportSheet(props: ExportSheetProps) {
-  const t = useT();
-  return (
-    <Sheet open={props.open} onClose={props.onClose} title={t.export_title}>
-      {props.open && <ExportSheetBody {...props} />}
-    </Sheet>
-  );
+  return <ExportSheetInner {...props} />;
 }
 
-function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }: ExportSheetProps) {
+function ExportSheetInner({ open, onClose, idx, list, defaultOnlyMissing, friendCode }: ExportSheetProps) {
   const t = useT();
   const { lang } = useLang();
   const toast = useToast();
 
   const [exportMissing, setExportMissing] = useState(defaultOnlyMissing);
+  useEffect(() => {
+    if (open) setExportMissing(defaultOnlyMissing);
+  }, [open, defaultOnlyMissing]);
 
   const [themeChoice, setThemeChoiceState] = useState<ExportThemeChoice>(savedExportTheme);
   const setThemeChoice = (c: ExportThemeChoice) => {
@@ -64,7 +62,9 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
   const [exporting, setExporting] = useState<'save' | 'copy' | 'share' | 'pdf' | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [readyImages, setReadyImages] = useState<{ blob: Blob; name: string }[] | null>(null);
-  useEffect(() => () => setReadyImages(null), []);
+  useEffect(() => {
+    if (!open) setReadyImages(null);
+  }, [open]);
   const [withSearch, setWithSearchState] = useState(() => {
     try {
       return localStorage.getItem('exportWithSearch') !== '0';
@@ -83,8 +83,8 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
   const searchSettings = useSearchSettings();
   const ss = { ...searchSettings.settings, onlyMissing: true };
   const exportedSearch = useMemo(
-    () => exportSearch(idx, list.entries, ss),
-    [idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength],
+    () => (open ? exportSearch(idx, list.entries, ss) : { text: '', parts: [], blind: [] }),
+    [open, idx, list.entries, ss.gameLang, ss.exclude, ss.preEvolutions, ss.maxLength],
   );
   const search = exportedSearch.text;
 
@@ -141,139 +141,136 @@ function ExportSheetBody({ onClose, idx, list, defaultOnlyMissing, friendCode }:
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        <Chip active={exportMissing} onClick={() => setExportMissing(true)}>{t.export_scope_missing}</Chip>
-        <Chip active={!exportMissing} onClick={() => setExportMissing(false)}>{t.export_scope_all}</Chip>
-      </div>
-
-      {/* Live miniature preview reflecting the active theme, scope, note, and friend code. */}
-      <ExportPreview idx={idx} list={list} onlyMissing={exportMissing} theme={theme} note={note.trim()} friendCode={activeCode} />
-
-      {/* Visual style swatches: Auto + 8 Pokémon GO collector themes. */}
-      <section aria-label={t.export_style}>
-        <p className="mb-1.5 text-sm font-semibold">{t.export_style}</p>
-        <div className="grid grid-cols-3 gap-1.5">
-          <ThemeSwatchButton
-            active={themeChoice === 'auto'}
-            onClick={() => setThemeChoice('auto')}
-            theme={EXPORT_THEMES[suggestedId]}
-            label={`${t.export_theme_auto} · ${t.export_themes[suggestedId]}`}
-          />
-          {EXPORT_THEME_IDS.map((id) => (
-            <ThemeSwatchButton
-              key={id}
-              active={themeChoice === id}
-              onClick={() => setThemeChoice(id)}
-              theme={EXPORT_THEMES[id]}
-              label={t.export_themes[id] ?? id}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* Image export actions. */}
-      <section className="card space-y-3 p-3" aria-label={t.export_image}>
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-go-ink">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" /></svg>
-          </span>
-          <span>
-            <span className="block font-semibold">{t.export_image}</span>
-            <span className="block text-xs text-ink-3">{t.export_image_hint}</span>
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Chip active={imageLayout === 'preview'} onClick={() => setImageLayout('preview')} className="min-h-8 px-2.5 text-xs">{t.export_layout_preview}</Chip>
-          <Chip active={imageLayout === 'compact'} onClick={() => setImageLayout('compact')} className="min-h-8 px-2.5 text-xs">{t.export_layout_compact}</Chip>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button tone="primary" className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('save')}>{exporting === 'save' ? busyLabel : t.export_save}</Button>
-          {canCopyPicture() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('copy')}>{exporting === 'copy' ? busyLabel : t.copy}</Button>}
-          {canSharePictures() && <Button className="min-h-10 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('share')}>{exporting === 'share' ? busyLabel : t.share}</Button>}
-        </div>
-        {readyImages && readyImages.length > 0 && (
-          <div className="rounded-xl border border-go/40 bg-go-soft/40 p-2.5">
-            <p className="text-xs font-bold text-go-ink">{t.export_ready_title(readyImages.length)}</p>
-            <p className="mt-0.5 text-[11px] text-ink-2">{t.export_ready_hint}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {readyImages.map((img, i) => (
-                <Button
-                  key={img.name}
-                  className="min-h-9 px-3 text-xs"
-                  onClick={() => downloadBlob(img.blob, img.name)}
-                >
-                  {t.export_page_btn(i + 1, readyImages.length)}
-                </Button>
-              ))}
-              {canSharePictures() && (
-                <Button
-                  tone="primary"
-                  className="min-h-9 px-3 text-xs"
-                  onClick={() => void sharePictures(readyImages.map((x) => x.blob), readyImages.map((x) => x.name), list.name).catch(() => toast(t.err_generic))}
-                >
-                  {t.export_share_all(readyImages.length)}
-                </Button>
-              )}
-            </div>
+  const footer = open ? (
+    <div className="space-y-2">
+      {readyImages && readyImages.length > 0 && (
+        <div className="rounded-xl border border-go/40 bg-go-soft/40 p-2.5">
+          <p className="text-xs font-bold text-go-ink">{t.export_ready_title(readyImages.length)}</p>
+          <p className="mt-0.5 text-[11px] text-ink-2">{t.export_ready_hint}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {readyImages.map((img, i) => (
+              <Button
+                key={img.name}
+                className="min-h-8 px-2.5 text-xs"
+                onClick={() => downloadBlob(img.blob, img.name)}
+              >
+                {t.export_page_btn(i + 1, readyImages.length)}
+              </Button>
+            ))}
+            {canSharePictures() && (
+              <Button
+                tone="primary"
+                className="min-h-8 px-2.5 text-xs"
+                onClick={() => void sharePictures(readyImages.map((x) => x.blob), readyImages.map((x) => x.name), list.name).catch(() => toast(t.err_generic))}
+              >
+                {t.export_share_all(readyImages.length)}
+              </Button>
+            )}
           </div>
-        )}
-      </section>
-
-      {/* PDF export button. */}
-      <button
-        type="button"
-        disabled={!!exporting}
-        onClick={() => exportAs('pdf')}
-        aria-label={t.export_pdf}
-        className="card flex w-full items-center gap-3 p-3 text-left transition hover:brightness-[0.98] active:scale-[0.98] disabled:opacity-60"
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-go-ink">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
-        </span>
-        <span>
-          <span className="block font-semibold">{exporting === 'pdf' ? busyLabel : t.export_pdf_short}</span>
-          <span className="block text-xs text-ink-3">{t.export_pdf_hint}</span>
-        </span>
-      </button>
-
-      {/* Optional visual customizations: short trainer note + friend code. */}
-      <div className="space-y-2.5">
-        <TextField
-          label={t.export_note_label}
-          placeholder={t.export_note_placeholder}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          maxLength={80}
-        />
-        {friendCode && (
-          <button type="button" aria-pressed={showCode} onClick={() => setShowCode(!showCode)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">{t.export_show_code}</span>
-              <span className="block text-xs text-ink-3">{t.export_show_code_hint}</span>
-            </span>
-            <SwitchThumb on={showCode} />
-          </button>
-        )}
-      </div>
-
-      {/* In-game search string & QR code settings. */}
-      <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
-          <span className="block text-xs text-ink-3">{t.export_with_search}</span>
-        </span>
-        <SwitchThumb on={withSearch} />
-      </button>
-      {withSearch && (
-        <>
-          {!search && <p className="text-xs text-ink-3">{t.export_search_empty}</p>}
-          {search && exportedSearch.blind.length > 0 && <FormBlindWarning idx={idx} variants={exportedSearch.blind} />}
-          <SearchSettingsPanel s={searchSettings} showOnlyMissing={false} />
-        </>
+        </div>
       )}
+      <div className="flex flex-wrap gap-2">
+        <Button tone="primary" className="min-h-11 flex-1 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('save')}>
+          {exporting === 'save' ? busyLabel : `🖼️ ${t.export_save}`}
+        </Button>
+        {canCopyPicture() && (
+          <Button className="min-h-11 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('copy')}>
+            {exporting === 'copy' ? busyLabel : t.copy}
+          </Button>
+        )}
+        {canSharePictures() && (
+          <Button className="min-h-11 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('share')}>
+            {exporting === 'share' ? busyLabel : t.share}
+          </Button>
+        )}
+        <Button className="min-h-11 px-3 text-sm" disabled={!!exporting} onClick={() => exportAs('pdf')} aria-label={t.export_pdf}>
+          {exporting === 'pdf' ? busyLabel : `📄 ${t.export_pdf_short}`}
+        </Button>
+      </div>
     </div>
+  ) : undefined;
+
+  return (
+    <Sheet open={open} onClose={onClose} title={t.export_title} footer={footer}>
+      {open && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip active={exportMissing} onClick={() => setExportMissing(true)}>{t.export_scope_missing}</Chip>
+            <Chip active={!exportMissing} onClick={() => setExportMissing(false)}>{t.export_scope_all}</Chip>
+          </div>
+
+          {/* Live miniature preview reflecting the active theme, scope, note, and friend code. */}
+          <ExportPreview idx={idx} list={list} onlyMissing={exportMissing} theme={theme} note={note.trim()} friendCode={activeCode} />
+
+          {/* Visual style swatches: Auto + 8 Pokémon GO collector themes. */}
+          <section aria-label={t.export_style}>
+            <p className="mb-1.5 text-sm font-semibold">{t.export_style}</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              <ThemeSwatchButton
+                active={themeChoice === 'auto'}
+                onClick={() => setThemeChoice('auto')}
+                theme={EXPORT_THEMES[suggestedId]}
+                label={`${t.export_theme_auto} · ${t.export_themes[suggestedId]}`}
+              />
+              {EXPORT_THEME_IDS.map((id) => (
+                <ThemeSwatchButton
+                  key={id}
+                  active={themeChoice === id}
+                  onClick={() => setThemeChoice(id)}
+                  theme={EXPORT_THEMES[id]}
+                  label={t.export_themes[id] ?? id}
+                />
+              ))}
+            </div>
+          </section>
+
+          {/* Image layout choice */}
+          <section aria-label={t.export_image}>
+            <p className="mb-1.5 text-sm font-semibold">{t.export_image} <span className="text-xs font-normal text-ink-3">· {t.export_image_hint}</span></p>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={imageLayout === 'preview'} onClick={() => setImageLayout('preview')} className="min-h-8 px-2.5 text-xs">{t.export_layout_preview}</Chip>
+              <Chip active={imageLayout === 'compact'} onClick={() => setImageLayout('compact')} className="min-h-8 px-2.5 text-xs">{t.export_layout_compact}</Chip>
+            </div>
+          </section>
+
+          {/* Optional visual customizations: short trainer note + friend code. */}
+          <div className="space-y-2.5">
+            <TextField
+              label={t.export_note_label}
+              placeholder={t.export_note_placeholder}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={80}
+            />
+            {friendCode && (
+              <button type="button" aria-pressed={showCode} onClick={() => setShowCode(!showCode)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{t.export_show_code}</span>
+                  <span className="block text-xs text-ink-3">{t.export_show_code_hint}</span>
+                </span>
+                <SwitchThumb on={showCode} />
+              </button>
+            )}
+          </div>
+
+          {/* In-game search string & QR code settings. */}
+          <button type="button" aria-pressed={withSearch} onClick={() => setWithSearch(!withSearch)} className="flex w-full items-center gap-3 rounded-card border border-line px-3 py-2.5 text-left">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">{t.export_search_toggle}</span>
+              <span className="block text-xs text-ink-3">{t.export_with_search}</span>
+            </span>
+            <SwitchThumb on={withSearch} />
+          </button>
+          {withSearch && (
+            <>
+              {!search && <p className="text-xs text-ink-3">{t.export_search_empty}</p>}
+              {search && exportedSearch.blind.length > 0 && <FormBlindWarning idx={idx} variants={exportedSearch.blind} />}
+              <SearchSettingsPanel s={searchSettings} showOnlyMissing={false} />
+            </>
+          )}
+        </div>
+      )}
+    </Sheet>
   );
 }
 

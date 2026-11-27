@@ -3,6 +3,7 @@
  * archive, and serves everything from memory with manager overrides merged in.
  */
 import { recordSource } from '../lib/health.js';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_SEEN_BEFORE_TRACKING, PIPELINE_VERSION, applyManualOverrides, repairFirstSeen, buildDataset, fetchLiveEvents, mergeEvents, type ArchivedEvent, type ManualOverrides } from '@mydexpogo/data';
@@ -73,6 +74,9 @@ class DataService {
   get rawDataset(): Dataset | null { return this.raw; }
   getStatus(): DataStatus { return { ...this.status, eventsArchived: this.events.length }; }
   getEventsBody() { return this.eventsBody; }
+  findArchivedEvent(eventID: string): ArchivedEvent | undefined {
+    return this.events.find((e) => e.eventID === eventID);
+  }
 
   private readyListeners: (() => Promise<void> | void)[] = [];
   /** Runs after the dataset is loaded from disk and after every successful refresh. */
@@ -111,10 +115,32 @@ class DataService {
     return null;
   }
 
-  /** Original dataset metadata for a variant (even when hidden by a manager override), for restore UIs. */
-  rawVariantMeta(key: string): { dex: number; label: LocalizedText | null; img: string | null; kind: VariantKind } | null {
+  /** Original dataset metadata for a variant (even when hidden by a manager override), for manager & restore UIs. */
+  rawVariantMeta(key: string): {
+    dex: number;
+    label: LocalizedText | null;
+    img: string | null;
+    kind: VariantKind;
+    released: boolean;
+    shinyReleased: boolean;
+    noEvolve: boolean;
+    noMega: boolean;
+    genders: Gender[] | null;
+  } | null {
     const v = this.raw?.variants.find((x) => x.key === key);
-    return v ? { dex: v.dex, label: v.label, img: v.img, kind: v.kind } : null;
+    return v
+      ? {
+          dex: v.dex,
+          label: v.label,
+          img: v.img,
+          kind: v.kind,
+          released: !v.datamined,
+          shinyReleased: v.hasShiny && v.shinyReleased !== false,
+          noEvolve: !!v.noEvolve,
+          noMega: !!v.noMega,
+          genders: v.genders ?? null,
+        }
+      : null;
   }
 
   /** "Pikachu · Casquette d'Ash" for messages; the key when the dataset does not know it. */
@@ -289,7 +315,7 @@ class DataService {
     const before = this.seenSpecies.size;
     const texts: string[] = [JSON.stringify(events)];
     for (const f of ['raids.json', 'research.json', 'eggs.json']) {
-      texts.push(await fetch(SCRAPEDDUCK + f).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
+      texts.push(await fetch(SCRAPEDDUCK + f, { signal: AbortSignal.timeout(15_000) }).then((r) => (r.ok ? r.text() : '')).catch(() => ''));
     }
     for (const t of texts) {
       for (const m of t.matchAll(/\/(?:pm(\d{1,4})\.|pokemon_icon_(\d{3})_)/g)) this.seenSpecies.add(Number(m[1] ?? m[2]));
@@ -305,24 +331,24 @@ class DataService {
     const out: SourceFreshness[] = [];
     for (const s of SOURCE_REPOS) {
       const url = `https://api.github.com/repos/${s.repo}/commits?per_page=1${s.branch ? `&sha=${s.branch}` : ''}`;
-      const updatedAt = await fetch(url, { headers })
+      const updatedAt = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => (Array.isArray(j) && j[0] ? (j[0].commit?.committer?.date as string) : null))
         .catch(() => null);
       out.push({ name: s.name, label: s.label, updatedAt, url: `https://github.com/${s.repo}` });
     }
-    const pictures = await fetch('https://trade.pokemongopro.com/assets/pokemon_images.txt', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
+    const pictures = await fetch('https://trade.pokemongopro.com/assets/pokemon_images.txt', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' }, signal: AbortSignal.timeout(10_000) })
       .then((r) => r.headers.get('last-modified'))
       .catch(() => null);
     out.push({ name: 'pictures', label: 'Images (pokemongopro, miroir PokeMiners)', updatedAt: pictures ? new Date(pictures).toISOString() : null, url: 'https://trade.pokemongopro.com' });
     // Leek Duck's checklist has no date of its own: the latest shiny it lists as out.
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
-    const lastShiny = await fetch('https://leekduck.com/shiny/pms.json', { headers: { 'user-agent': 'mydexpogo' } })
+    const lastShiny = await fetch('https://leekduck.com/shiny/pms.json', { headers: { 'user-agent': 'mydexpogo' }, signal: AbortSignal.timeout(10_000) })
       .then((r) => (r.ok ? (r.json() as Promise<{ released_date?: string }[]>) : []))
       .then((list) => list.map((x) => x.released_date ?? '').filter((d) => d && d <= today).sort().pop() ?? null)
       .catch(() => null);
     out.push({ name: 'shiny', label: 'Shinies sortis (Leek Duck, dernier ajouté)', updatedAt: lastShiny ? new Date(lastShiny.replace(/\//g, '-')).toISOString() : null, url: 'https://leekduck.com/shiny/' });
-    const released = await fetch('https://pogoapi.net/api/v1/released_pokemon.json', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' } })
+    const released = await fetch('https://pogoapi.net/api/v1/released_pokemon.json', { method: 'HEAD', headers: { 'user-agent': 'mydexpogo' }, signal: AbortSignal.timeout(10_000) })
       .then((r) => r.headers.get('last-modified'))
       .catch(() => null);
     out.push({ name: 'released', label: 'Pokémon sortis (pogoapi.net, complété par Leek Duck)', updatedAt: released ? new Date(released).toISOString() : null, url: 'https://pogoapi.net' });
@@ -362,7 +388,7 @@ class DataService {
     for (const r of rows) {
       manual[r.variantKey] = {
         released: r.released,
-        label: r.labelEn ? { en: r.labelEn, ...(r.labelFr ? { fr: r.labelFr } : {}) } : null,
+        label: r.labelEn || r.labelFr ? { en: r.labelEn ?? '', ...(r.labelFr ? { fr: r.labelFr } : {}) } : null,
         genders: r.genders ?? null,
         shinyReleased: r.shinyReleased,
         noEvolve: r.noEvolve,
@@ -377,9 +403,7 @@ class DataService {
 }
 
 function hashShort(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i += 97) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
+  return createHash('sha256').update(s).digest('hex').slice(0, 12);
 }
 
 export const dataService = new DataService();

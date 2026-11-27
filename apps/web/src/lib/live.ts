@@ -276,10 +276,14 @@ export function liveName(name: string, image: string, speciesOrIdx: SpeciesOrIdx
         .replace(/,? and /g, ', ');
     }
   } else if (rest.endsWith(` ${sp.name.en}`)) {
-    // Costume/form prefix before species name ("Sun Crown Pikachu", "Day Scarf Espeon", "Dusk Form Rockruff")
+    // Costume/form prefix before species name ("Sun Crown Pikachu", "Origin Forme Dialga", "Curly Form Tatsugiri")
     const prefix = rest.slice(0, rest.length - sp.name.en.length).trim();
     if (/^Dusk(?: Form)?$/i.test(prefix)) suffix = ' (Forme Crépusculaire)';
-    else suffix = ` (${costumePrefixFr(prefix)})`;
+    else {
+      const formMapped = formInnerFr(prefix);
+      const translated = formMapped && formMapped !== prefix ? formMapped : costumePrefixFr(prefix);
+      suffix = ` (${translated})`;
+    }
     explicitFormOrCostume = true;
   } else {
     return name;
@@ -325,6 +329,7 @@ export function raidEventFor(bossName: string, events: GameEvent[], now = Date.n
 
 export function formatUntil(end: string, lang: string): string {
   const d = new Date(end);
+  if (Number.isNaN(d.getTime())) return '';
   const day = new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'short' }).format(d);
   const time = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' }).format(d);
   return lang === 'fr' ? `jusqu'au ${day} ${time}` : `until ${day} ${time}`;
@@ -363,7 +368,9 @@ export function countdownOf(
 export function formatRange(start: string | null, end: string | null, lang: string): string {
   if (!start) return '';
   const s = new Date(start);
-  const e = end ? new Date(end) : null;
+  if (Number.isNaN(s.getTime())) return '';
+  const rawE = end ? new Date(end) : null;
+  const e = rawE && !Number.isNaN(rawE.getTime()) ? rawE : null;
   const day = new Intl.DateTimeFormat(lang, { weekday: 'short', day: 'numeric', month: 'short' });
   const time = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' });
   if (!e) return `${day.format(s)} ${time.format(s)}`;

@@ -17,8 +17,19 @@ export interface DataStatus {
   sources: SourceFreshness[];
   feed?: { enabled: { discord: string[]; news: string[] }; lastRunAt: string | null; lastError: string | null; running: boolean; pending: number };
 }
-export interface OverrideMeta { dex: number; label: LocalizedText | null; img: string | null; kind: VariantKind }
+export interface OverrideMeta {
+  dex: number;
+  label: LocalizedText | null;
+  img: string | null;
+  kind: VariantKind;
+  released?: boolean;
+  shinyReleased?: boolean;
+  noEvolve?: boolean;
+  noMega?: boolean;
+  genders?: Gender[] | null;
+}
 export interface Override { variantKey: string; released: boolean | null; label: LocalizedText | null; genders: Gender[] | null; shinyReleased: boolean | null; noEvolve: boolean | null; noMega: boolean | null; kind: VariantKind | null; hidden: boolean | null; meta?: OverrideMeta | null; updatedBy: string | null; updatedAt: string }
+export type OverrideLabelInput = { en?: string; fr?: string } | null;
 
 export const useDataStatus = () => useQuery({ queryKey: ['data-status'], queryFn: () => api<DataStatus>('/data/status'), refetchInterval: (q) => (q.state.data?.running ? 5000 : false) });
 
@@ -29,11 +40,10 @@ export const useOverrides = (enabled: boolean) =>
 export function useBulkOverride() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { keys: string[]; released?: boolean | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
-      api<{ ok: true; count: number }>('/overrides', { method: 'PATCH', body }),
+    mutationFn: (body: { keys: string[]; released?: boolean | null; label?: OverrideLabelInput; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
+      api<{ ok: true; count: number; updatedLists?: number; removedEntries?: number }>('/overrides', { method: 'PATCH', body }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['overrides'] });
-      qc.invalidateQueries({ queryKey: ['dataset'] });
+      for (const k of [['overrides'], ['dataset'], ['lists'], ['list'], ['lists-membership'], ['postcards-discover']]) void qc.invalidateQueries({ queryKey: k });
     },
   });
 }
@@ -42,14 +52,13 @@ export function useSetOverride() {
   const qc = useQueryClient();
   return useMutation({
     // A save rewrites the whole correction: callers pass every field, the ones they did not touch included.
-    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: LocalizedText | null; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
-      api<{ ok: true }>(`/overrides/${vars.variantKey}`, {
+    mutationFn: (vars: { variantKey: string; released?: boolean | null; label?: OverrideLabelInput; genders?: Gender[] | null; shinyReleased?: boolean | null; noEvolve?: boolean | null; noMega?: boolean | null; kind?: VariantKind | null; hidden?: boolean | null }) =>
+      api<{ ok: true; updatedLists?: number; removedEntries?: number }>(`/overrides/${vars.variantKey}`, {
         method: 'PUT',
         body: { released: vars.released ?? null, label: vars.label ?? null, genders: vars.genders ?? null, shinyReleased: vars.shinyReleased ?? null, noEvolve: vars.noEvolve ?? null, noMega: vars.noMega ?? null, kind: vars.kind ?? null, hidden: vars.hidden ?? null },
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['overrides'] });
-      qc.invalidateQueries({ queryKey: ['dataset'] });
+      for (const k of [['overrides'], ['dataset'], ['lists'], ['list'], ['lists-membership'], ['postcards-discover']]) void qc.invalidateQueries({ queryKey: k });
     },
   });
 }

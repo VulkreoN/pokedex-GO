@@ -73,10 +73,12 @@ export function ReviewPage() {
       </TopBar>
       <main className="mx-auto max-w-6xl space-y-3 px-3 pb-24 sm:px-5">
         {status === 'new' && (
-          <section>
-            <h2 className="mb-2 text-base font-bold">{t.admin_tabs.reports}</h2>
-            <Reports />
-          </section>
+          <details open className="card p-3">
+            <summary className="cursor-pointer text-sm font-bold">{t.admin_tabs.reports}</summary>
+            <div className="mt-2.5">
+              <Reports />
+            </div>
+          </details>
         )}
         {status === 'new' && idx && <GenderReview idx={idx} />}
         {status === 'new' && idx && <HiddenVariantsCard idx={idx} />}
@@ -106,7 +108,7 @@ export function ReviewPage() {
               <Excerpt text={item.content} />
               {item.attachments.filter((a) => a.text && !a.contentType?.startsWith('image/')).map((a) => (
                 <details key={a.name} className="mt-2 rounded-lg bg-paper-2 p-2 text-xs">
-                  <summary className="cursor-pointer font-semibold">{a.name} · {Math.round(a.size / 1024)} Ko</summary>
+                  <summary className="cursor-pointer font-semibold">{a.name} · {Math.round(a.size / 1024)} {lang === 'fr' ? 'Ko' : 'KB'}</summary>
                   <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all">{a.text!.slice(0, 20000)}</pre>
                 </details>
               ))}
@@ -119,7 +121,7 @@ export function ReviewPage() {
                       const sp = v && idx.speciesByDex.get(v.dex);
                       const on = sel.has(m.variantKey);
                       return (
-                        <li key={m.variantKey}>
+                        <li key={m.variantKey} className="flex items-stretch gap-1">
                           <button
                             type="button"
                             disabled={item.status !== 'new'}
@@ -133,6 +135,15 @@ export function ReviewPage() {
                               <span className="block text-ink-2">{v ? localized(v.label, lang) || t.normal : m.variantKey}{v?.datamined ? '' : ` · ${t.mark_released}`}</span>
                             </span>
                           </button>
+                          {v && (
+                            <Link
+                              to={`/dex/${v.dex}`}
+                              className="inline-flex items-center rounded-xl border border-line bg-paper/60 px-2 text-[11px] font-semibold text-sky hover:bg-paper-2"
+                              title={t.review_open_dex}
+                            >
+                              {t.review_open_dex} ›
+                            </Link>
+                          )}
                         </li>
                       );
                     })}

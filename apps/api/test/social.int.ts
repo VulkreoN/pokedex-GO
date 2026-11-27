@@ -195,7 +195,17 @@ describe('"I have it"', () => {
 
   it('respects the per-kind switch: inbox yes, push no', async () => {
     const prefs = await owner.put('/notifications/prefs', { offer: false });
-    expect(prefs.body.prefs).toEqual({ friend_request: true, friend_accepted: true, offer: false, offer_caught: true });
+    expect(prefs.body.prefs).toEqual({
+      friend_request: true,
+      friend_accepted: true,
+      offer: false,
+      offer_caught: true,
+      raid: true,
+      spawn: true,
+      quest: true,
+      announcement: true,
+      admin: true,
+    });
     await owner.post('/notifications/read', {}); // a new burst starts a new notification
     const before = (await owner.get('/push/sent')).body.sent.length;
     await friend.post(`/lists/${listId}/offers`, { variantKey: '1', gender: 'f', shiny: false, on: true });
@@ -367,7 +377,7 @@ describe('friend profiles & postcards visibility', () => {
     expect(profRes.body.lists.map((l: any) => l.name)).toEqual(['Shared Dex']);
     expect(profRes.body.profile).toMatchObject({
       friendsCount: 1,
-      completedLists: 1,
+      completedLists: 0, // < MEDAL_MIN_LIST_ENTRIES (25) does not count toward the Completionist medal
     });
     expect(profRes.body.profile.entries).toEqual([{ variantKey: '25', shiny: true, tag: '', done: true }]);
   });

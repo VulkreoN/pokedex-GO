@@ -7,8 +7,9 @@ import { imageUrl, type DatasetIndex } from '../lib/dataset.js';
  * `shiny` shows the shiny art when it exists.
  */
 export function Sprite({ idx, variant, shiny = false, muted = false, dim = false, size = 64, className = '' }: { idx: DatasetIndex; variant: Variant; shiny?: boolean; muted?: boolean; dim?: boolean; size?: number; className?: string }) {
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const url = imageUrl(idx, variant, shiny) ?? imageUrl(idx, variant, false);
+  const failed = !!url && failedUrl === url;
   // Official artwork (forms GO does not have yet) fills its square; game pictures keep a wide margin. Shown smaller.
   const artwork = !!url && isArtwork(url);
   if (!url || failed) {
@@ -26,7 +27,7 @@ export function Sprite({ idx, variant, shiny = false, muted = false, dim = false
       height={size}
       loading="lazy"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(url)}
       className={`${muted ? 'silhouette' : ''} ${dim ? 'opacity-50 saturate-[0.6]' : ''} ${artwork ? 'scale-[0.72]' : ''} select-none object-contain ${className}`}
       style={{ width: size, height: size }}
       draggable={false}

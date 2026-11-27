@@ -12,7 +12,7 @@ import { GenderError, normalizeEntries } from '../lists/genders.js';
 import { dataService } from '../data/service.js';
 import { audit } from '../lib/audit.js';
 import { trashList } from '../lib/trash.js';
-import { listHistory, recordListEvent } from '../lists/history.js';
+import { listHistory, recordListEvent, undoListEvent } from '../lists/history.js';
 
 export async function friendIdsOf(userId: string): Promise<string[]> {
   const rows = await db.select({ id: schema.friendships.friendId }).from(schema.friendships).where(eq(schema.friendships.userId, userId));
@@ -255,8 +255,8 @@ export const listRoutes = new Hono<AuthEnv>()
         updatedAt: new Date(),
       })
       .where(eq(schema.lists.id, list.id));
-    if (body.name !== undefined && body.name !== list.name) await recordListEvent(list.id, me.id, 'renamed', [], { from: list.name, to: body.name });
-    if (body.visibility !== undefined && body.visibility !== list.visibility) await recordListEvent(list.id, me.id, 'visibility', [], { to: body.visibility });
+    if (body.name !== undefined && body.name !== list.name) await recordListEvent(list.id, me.id, 'renamed', [], { from: list.name, to: body.name }, { from: list.name, to: body.name });
+    if (body.visibility !== undefined && body.visibility !== list.visibility) await recordListEvent(list.id, me.id, 'visibility', [], { from: list.visibility, to: body.visibility }, { from: list.visibility, to: body.visibility });
     void broadcastList(list);
     return c.json({ list: await listDetail(list.id, true, me.id) });
   })
@@ -264,9 +264,22 @@ export const listRoutes = new Hono<AuthEnv>()
   .get('/:id/history', async (c) => {
     const me = c.get('user');
     const list = await getList(c.req.param('id'));
-    if (!list || (await accessOf(list, me)) === 'none') return c.json({ error: 'not_found' }, 404);
+    const access = list ? await accessOf(list, me) : 'none';
+    if (!list || access === 'none') return c.json({ error: 'not_found' }, 404);
     const before = Number(c.req.query('before')) || undefined;
-    return c.json({ events: await listHistory(list.id, before) });
+    return c.json({ events: await listHistory(list.id, before, 30, access === 'owner') });
+  })
+  /** Reverses a history operation (owner only). */
+  .post('/:id/history/:eventId/undo', async (c) => {
+    const me = c.get('user');
+    const list = await getList(c.req.param('id'));
+    if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
+    const eventId = Number(c.req.param('eventId'));
+    if (!Number.isInteger(eventId) || eventId <= 0) return c.json({ error: 'not_found' }, 404);
+    const res = await undoListEvent(list.id, eventId, await dataService.variants());
+    if (!res.ok) return c.json({ error: res.error }, res.error === 'not_found' ? 404 : 400);
+    void broadcastList(list);
+    return c.json({ ok: true, list: await listDetail(list.id, true, me.id) });
   })
   .delete('/:id', async (c) => {
     const me = c.get('user');
@@ -278,15 +291,16 @@ export const listRoutes = new Hono<AuthEnv>()
     void broadcastList(list, true);
     return c.json({ ok: true });
   })
-  .put('/:id/entries', zValidator('json', z.object({ entries: z.array(entryBody).min(1).max(3000) })), async (c) => {
+  .put('/:id/entries', zValidator('json', z.object({ entries: z.array(entryBody).min(1).max(3000), insertOnly: z.boolean().optional() })), async (c) => {
     const me = c.get('user');
     const list = await getList(c.req.param('id'));
     if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
+    const { entries: rawEntries, insertOnly } = c.req.valid('json');
     let entries;
     try {
       // Keys of forms the dataset folded away (an older page, a saved basket) go to the form that replaced them.
       const aliases = dataService.aliases() ?? {};
-      const incoming = c.req.valid('json').entries.map((e) => (aliases[neutralKey(e.variantKey)] ? { ...e, variantKey: aliases[neutralKey(e.variantKey)]! } : e));
+      const incoming = rawEntries.map((e) => (aliases[neutralKey(e.variantKey)] ? { ...e, variantKey: aliases[neutralKey(e.variantKey)]! } : e));
       entries = normalizeEntries(incoming, await dataService.variants());
     } catch (e) {
       if (e instanceof GenderError) return c.json({ error: e.code, variantKey: e.variantKey }, 400);
@@ -294,14 +308,29 @@ export const listRoutes = new Hono<AuthEnv>()
     }
     // One row per target: the last occurrence wins (an upsert cannot touch the same row twice).
     entries = [...new Map(entries.map((e) => [entryId(e), e])).values()];
-    const before = new Map((await db.select().from(schema.listEntries).where(eq(schema.listEntries.listId, list.id))).map((e) => [entryId(e), e.done]));
+    const before = new Map((await db.select().from(schema.listEntries).where(eq(schema.listEntries.listId, list.id))).map((e) => [entryId(e), { done: e.done, note: e.note }]));
+    if (insertOnly) {
+      entries = entries.filter((e) => !before.has(entryId(e)));
+      if (!entries.length) return c.json({ list: await listDetail(list.id, true, me.id) });
+    }
     const [row] = await db.select({ max: sql<number>`coalesce(max(position), 0)`.mapWith(Number) }).from(schema.listEntries).where(eq(schema.listEntries.listId, list.id));
     let position = row?.max ?? 0;
     await db.transaction(async (tx) => {
       for (const chunk of chunks(entries, 500)) {
         await tx
           .insert(schema.listEntries)
-          .values(chunk.map((e) => ({ listId: list.id, variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag as string, done: e.done, note: e.note ?? null, position: ++position })))
+          .values(
+            chunk.map((e) => ({
+              listId: list.id,
+              variantKey: e.variantKey,
+              gender: e.gender,
+              shiny: e.shiny,
+              tag: e.tag as string,
+              done: e.done,
+              note: e.note === undefined ? (before.get(entryId(e))?.note ?? null) : e.note,
+              position: ++position,
+            })),
+          )
           .onConflictDoUpdate({
             target: [schema.listEntries.listId, schema.listEntries.variantKey, schema.listEntries.shiny, schema.listEntries.tag, schema.listEntries.gender],
             set: { done: sql`excluded.done`, note: sql`excluded.note`, updatedAt: new Date() },
@@ -309,15 +338,15 @@ export const listRoutes = new Hono<AuthEnv>()
       }
       await tx.update(schema.lists).set({ updatedAt: new Date() }).where(eq(schema.lists.id, list.id));
     });
-    const caught = entries.filter((e) => e.done && !before.get(entryId(e)));
+    const caught = entries.filter((e) => e.done && !before.get(entryId(e))?.done);
     if (caught.length) await tellOfferersItIsCaught(list, me, caught);
     const added = entries.filter((e) => !before.has(entryId(e)));
-    const uncaught = entries.filter((e) => !e.done && before.get(entryId(e)) === true);
+    const uncaught = entries.filter((e) => !e.done && before.get(entryId(e))?.done === true);
     // Added already caught counts as added, not as caught as well.
     const caughtBefore = caught.filter((e) => before.has(entryId(e)));
-    if (added.length) await recordListEvent(list.id, me.id, 'added', added);
-    if (caughtBefore.length) await recordListEvent(list.id, me.id, 'caught', caughtBefore);
-    if (uncaught.length) await recordListEvent(list.id, me.id, 'uncaught', uncaught);
+    if (added.length) await recordListEvent(list.id, me.id, 'added', added, undefined, { entries: added.map((e) => ({ variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag, done: e.done, note: e.note ?? null })) });
+    if (caughtBefore.length) await recordListEvent(list.id, me.id, 'caught', caughtBefore, undefined, { entries: caughtBefore.map((e) => ({ variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag })) });
+    if (uncaught.length) await recordListEvent(list.id, me.id, 'uncaught', uncaught, undefined, { entries: uncaught.map((e) => ({ variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag })) });
     void broadcastList(list);
     return c.json({ list: await listDetail(list.id, true, me.id) });
   })
@@ -326,11 +355,11 @@ export const listRoutes = new Hono<AuthEnv>()
     const list = await getList(c.req.param('id'));
     if (!list || list.ownerId !== me.id) return c.json({ error: 'not_found' }, 404);
     const { entries } = c.req.valid('json');
-    let removed = 0;
+    const removedRows: { variantKey: string; gender: string; shiny: boolean; tag: string; done: boolean; note: string | null; position: number }[] = [];
     await db.transaction(async (tx) => {
       for (const e of entries) {
         // Without a gender, every gender of that target goes.
-        await tx
+        const deleted = await tx
           .delete(schema.listEntries)
           .where(
             and(
@@ -341,11 +370,28 @@ export const listRoutes = new Hono<AuthEnv>()
               e.gender !== undefined ? eq(schema.listEntries.gender, e.gender) : sql`true`,
             ),
           )
-          .returning({ k: schema.listEntries.variantKey })
-          .then((r) => { removed += r.length; });
+          .returning({
+            variantKey: schema.listEntries.variantKey,
+            gender: schema.listEntries.gender,
+            shiny: schema.listEntries.shiny,
+            tag: schema.listEntries.tag,
+            done: schema.listEntries.done,
+            note: schema.listEntries.note,
+            position: schema.listEntries.position,
+          });
+        removedRows.push(...deleted);
       }
     });
-    if (removed) await recordListEvent(list.id, me.id, 'removed', entries.map((e) => ({ variantKey: neutralKey(e.variantKey), gender: e.gender ?? '', shiny: e.shiny, tag: e.tag })), { cards: entries.length });
+    if (removedRows.length) {
+      await recordListEvent(
+        list.id,
+        me.id,
+        'removed',
+        removedRows.map((e) => ({ variantKey: e.variantKey, gender: e.gender as EntryGender, shiny: e.shiny, tag: e.tag })),
+        { cards: entries.length },
+        { entries: removedRows },
+      );
+    }
     await touch(list.id);
     void broadcastList(list);
     return c.json({ list: await listDetail(list.id, true, me.id) });
@@ -542,7 +588,7 @@ async function tellOfferersItIsCaught(list: { id: string; name: string; ownerId:
       merge: (prev) => ({ count: Number(prev.count ?? 0) + variants.length, variants: [...((prev.variants as unknown[]) ?? []), ...variants].slice(-20) }),
       push: (d) => ({
         title: `${owner.username} a attrapé ${Number(d.count) > 1 ? `${d.count} Pokémon` : 'un Pokémon'} que tu avais`,
-        body: 'Tu n’as plus besoin de le garder pour lui.',
+        body: Number(d.count) > 1 ? 'Tu n’as plus besoin de les garder pour lui.' : 'Tu n’as plus besoin de le garder pour lui.',
         url: `/lists/${list.id}`,
         tag: `caught-${list.id}-${owner.id}`,
       }),

@@ -99,7 +99,7 @@ let cache: { at: number; data: Loaded } | null = null;
 export const resetPvpokeCache = () => void (cache = null);
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}/${path}`, { headers: { 'user-agent': 'mydexpogo/1.0' } });
+  const res = await fetch(`${BASE}/${path}`, { headers: { 'user-agent': 'mydexpogo/1.0' }, signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`pvpoke ${path}: HTTP ${res.status}`);
   return (await res.json()) as T;
 }
@@ -188,14 +188,14 @@ export function withRankDeltas(preview: RankedDetail[], current: RankedDetail[])
 }
 
 async function downloadPreview(baseById: Map<string, GmPokemon>, baseMoves: Map<string, GmMove>, currentLeagues: Record<League, RankedDetail[]>): Promise<PreviewLoaded | null> {
-  const header = await fetch('https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/header.php', { headers: { 'user-agent': 'mydexpogo/1.0' } })
+  const header = await fetch('https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/header.php', { headers: { 'user-agent': 'mydexpogo/1.0' }, signal: AbortSignal.timeout(15_000) })
     .then((r) => (r.ok ? r.text() : ''))
     .catch(() => '');
   const info = parsePreviewSeason(header);
   if (!info) return null;
   const pBase = `https://pvpoke.com/${info.slug}/data`;
   const fetchJson = async <T>(p: string): Promise<T> => {
-    const res = await fetch(`${pBase}/${p}`, { headers: { 'user-agent': 'mydexpogo/1.0' } });
+    const res = await fetch(`${pBase}/${p}`, { headers: { 'user-agent': 'mydexpogo/1.0' }, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`pvpoke preview ${p}: HTTP ${res.status}`);
     return (await res.json()) as T;
   };

@@ -31,6 +31,7 @@ export function VariantCard({
   openOnTap = false,
   speciesLinkSuffix = '',
   inCollection = false,
+  quickMode = false,
   pick,
   onPick,
   onAdd,
@@ -51,6 +52,8 @@ export function VariantCard({
   speciesLinkSuffix?: string;
   /** Shows a subtle badge when this variant is already present or caught in the active/player collections. */
   inCollection?: 'caught' | 'present' | false;
+  /** True when 1-tap target-collection add mode is active: highlights added cards cleanly. */
+  quickMode?: boolean;
   pick?: DexPick;
   onPick?: (p: DexPick) => void;
   onAdd: (g: VariantGroup) => void;
@@ -63,7 +66,7 @@ export function VariantCard({
   const shinyNotOut = shiny && v.hasShiny && v.shinyReleased === false;
   const datamined = group.variants.some((x) => x.datamined);
   const label = localized(group.label, lang);
-  const opens = openOnTap && !selectable;
+  const opens = openOnTap && !selectable && !quickMode;
   const body = (
     <>
         <div className="relative">
@@ -104,7 +107,15 @@ export function VariantCard({
         </span>
     </>
   );
-  const look = `card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98] ${selectable && selected ? 'ring-[3px] ring-go' : ''}`;
+  const look = `card flex h-full w-full flex-col items-center px-1.5 pb-2 pt-2 text-center transition hover:brightness-[0.97] active:scale-[0.98] ${
+    selectable && selected
+      ? 'ring-[3px] ring-go'
+      : quickMode && inCollection === 'caught'
+        ? 'ring-2 ring-go'
+        : quickMode && inCollection === 'present'
+          ? 'ring-2 ring-sky'
+          : ''
+  }`;
   return (
     <div className="flex h-full flex-col">
       {opens ? (
@@ -117,7 +128,22 @@ export function VariantCard({
       {selectable && selected && pick && onPick && <PickToggles pick={pick} onPick={onPick} />}
       {showPvp && <PvpTops p={pvpOf(idx, group.variants.find((x) => x.gender !== 'f') ?? v)} link />}
       {opens ? (
-        <button type="button" onClick={() => onAdd(group)} aria-label={`${t.add} ${localized(species.name, lang)} ${label}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-go-ink hover:bg-paper-2">+ {t.add}</button>
+        <button
+          type="button"
+          onClick={() => onAdd(group)}
+          aria-label={`${t.add} ${localized(species.name, lang)} ${label}`}
+          className={`mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold transition ${
+            quickMode && inCollection === 'caught'
+              ? 'bg-go-soft text-go-ink'
+              : quickMode && inCollection === 'present'
+                ? 'bg-sky/15 text-sky'
+                : 'text-go-ink hover:bg-paper-2'
+          }`}
+        >
+          {quickMode && inCollection
+            ? `✓ ${inCollection === 'caught' ? t.already_caught_short : t.already_in_list}`
+            : `+ ${t.add}`}
+        </button>
       ) : showSpecies && !selectable ? (
         <Link to={`/dex/${species.dex}${speciesLinkSuffix}`} className="mt-0.5 flex min-h-8 w-full items-center justify-center rounded-md py-1 text-center text-[11px] font-semibold text-ink-3 hover:bg-paper-2">{t.open_species}</Link>
       ) : null}

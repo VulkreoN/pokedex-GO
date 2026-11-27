@@ -93,7 +93,7 @@ function storage(dexes: number[]): Mon[] {
 
 /** A French game has no keyword for these: strings leave them out, so they may show extra Pokémon there, never fewer. */
 const loosened = (t: SearchTarget, lang: GameLang): SearchTarget =>
-  lang === 'fr' ? { ...t, gmax: false, tag: t.tag === 'dynamax' || t.tag === 'background' || t.tag?.startsWith('bg:') ? '' : t.tag } : t;
+  lang === 'fr' ? { ...t, gmax: false, tag: t.tag === 'background' || t.tag?.startsWith('bg:') ? '' : t.tag } : t;
 
 function check(targets: SearchTarget[], maxLength?: number, lang: GameLang = 'en') {
   const dexes = [...new Set(targets.map((t) => t.dex)).add(999)]; // 999: a Pokémon nobody hunts
@@ -184,9 +184,15 @@ describe('search strings behave like the in-game search', () => {
   });
 
   it('leaves out filters a French game has no keyword for, and says so', () => {
-    const [s] = buildSearchStrings([{ dex: 6, tag: 'dynamax', shiny: true }], { lang: 'fr' });
+    const [s] = buildSearchStrings([{ dex: 6, tag: 'background', shiny: true }], { lang: 'fr' });
     expect(s!.text).toBe('6&chromatique');
-    expect(s!.unsupported).toEqual(['dynamax']);
+    expect(s!.unsupported).toEqual(['background']);
+  });
+
+  it('finds Dynamax in a French game ("dynamax")', () => {
+    const [s] = buildSearchStrings([{ dex: 6, tag: 'dynamax', shiny: true }], { lang: 'fr' });
+    expect(s!.text).toBe('6&dynamax&chromatique');
+    expect(s!.unsupported).toBeUndefined();
   });
 
   it('finds only Gigantamax in a French game ("gigamax")', () => {

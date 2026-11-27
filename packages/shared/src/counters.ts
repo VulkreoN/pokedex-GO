@@ -50,15 +50,17 @@ export function movesetDps(tools: Pick<ToolsData, 'moves'>, attacker: ToolPokemo
   return dealt / ((fastHits * fast.duration + big.duration) / 1000);
 }
 
-export function rankCounters(tools: ToolsData, target: CounterTarget, opts: { cpm: number; megas?: boolean; shadows?: boolean; limit?: number }): Counter[] {
+export function rankCounters(tools: ToolsData, target: CounterTarget, opts: { cpm: number; megas?: boolean; shadows?: boolean; noElite?: boolean; limit?: number }): Counter[] {
   const out: Counter[] = [];
   for (const p of tools.pokemon) {
     if (!p.released || (p.mega && !opts.megas)) continue;
     for (const shadow of opts.shadows && p.shadow ? [false, true] : [false]) {
       let best: Counter | null = null;
       for (const quick of p.quick) {
+        if (opts.noElite && p.elite?.includes(quick)) continue;
         for (const charged of p.charged) {
           if (SHADOW_ONLY.has(charged)) continue;
+          if (opts.noElite && p.elite?.includes(charged)) continue;
           const dps = movesetDps(tools, p, quick, charged, target, opts.cpm, shadow);
           const score = dps * Math.pow((p.def + 15) * (shadow ? SHADOW_DEF : 1) * (p.sta + 15), 0.25);
           if (!best || score > best.score) best = { pokemon: p, quick, charged, dps, score, elite: !!p.elite?.includes(quick) || !!p.elite?.includes(charged), shadow };

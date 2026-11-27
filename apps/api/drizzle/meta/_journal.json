@@ -176,6 +176,20 @@
       "when": 1795736000000,
       "tag": "0024_variant_hidden",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795745000000,
+      "tag": "0025_list_events_undo",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795760000000,
+      "tag": "0026_perf_indexes",
+      "breakpoints": true
     }
   ]
 }

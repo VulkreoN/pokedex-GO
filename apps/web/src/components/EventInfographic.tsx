@@ -36,7 +36,7 @@ import { CountersSheet, useFromImage, useMissingHunts } from './GameTools.js';
 import { Sparkle } from './Sprite.js';
 import { useToast } from './toast.js';
 import { TypeBadge } from './TypeBadge.js';
-import { Badge, Button, Chip, Empty, Sheet, Spinner } from './ui.js';
+import { Badge, Button, Chip, Empty, Sheet, Spinner, buttonClass } from './ui.js';
 
 export function useRichEvents() {
   return useQuery({
@@ -102,7 +102,9 @@ const TEMPLATE_THEMES: Record<EventTemplateKind, TemplateTheme> = {
 function DateTiles({ start, end, lang }: { start: string | null; end: string | null; lang: string }) {
   if (!start) return null;
   const s = new Date(start);
-  const e = end ? new Date(end) : null;
+  if (Number.isNaN(s.getTime())) return null;
+  const rawE = end ? new Date(end) : null;
+  const e = rawE && !Number.isNaN(rawE.getTime()) ? rawE : null;
   const monthFmt = new Intl.DateTimeFormat(lang, { month: 'short' });
   const timeFmt = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' });
   const sameDay = !e || s.toDateString() === e.toDateString();
@@ -185,6 +187,84 @@ function previewSpriteOf(ev: GameEvent, rich?: RichGameEvent): string | null {
   return null;
 }
 
+/** Synthesizes an immediate in-app infographic view from a basic calendar event while richer details load. */
+function fallbackRichEvent(ev: GameEvent): RichGameEvent {
+  const t = `${ev.eventType} ${ev.name}`.toLowerCase();
+  const template: EventTemplateKind =
+    ev.eventType === 'max-mondays' || ev.eventType === 'max-battles' || /dynamax|gigantamax/.test(t)
+      ? 'max'
+      : ev.eventType === 'community-day'
+        ? 'community_day'
+        : ev.eventType === 'pokemon-spotlight-hour'
+          ? 'spotlight'
+          : ev.eventType === 'raid-day' || ev.eventType === 'raid-hour' || ev.eventType === 'raid-battles'
+            ? 'raid_day'
+            : 'event';
+
+  const featured: EventDetailMon[] = [];
+  const bonuses: EventBonusItem[] = [];
+  const spawnGroups: RichGameEvent['spawnGroups'] = [];
+  const raidGroups: RichGameEvent['raidGroups'] = [];
+
+  if (ev.extraData?.spotlight) {
+    const sp = ev.extraData.spotlight;
+    if (sp.bonus) bonuses.push({ text: sp.bonus });
+    const list = sp.list?.length ? sp.list : [{ name: sp.name, image: sp.image, canBeShiny: sp.canBeShiny }];
+    for (const m of list) featured.push({ name: m.name, image: m.image, canBeShiny: !!m.canBeShiny });
+  }
+  if (ev.extraData?.communityday) {
+    const cd = ev.extraData.communityday;
+    for (const b of cd.bonuses ?? []) bonuses.push({ text: b.text, ...(b.image ? { image: b.image } : {}) });
+    if (cd.spawns?.length) {
+      spawnGroups.push({
+        label: 'Spawns',
+        mons: cd.spawns.map((m) => ({ name: m.name, image: m.image, canBeShiny: m.canBeShiny !== false })),
+      });
+    }
+  }
+  if (ev.extraData?.raidbattles?.bosses?.length) {
+    const label = /mega/i.test(ev.name)
+      ? 'Mega Raids'
+      : /shadow/i.test(ev.name)
+        ? 'Shadow Raids'
+        : /5-star/i.test(ev.name)
+          ? 'Five-Star Raids'
+          : /3-star/i.test(ev.name)
+            ? 'Three-Star Raids'
+            : /1-star/i.test(ev.name)
+              ? 'One-Star Raids'
+              : 'Raids';
+    raidGroups.push({
+      label,
+      mons: ev.extraData.raidbattles.bosses.map((b) => ({ name: b.name, image: b.image, canBeShiny: !!b.canBeShiny })),
+    });
+  }
+
+  return {
+    eventID: ev.eventID,
+    name: ev.name,
+    eventType: ev.eventType,
+    heading: ev.heading,
+    link: ev.link,
+    image: ev.image,
+    start: ev.start,
+    end: ev.end,
+    summary: null,
+    template,
+    featured,
+    highlights: [],
+    bonuses,
+    spawnGroups,
+    raidGroups,
+    eggGroups: [],
+    research: [],
+    researchNote: null,
+    rocket: [],
+    newShinies: [],
+    moves: [],
+  };
+}
+
 /**
  * Automatic Monday → Sunday weekly calendar ("Ma semaine") inspired by GO Weekly infographics.
  * Desktop: full 7-column calendar + spanning multi-day event bars.
@@ -194,12 +274,12 @@ function WeeklySchedule({
   now,
   richEvents,
   countHunts,
-  onSelectRich,
+  onSelectEvent,
 }: {
   now: number;
   richEvents: RichGameEvent[];
   countHunts: (e: RichGameEvent) => number;
-  onSelectRich: (e: RichGameEvent) => void;
+  onSelectEvent: (ev: GameEvent, rich?: RichGameEvent) => void;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -216,16 +296,15 @@ function WeeklySchedule({
 
   const { days, rangeLabel, dailyByDay, raidsByDay, multiDay } = useMemo(() => {
     const mon = startOfWeekMonday(now, weekOffset);
-    const weekStart = mon.getTime();
-    const weekEnd = weekStart + 7 * DAY_MS - 1;
     const todayStr = new Date(now).toDateString();
 
     const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
     const monthFmt = new Intl.DateTimeFormat(lang, { month: 'short' });
     const daysArr = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
+      const nextDay = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i + 1);
       const start = d.getTime();
-      const end = start + DAY_MS - 1;
+      const end = nextDay.getTime() - 1;
       const wd = wdFmt.format(d).replace(/\.$/, '');
       return {
         index: i,
@@ -239,6 +318,12 @@ function WeeklySchedule({
         monthShort: monthFmt.format(d).replace(/\.$/, ''),
       };
     });
+    const weekStart = daysArr[0]!.start;
+    const weekEnd = daysArr[6]!.end;
+    const dayIndexOf = (ms: number) => {
+      const found = daysArr.findIndex((d) => ms >= d.start && ms <= d.end);
+      return found >= 0 ? found : ms < weekStart ? 0 : 6;
+    };
 
     const first = daysArr[0]!;
     const last = daysArr[6]!;
@@ -297,14 +382,14 @@ function WeeklySchedule({
       if (durationMs > 21 * DAY_MS) continue;
 
       const rich = richById.get(ev.eventID);
-      const hunts = rich ? countHunts(rich) : 0;
+      const hunts = countHunts(rich ?? fallbackRichEvent(ev));
       const sprite = rich?.featured[0]
         ? resolveHeroMon(rich, rich.featured[0], idx, undefined, lang).image
         : previewSpriteOf(ev, rich);
 
       if (ev.eventType === 'raid-battles') {
         if (sMs >= weekStart && sMs <= weekEnd) {
-          const dayIdx = Math.min(6, Math.max(0, Math.floor((sMs - weekStart) / DAY_MS)));
+          const dayIdx = dayIndexOf(sMs);
           raids[dayIdx]!.push({ ev, rich, startMs: sMs, endMs: eMs, sprite, hunts });
         }
         continue;
@@ -316,11 +401,11 @@ function WeeklySchedule({
 
       if (isSingleDay) {
         const clamped = Math.max(weekStart, Math.min(weekEnd, sMs));
-        const dayIdx = Math.min(6, Math.max(0, Math.floor((clamped - weekStart) / DAY_MS)));
+        const dayIdx = dayIndexOf(clamped);
         daily[dayIdx]!.push({ ev, rich, startMs: sMs, endMs: eMs, sprite, hunts });
       } else {
-        const startCol = Math.max(1, Math.min(7, Math.floor((Math.max(sMs, weekStart) - weekStart) / DAY_MS) + 1));
-        const endCol = Math.max(startCol, Math.min(7, Math.floor((Math.min(eMs, weekEnd) - weekStart) / DAY_MS) + 1));
+        const startCol = dayIndexOf(Math.max(sMs, weekStart)) + 1;
+        const endCol = Math.max(startCol, dayIndexOf(Math.min(eMs, weekEnd)) + 1);
         const sprites: string[] = [];
         const addImg = (url?: string | null) => {
           if (url && !sprites.includes(url) && sprites.length < 4) sprites.push(url);
@@ -361,8 +446,7 @@ function WeeklySchedule({
   };
 
   const openEntry = (ev: GameEvent, rich?: RichGameEvent) => {
-    if (rich) onSelectRich(rich);
-    else window.open(ev.link, '_blank', 'noopener,noreferrer');
+    onSelectEvent(ev, rich);
   };
 
   const exportWeek = async (kind: 'image' | 'pdf' | 'copy' | 'share') => {
@@ -544,6 +628,7 @@ function WeeklySchedule({
         <div className="grid grid-cols-7 gap-1" role="tablist" aria-label={t.weekly_title}>
           {days.map((d) => {
             const count = (raidsByDay[d.index]?.length ?? 0) + (dailyByDay[d.index]?.length ?? 0);
+            const hasHunts = (dailyByDay[d.index] ?? []).some((x) => x.hunts > 0);
             const active = d.index === selectedDay.index;
             return (
               <button
@@ -552,7 +637,7 @@ function WeeklySchedule({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setMobileDay(d.index)}
-                className={`flex flex-col items-center rounded-xl border py-1.5 transition ${
+                className={`relative flex flex-col items-center rounded-xl border py-1.5 transition ${
                   active
                     ? 'border-amber-300 bg-white text-slate-950 shadow-sm'
                     : d.isToday
@@ -560,6 +645,9 @@ function WeeklySchedule({
                       : 'border-white/10 bg-white/[0.05] text-white/85'
                 }`}
               >
+                {hasHunts && (
+                  <span className="absolute right-0.5 top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-go text-[7px] font-bold text-white" aria-hidden="true">★</span>
+                )}
                 <span className="text-[10px] font-bold uppercase opacity-75">{d.wdLetter}</span>
                 <span className="tnum text-sm font-black leading-tight">{d.dayNum}</span>
                 <span className="mt-0.5 flex h-1.5 items-center gap-0.5">
@@ -688,6 +776,55 @@ function WeeklySchedule({
   );
 }
 
+/** Reusable modal for opening any event's MyDexPoGo infographic from other tabs (Max Battles, Spawns, etc.). */
+export function EventDetailModal({
+  event,
+  now,
+  onClose,
+}: {
+  event: (Omit<GameEvent, 'heading'> & { heading?: string }) | null;
+  now: number;
+  onClose: () => void;
+}) {
+  const richList = useRichEvents();
+  const tools = useTools();
+  const fromImage = useFromImage(tools.data);
+  const [counterTarget, setCounterTarget] = useState<ToolPokemon | null>(null);
+
+  const cached = event ? richList.data?.find((r) => r.eventID === event.eventID) : undefined;
+  const needsFetch = !!event && !cached;
+  const detailQuery = useQuery({
+    queryKey: ['live', 'rich-event', event?.eventID],
+    queryFn: () => api<{ event: RichGameEvent }>(`/game/events/${encodeURIComponent(event!.eventID)}`).then((r) => r.event),
+    enabled: needsFetch,
+    staleTime: 15 * 60_000,
+    retry: false,
+  });
+
+  const activeEvent = event
+    ? (cached ?? detailQuery.data ?? fallbackRichEvent({ ...event, heading: event.heading ?? '' }))
+    : null;
+  const loadingDetails = needsFetch && detailQuery.isFetching && !detailQuery.data;
+
+  const pickCounter = (m: EventDetailMon, resolved?: ToolPokemon | null) => {
+    const found = resolved ?? fromImage(m.image, m.name) ?? tools.data?.pokemon.find((p) => p.dex === dexFromImage(m.image) && !p.mega);
+    if (found) setCounterTarget(found);
+  };
+
+  return (
+    <>
+      <EventInfographicSheet
+        event={activeEvent}
+        loadingDetails={loadingDetails}
+        now={now}
+        onClose={onClose}
+        onPickCounter={pickCounter}
+      />
+      <CountersSheet target={counterTarget} onClose={() => setCounterTarget(null)} />
+    </>
+  );
+}
+
 /** Main Events feed: automatic multi-template visual cards + full interactive infographic sheet on tap. */
 export function EventFeed({ now }: { now: number }) {
   const t = useT();
@@ -699,9 +836,24 @@ export function EventFeed({ now }: { now: number }) {
   const fromImage = useFromImage(tools.data);
   const { hasMissing, isWanted, isWantedKey } = useMissingHunts();
   const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'upcoming'>('all');
+  const [catFilter, setCatFilter] = useState<'all' | 'raids' | 'max' | 'spotlight' | 'events'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [onlyHunts, setOnlyHunts] = useState(false);
-  const [selected, setSelected] = useState<RichGameEvent | null>(null);
+  const [selected, setSelected] = useState<{ event: RichGameEvent; needsFetch: boolean } | null>(null);
   const [counterTarget, setCounterTarget] = useState<ToolPokemon | null>(null);
+
+  const detailQuery = useQuery({
+    queryKey: ['live', 'rich-event', selected?.event.eventID],
+    queryFn: () =>
+      api<{ event: RichGameEvent }>(`/game/events/${encodeURIComponent(selected!.event.eventID)}`).then((r) => r.event),
+    enabled: !!selected?.needsFetch,
+    staleTime: 15 * 60_000,
+    retry: false,
+  });
+  const activeEvent = selected
+    ? (selected.needsFetch ? (detailQuery.data ?? selected.event) : selected.event)
+    : null;
+  const loadingDetails = !!selected?.needsFetch && detailQuery.isFetching && !detailQuery.data;
 
   const countHunts = (e: RichGameEvent): number => {
     if (!hasMissing) return 0;
@@ -734,8 +886,25 @@ export function EventFeed({ now }: { now: number }) {
   }, [q.data, now, hasMissing, isWanted, isWantedKey, idx, tools.data, lang]);
 
   const anyHunts = events.some((x) => x.hunts > 0);
+  const normSearch = searchQuery.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const matchesCat = (e: RichGameEvent) => {
+    if (catFilter === 'all') return true;
+    if (catFilter === 'raids') return e.template === 'raid_day' || e.eventType === 'raid-battles' || e.eventType === 'raid-hour' || e.raidGroups.length > 0;
+    if (catFilter === 'max') return e.template === 'max' || e.eventType === 'max-mondays' || e.eventType === 'max-battles';
+    if (catFilter === 'spotlight') return e.template === 'spotlight' || e.template === 'community_day';
+    return e.template === 'event';
+  };
+  const matchesSearch = (e: RichGameEvent) => {
+    if (!normSearch) return true;
+    const title = eventTitle(e.name, idx?.speciesByDex, lang);
+    const mons = [...e.featured, ...e.spawnGroups.flatMap((g) => g.mons), ...e.raidGroups.flatMap((g) => g.mons), ...e.research]
+      .map((m) => `${m.name} ${liveName(m.name, m.image, idx, lang)}`)
+      .join(' ');
+    const hay = `${title} ${e.name} ${mons}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return hay.includes(normSearch);
+  };
   const visible = events.filter(
-    (x) => (statusFilter === 'all' || x.status === statusFilter) && (!onlyHunts || x.hunts > 0),
+    (x) => (statusFilter === 'all' || x.status === statusFilter) && (!onlyHunts || x.hunts > 0) && matchesCat(x.e) && matchesSearch(x.e),
   );
   const current = visible.filter((x) => x.status === 'current');
   const upcoming = visible.filter((x) => x.status === 'upcoming');
@@ -776,7 +945,7 @@ export function EventFeed({ now }: { now: number }) {
       <li key={e.eventID}>
         <button
           type="button"
-          onClick={() => setSelected(e)}
+          onClick={() => setSelected({ event: e, needsFetch: false })}
           className={`card w-full overflow-hidden border p-0 text-left transition active:scale-[0.99] ${hunts > 0 ? 'ring-2 ring-go/70' : theme.borderClass}`}
         >
           {/* Poster header band */}
@@ -825,14 +994,16 @@ export function EventFeed({ now }: { now: number }) {
           {(previewMons.length > 0 || e.bonuses.length > 0) && (
             <div className="space-y-2 px-3 py-2.5">
               {previewMons.length > 0 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
-                  {previewMons.map((m) => (
-                    <span key={m.image} className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-paper-2/70">
-                      <img src={m.image} alt={liveName(m.name, m.image, idx, lang)} width={40} height={40} loading="lazy" className="h-10 w-10 object-contain" />
-                      {m.canBeShiny && <Sparkle className="absolute right-0 top-0 text-shiny" />}
-                    </span>
-                  ))}
-                  <span className="ml-auto shrink-0 text-xs font-semibold text-sky">{t.events_open_sheet} ›</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+                    {previewMons.map((m) => (
+                      <span key={m.image} className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-paper-2/70">
+                        <img src={m.image} alt={liveName(m.name, m.image, idx, lang)} width={40} height={40} loading="lazy" className="h-10 w-10 object-contain" />
+                        {m.canBeShiny && <Sparkle className="absolute right-0 top-0 text-shiny" />}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold text-sky">{t.events_open_sheet} ›</span>
                 </div>
               )}
               {e.bonuses.length > 0 && (
@@ -862,10 +1033,31 @@ export function EventFeed({ now }: { now: number }) {
         now={now}
         richEvents={q.data ?? []}
         countHunts={countHunts}
-        onSelectRich={(ev) => setSelected(ev)}
+        onSelectEvent={(ev, rich) =>
+          setSelected(rich ? { event: rich, needsFetch: false } : { event: fallbackRichEvent(ev), needsFetch: true })
+        }
       />
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      {events.length > 4 && (
+        <div className="relative mb-2">
+          <input
+            type="search"
+            inputMode="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t.events_search}
+            aria-label={t.events_search}
+            className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
+          />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} aria-label={t.search_clear} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-ink-3 hover:bg-paper-2">
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="mb-2 flex flex-wrap gap-1.5">
         <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} className="min-h-8 px-2.5 text-xs">{t.filter_all}</Chip>
         <Chip active={statusFilter === 'current'} onClick={() => setStatusFilter('current')} className="min-h-8 px-2.5 text-xs">
           {t.events_now} {events.filter((x) => x.status === 'current').length > 0 && <span className="tnum opacity-75">· {events.filter((x) => x.status === 'current').length}</span>}
@@ -876,6 +1068,20 @@ export function EventFeed({ now }: { now: number }) {
         {anyHunts && (
           <Chip active={onlyHunts} onClick={() => setOnlyHunts((v) => !v)} className="min-h-8 px-2.5 text-xs">{t.game_my_hunts}</Chip>
         )}
+      </div>
+
+      <div className="mb-3 flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+        {([
+          ['all', t.events_cat_all],
+          ['events', t.events_cat_events],
+          ['spotlight', t.events_cat_spotlight],
+          ['raids', t.events_cat_raids],
+          ['max', t.events_cat_max],
+        ] as const).map(([cid, label]) => (
+          <Chip key={cid} active={catFilter === cid} onClick={() => setCatFilter(cid)} className="min-h-7 shrink-0 px-2.5 text-[11px]">
+            {label}
+          </Chip>
+        ))}
       </div>
 
       {visible.length === 0 && <Empty>{t.nothing_here}</Empty>}
@@ -895,7 +1101,8 @@ export function EventFeed({ now }: { now: number }) {
       )}
 
       <EventInfographicSheet
-        event={selected}
+        event={activeEvent}
+        loadingDetails={loadingDetails}
         now={now}
         onClose={() => setSelected(null)}
         onPickCounter={pickCounter}
@@ -908,11 +1115,13 @@ export function EventFeed({ now }: { now: number }) {
 /** Full multi-section visual infographic sheet tailored to the event's template. */
 function EventInfographicSheet({
   event,
+  loadingDetails = false,
   now,
   onClose,
   onPickCounter,
 }: {
   event: RichGameEvent | null;
+  loadingDetails?: boolean;
   now: number;
   onClose: () => void;
   onPickCounter: (m: EventDetailMon, resolved?: ToolPokemon | null) => void;
@@ -986,6 +1195,7 @@ function EventInfographicSheet({
           <img src={m.image} alt="" width={52} height={52} loading="lazy" className="h-[52px] w-[52px] object-contain" />
           {m.canBeShiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
           {wanted && <span className="absolute -left-1 top-0 rounded-full bg-go px-1 text-[8px] font-bold leading-3.5 text-white">★</span>}
+          {asCounter && <span className="absolute -bottom-0.5 -right-1 rounded-full bg-card/90 px-0.5 text-[9px] leading-none shadow-sm" aria-hidden="true">⚔️</span>}
           {m.newShiny && (
             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-amber-400 px-1 text-[8px] font-black uppercase text-slate-950">
               {t.new_badge}
@@ -1110,6 +1320,11 @@ function EventInfographicSheet({
           )}
         </div>
 
+        {/* Subtle loading hint when fetching full infographic details for a calendar-only event */}
+        {loadingDetails && (
+          <p className="text-center text-xs text-ink-3">{t.events_loading_details}</p>
+        )}
+
         {/* Highlights: Pokémon Debut, New Shiny, Special Background, New Move, Super Max, Evo Requirement */}
         {event.highlights.length > 0 && (
           <section className="space-y-2">
@@ -1125,7 +1340,18 @@ function EventInfographicSheet({
                 {h.text && <p className="mt-1 text-xs leading-relaxed text-ink-2">{eventTextFr(h.text, idx?.speciesByDex, lang, moveNames)}</p>}
                 {h.mons && h.mons.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {h.mons.map((m) => renderMonTile(m, event.template === 'raid_day' ? 'megaRaid' : 'wild'))}
+                    {h.mons.map((m) => {
+                      const ctxText = `${event.name} ${h.title} ${m.name}`;
+                      const src: HuntSource =
+                        event.template === 'raid_day'
+                          ? /\bshadow\b/i.test(ctxText)
+                            ? 'shadowRaid'
+                            : /\bmega\b|primal/i.test(ctxText)
+                              ? 'megaRaid'
+                              : 'raid'
+                          : 'wild';
+                      return renderMonTile(m, src);
+                    })}
                   </div>
                 )}
               </div>
@@ -1296,19 +1522,38 @@ function EventInfographicSheet({
           </div>
         </section>
 
-        {/* Optional Leek Duck graphic + source link */}
+        {/* Optional Leek Duck graphic + MyDexPoGo shortcut & source link */}
         {event.graphicUrl && (
           <details className="rounded-xl border border-line p-2.5">
             <summary className="cursor-pointer text-xs font-semibold text-sky">{t.events_graphic_ld}</summary>
             <img src={event.graphicUrl} alt={title} loading="lazy" className="mt-2 w-full rounded-lg" />
           </details>
         )}
-        <div className="flex gap-2 pt-1">
-          <a href={event.link} target="_blank" rel="noreferrer" className="flex-1">
-            <Button className="w-full text-sm">{t.open_leekduck} ↗</Button>
-          </a>
-          <Button tone="primary" className="shrink-0 text-sm" onClick={onClose}>{t.close}</Button>
-        </div>
+        {(() => {
+          const inApp =
+            event.eventType === 'raid-battles' || event.eventType === 'raid-hour' || event.template === 'raid_day'
+              ? { to: '/game?tab=raids', label: t.events_open_raids }
+              : event.template === 'max' || event.eventType === 'max-mondays' || event.eventType === 'max-battles'
+                ? { to: '/game?tab=max', label: t.events_open_max }
+                : event.eventType === 'go-battle-league'
+                  ? { to: '/pvp', label: t.events_open_pvp }
+                  : null;
+          return (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {inApp && (
+                <Link to={inApp.to} onClick={onClose} className={buttonClass('primary', 'flex-1 text-sm')}>
+                  {inApp.label}
+                </Link>
+              )}
+              {event.link && (
+                <a href={event.link} target="_blank" rel="noreferrer" className={buttonClass('quiet', `${inApp ? 'shrink-0' : 'flex-1'} text-sm`)}>
+                  {t.open_leekduck} ↗
+                </a>
+              )}
+              <Button tone={inApp ? 'quiet' : 'primary'} className="shrink-0 text-sm" onClick={onClose}>{t.close}</Button>
+            </div>
+          );
+        })()}
       </div>
     </Sheet>
   );

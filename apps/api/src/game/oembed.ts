@@ -26,6 +26,7 @@ export async function fetchOEmbed(tweetUrl: string): Promise<OEmbedPost> {
   const res = await fetch(`https://publish.x.com/oembed?url=${encodeURIComponent(canonical)}&omit_script=true&dnt=true&hide_thread=true`, {
     headers: { 'user-agent': 'mydexpogo/1.0' },
     redirect: 'follow',
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`oembed: HTTP ${res.status}`);
   const data = (await res.json()) as { author_name: string; author_url?: string; html: string; url: string };
@@ -35,7 +36,7 @@ export async function fetchOEmbed(tweetUrl: string): Promise<OEmbedPost> {
 /** The oEmbed HTML is a blockquote: <p>text with <a href>links</a></p>&mdash; author (@handle) <a href=...>date</a>. */
 export function parseEmbedHtml(html: string): { text: string; links: string[]; codes: string[]; postedAt: Date | null } {
   const p = /<p[^>]*>(.*?)<\/p>/s.exec(html)?.[1] ?? html;
-  const links = [...p.matchAll(/href="([^"]+)"/g)].map((m) => decode(m[1]!)).filter((u) => !/^https?:\/\/t\.co\//.test(u) || true);
+  const links = [...p.matchAll(/href="([^"]+)"/g)].map((m) => decode(m[1]!)).filter((u) => /^https?:\/\//i.test(u));
   let text = p.replace(/<br\s*\/?>/gi, '\n').replace(/<a[^>]*>(.*?)<\/a>/gs, '$1').replace(/<[^>]+>/g, '');
   text = decode(text).replace(/[ \t]+\n/g, '\n').trim();
   const codes = [...new Set([...links, text].flatMap((s) => [...s.matchAll(/passcode=([A-Za-z0-9]+)/g)].map((m) => m[1]!)))];

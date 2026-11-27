@@ -93,7 +93,16 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T, index
 export const fileSlug = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'liste';
 
 /** Standard PDF fonts only cover Latin-1-ish text: replace what they cannot draw. */
-const pdfText = (s: string) => s.replace(/♂/g, '(m)').replace(/♀/g, '(f)').replace(/[’]/g, "'").replace(/[^\x20-\x7E\u00A0-\u017FŒœ]/g, '');
+const pdfText = (s: string) =>
+  s
+    .replace(/♂/g, '(m)')
+    .replace(/♀/g, '(f)')
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—−]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/→/g, '->')
+    .replace(/[^\x20-\x7E\u00A0-\u017FŒœ]/g, '');
 
 export interface PdfLabels {
   export_search_title: string;

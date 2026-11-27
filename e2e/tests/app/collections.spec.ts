@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { apiCreateList, apiRegister } from '../fixtures.js';
 
-test('a collection keeps a history of what happened in it', async ({ page }) => {
+test('a collection keeps a history of what happened in it and lets the owner undo operations', async ({ page }) => {
   await apiRegister(page.request);
   const list = { id: await apiCreateList(page.request, 'Histoire', ['1', '4']) };
   await page.request.put(`/api/lists/${list.id}/entries`, { data: { entries: [{ variantKey: '1', shiny: false, done: true }] } });
@@ -11,6 +11,12 @@ test('a collection keeps a history of what happened in it', async ({ page }) => 
   await expect(sheet.getByText(/^Tu as coché \d+ Pokémon comme attrapés?$/)).toBeVisible();
   await expect(sheet.getByText(/^Tu as ajouté \d+ Pokémon$/)).toBeVisible();
   await expect(sheet.getByText('Tu as créé la collection')).toBeVisible();
+
+  // Undo the "caught" operation directly from the history sheet.
+  await sheet.getByRole('button', { name: 'Annuler', exact: true }).first().click();
+  await expect(sheet.getByText('Annulé', { exact: true }).first()).toBeVisible();
+  const after = (await (await page.request.get(`/api/lists/${list.id}`)).json()).list;
+  expect(after.doneCount).toBe(0);
 });
 
 test('several cards at once: tick, send to the basket, remove', async ({ page }) => {
@@ -33,8 +39,8 @@ test('several cards at once: tick, send to the basket, remove', async ({ page })
   await page.getByRole('button', { name: 'Sélectionner' }).click();
   await page.getByRole('button', { name: 'Tout', exact: true }).click();
   await page.getByRole('toolbar').getByRole('button', { name: '♂ Mâle' }).click();
-  page.once('dialog', (d) => d.accept());
   await page.getByRole('toolbar').getByRole('button', { name: 'Retirer' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'Retirer', exact: true }).click();
   await expect.poll(async () => (await (await page.request.get(`/api/lists/${list.id}`)).json()).list.entries.length).toBe(3);
 });
 
@@ -42,8 +48,9 @@ test('a game search pasted into a collection adds what it shows', async ({ page 
   await apiRegister(page.request);
   const list = { id: await apiCreateList(page.request, 'Import', ['1']) };
   await page.goto(`/lists/${list.id}`);
-  await page.getByRole('button', { name: 'Importer une recherche du jeu' }).click();
+  await page.getByRole('button', { name: 'Ajouter des Pokémon' }).click();
   const sheet = page.locator('dialog[open]');
+  await sheet.getByRole('tab', { name: 'Importer' }).click();
   await sheet.getByLabel('Recherche du jeu').fill('1-3&!costume&!shiny&cp10-500');
   await expect(sheet.getByText(/^Ignoré .*cp10-500/)).toBeVisible();
   await expect(sheet.getByText(/déjà dans la collection/)).toBeVisible();
@@ -163,7 +170,7 @@ test('the last Pokémon of a collection brings confetti; sounds can be switched 
   await expect(page.getByText('2 / 2 attrapés')).toBeVisible();
   await expect(page.locator('body > canvas[aria-hidden="true"]')).toHaveCount(0, { timeout: 5000 }); // gone after the burst
 
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   const sounds = page.getByRole('button', { name: /^Sons/ });
   await expect(sounds).toHaveAttribute('aria-pressed', 'true');
   await sounds.click();
@@ -294,8 +301,23 @@ test('collection UX: starter template, contextual /dex?to add, entry notes, filt
   await expect(bar.getByText('1 sélectionné')).toBeVisible();
   await bar.getByRole('button', { name: 'Terminé' }).click();
 
-  // Contextual "+ Ajouter des Pokémon" keeps the collection pre-selected and shows "Déjà dedans" badges.
-  await page.getByRole('link', { name: 'Ajouter des Pokémon' }).click();
+  // In-collection Quick Add drawer: search, switch initial status to "Déjà attrapé", add in 1 tap without leaving the collection.
+  await page.getByRole('button', { name: 'Ajouter des Pokémon' }).click();
+  const quickSheet = page.locator('dialog[open]');
+  await expect(quickSheet.getByText('Ajouter dans « Ma Liste UX »')).toBeVisible();
+  const presetsToggle = quickSheet.getByRole('button', { name: /Réglages/ });
+  if (await presetsToggle.isVisible()) await presetsToggle.click();
+  await quickSheet.getByRole('button', { name: 'Déjà attrapé', exact: true }).click();
+  await quickSheet.getByPlaceholder('Nom ou numéro').fill('pikachu');
+  await quickSheet.getByRole('button', { name: 'Ajouter Pikachu', exact: true }).click();
+  await expect(quickSheet.getByText('+2 ajoutés')).toBeVisible();
+  const afterQuick = (await (await page.request.get(`/api/lists/${list.id}`)).json()).list;
+  expect(afterQuick.entries.filter((e: { variantKey: string; done: boolean }) => e.variantKey === '25' && e.done)).toHaveLength(2);
+  // Reset status back to "À chasser" before opening the full Pokédex.
+  await quickSheet.getByRole('button', { name: 'À chasser', exact: true }).click();
+
+  // Escape hatch to the full Pokédex keeps the collection pre-selected and shows "Déjà dedans" badges.
+  await quickSheet.getByRole('link', { name: 'Pokédex complet' }).click();
   await expect(page).toHaveURL(new RegExp(`/dex\\?to=${list.id}$`));
   await expect(page.getByText('Ajout dans « Ma Liste UX »')).toBeVisible();
   await page.getByPlaceholder('Nom ou numéro').fill('carapuce');
@@ -309,6 +331,14 @@ test('collection UX: starter template, contextual /dex?to add, entry notes, filt
   await page.getByRole('button', { name: 'Ajouter Carapuce', exact: true }).click();
   await expect(page.locator('dialog[open] li', { hasText: 'Ma Liste UX' }).getByText('Déjà dedans')).toBeVisible();
   await page.keyboard.press('Escape');
+
+  // 1-tap mode directly on the Pokédex adds immediately without opening a sheet.
+  await page.getByRole('button', { name: 'Ajout 1 clic', exact: true }).click();
+  await page.getByPlaceholder('Nom ou numéro').fill('rondoudou');
+  await page.getByRole('button', { name: 'Ajouter Rondoudou', exact: true }).click();
+  await expect(page.getByText('Rondoudou ajouté')).toBeVisible();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ajout 1 clic', exact: true }).click();
 
   // Back to collection -> duplicate own list from Edit sheet.
   await page.getByRole('link', { name: 'Retour', exact: true }).click();

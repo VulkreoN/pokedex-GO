@@ -1,5 +1,5 @@
 /** The in-game search for a list, with the player's saved settings: shared by the sheet, the PDF and the image. */
-import { buildSearchStrings, plainTargets, regionOfForm, safePreEvolutions, speciesSearchInfo, targetFromVariant, type EntryGender, type GameLang, type ListEntry, type Variant } from '@mydexpogo/shared';
+import { buildSearchStrings, plainTargets, regionOfVariant, safePreEvolutions, speciesSearchInfo, targetFromVariant, type EntryGender, type GameLang, type ListEntry, type Variant } from '@mydexpogo/shared';
 import type { DatasetIndex } from './dataset.js';
 
 /** Left out of the whole search, each one a choice. Unticking shiny or costume keeps those entries in the search. */
@@ -130,8 +130,8 @@ export function formBlind(idx: DatasetIndex, entries: ListEntry[]): Variant[] {
     const kin = (idx.variantsByDex.get(v.dex) ?? []).filter((x) => !x.key.endsWith('.g2'));
     const releasedForms = new Set(kin.filter((x) => x.kind === 'form' && !x.datamined).map((x) => x.form));
     const costumes = new Set(kin.filter((x) => x.kind === 'costume').map((x) => x.costume ?? x.form ?? x.key));
-    const region = v.kind === 'regional' ? regionOfForm(v.form) : null;
-    const sameRegion = region ? new Set(kin.filter((x) => x.kind === 'regional' && regionOfForm(x.form) === region).map((x) => x.form)) : null;
+    const region = v.kind === 'regional' ? regionOfVariant(v) : null;
+    const sameRegion = region ? new Set(kin.filter((x) => x.kind === 'regional' && regionOfVariant(x) === region).map((x) => x.form)) : null;
     const gmax = new Set(kin.filter((x) => x.kind === 'gmax').map((x) => x.form));
     const blind =
       v.kind === 'form' ||

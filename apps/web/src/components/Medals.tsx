@@ -2,13 +2,20 @@
  * Tiered Trainer Medals (Bronze / Silver / Gold / Platinum) & Collection Progress Stats.
  */
 import { useMemo, useState } from 'react';
-import { computeCollectionStats, computeMedals, type ListDetail, type Medal, type MedalId, type MedalTier } from '@mydexpogo/shared';
+import {
+  MEDAL_MIN_LIST_ENTRIES,
+  computeCollectionStats,
+  computeMedals,
+  type ListDetail,
+  type Medal,
+  type MedalId,
+  type MedalTier,
+} from '@mydexpogo/shared';
 import { Badge, Button, Progress, Sheet } from './ui.js';
 import { useMe } from '../lib/auth.js';
 import { tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { useT } from '../lib/i18n.js';
-import { useFriends, useLists, useMembership } from '../lib/lists.js';
-import { useMyPvp, usePvpTeams } from '../lib/myPvp.js';
+import { useLists, useMembership } from '../lib/lists.js';
 
 const TIER_STYLES: Record<MedalTier, { bg: string; rim: string; text: string; dot: string }> = {
   0: { bg: 'linear-gradient(145deg, #cbd5e1, #94a3b8)', rim: '#94a3b8', text: 'text-ink-3', dot: 'bg-ink-3/40' },
@@ -19,15 +26,23 @@ const TIER_STYLES: Record<MedalTier, { bg: string; rim: string; text: string; do
 };
 
 const MEDAL_GLYPHS: Record<MedalId, string> = {
-  collector: '🎒',
-  shiny: '✨',
-  costume: '🎩',
-  regional: '🌍',
-  mega_max: '⚡',
-  shadow: '😈',
+  national_dex: '📖',
+  shiny_dex: '✨',
+  variants_dex: '🎭',
+  lucky_dex: '🍀',
+  shadow_dex: '😈',
+  purified_dex: '🪽',
+  mega_dex: '🧬',
+  max_dex: '⚡',
+  costume_dex: '🎩',
+  unown: '🔤',
+  vivillon: '🦋',
+  regional_dex: '🌍',
+  legendary: '👑',
+  shiny_legendary: '🌟',
+  shiny_costume: '🎀',
+  size_dex: '📏',
   completed_lists: '🏆',
-  friends: '🤝',
-  pvp: '⚔️',
   gen_1: 'I',
   gen_2: 'II',
   gen_3: 'III',
@@ -87,12 +102,12 @@ export function MedalsCard({ data, title }: { data: MedalsSummaryData; title?: s
   const [focused, setFocused] = useState<MedalId | null>(null);
 
   const heading = title ?? t.medals_title;
-  const allMedals = [...data.core, ...data.regions];
+  const allMedals = [...data.pokedex, ...data.challenges, ...data.regions];
   // Preview top 4 medals: highest tier first, then highest progress toward next tier.
   const preview = [...allMedals]
     .sort((a, b) => b.tier - a.tier || b.progress - a.progress || b.value - a.value)
     .slice(0, 4);
-  const selected = (focused ? allMedals.find((m) => m.id === focused) : null) ?? preview[0] ?? data.core[0]!;
+  const selected = (focused ? allMedals.find((m) => m.id === focused) : null) ?? preview[0] ?? data.pokedex[0]!;
 
   const medalDesc = (m: Medal) =>
     m.category === 'region'
@@ -177,7 +192,8 @@ export function MedalsCard({ data, title }: { data: MedalsSummaryData; title?: s
               </div>
             </div>
 
-            <MedalGrid title={t.medals_core} medals={data.core} selectedId={selected.id} onSelect={setFocused} />
+            <MedalGrid title={t.medals_pokedex} medals={data.pokedex} selectedId={selected.id} onSelect={setFocused} />
+            <MedalGrid title={t.medals_challenges} medals={data.challenges} selectedId={selected.id} onSelect={setFocused} />
             <MedalGrid title={t.medals_regions} medals={data.regions} selectedId={selected.id} onSelect={setFocused} />
           </div>
         )}
@@ -186,28 +202,21 @@ export function MedalsCard({ data, title }: { data: MedalsSummaryData; title?: s
   );
 }
 
-/** Compact summary card on MePage + full modal sheet showing all 9 core & 9 regional medals. */
+/** Compact summary card on MePage + full modal sheet showing all 26 Pokédex, challenge & regional medals. */
 export function TrainerMedalsCard() {
   const me = useMe();
   const dataset = useDataset();
   const membership = useMembership(!!me.data);
   const lists = useLists();
-  const friends = useFriends();
-  const myPvp = useMyPvp();
-  const pvpTeams = usePvpTeams();
 
   const data = useMemo(() => {
     if (!dataset.data) return null;
-    const completedLists = (lists.data ?? []).filter((l) => l.entryCount > 0 && l.doneCount === l.entryCount).length;
-    const friendsCount = friends.data?.length ?? 0;
-    const pvpCount = (myPvp.data?.length ?? 0) + (pvpTeams.data?.length ?? 0);
+    const completedLists = (lists.data ?? []).filter((l) => l.entryCount >= MEDAL_MIN_LIST_ENTRIES && l.doneCount === l.entryCount).length;
     return computeMedals(dataset.data.ds, {
       entries: membership.data ?? [],
       completedLists,
-      friendsCount,
-      pvpCount,
     });
-  }, [dataset.data, membership.data, lists.data, friends.data, myPvp.data, pvpTeams.data]);
+  }, [dataset.data, membership.data, lists.data]);
 
   if (!me.data || !data) return null;
   return <MedalsCard data={data} />;

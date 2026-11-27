@@ -5,7 +5,7 @@ import { api } from './api.js';
 import { useMe } from './auth.js';
 
 export interface MyPvpPokemon { id: string; formKey: string; atk: number; def: number; sta: number; level: number | null; shadow: boolean; note: string | null; createdAt: string }
-export type MyPvpInput = Pick<MyPvpPokemon, 'formKey' | 'atk' | 'def' | 'sta' | 'level'> & { note?: string | null };
+export type MyPvpInput = Pick<MyPvpPokemon, 'formKey' | 'atk' | 'def' | 'sta' | 'level'> & { shadow?: boolean; note?: string | null };
 
 const KEY = ['pvp-pokemon'];
 const TEAMS_KEY = ['pvp-teams'];
@@ -19,7 +19,9 @@ export function useSaveMyPvp() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (p: MyPvpInput & { id?: string }) =>
-      p.id ? api<{ pokemon: MyPvpPokemon }>(`/pvp-pokemon/${p.id}`, { method: 'PATCH', body: { atk: p.atk, def: p.def, sta: p.sta, level: p.level } }) : api<{ pokemon: MyPvpPokemon }>('/pvp-pokemon', { body: p }),
+      p.id
+        ? api<{ pokemon: MyPvpPokemon }>(`/pvp-pokemon/${p.id}`, { method: 'PATCH', body: { atk: p.atk, def: p.def, sta: p.sta, level: p.level, shadow: p.shadow } })
+        : api<{ pokemon: MyPvpPokemon }>('/pvp-pokemon', { body: p }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

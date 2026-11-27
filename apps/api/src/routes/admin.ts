@@ -24,6 +24,7 @@ import { pushToUser } from '../notify/push.js';
 import { runRaidAlerts } from '../notify/raidAlerts.js';
 import { notifyAccount, notifyStaff } from '../notify/service.js';
 import { overrideState } from './data.js';
+import { restorePrunedEntries, syncCollectionsForOverrides, type PrunedCollectionEntry } from '../lists/syncOverrides.js';
 import { alias } from 'drizzle-orm/pg-core';
 import { TRASH_DAYS, restoreList, trashList } from '../lib/trash.js';
 import { restoreAccount, trashAccount } from '../lib/accountTrash.js';
@@ -274,6 +275,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     await markListDeleteUndone(c.req.param('id'));
     const [owner] = await db.select({ username: schema.users.username }).from(schema.users).where(eq(schema.users.id, back.ownerId)).limit(1);
     await audit(me.id, 'list.restore', 'list', c.req.param('id'), { username: owner?.username, name: back.name });
+    hub.emit([back.ownerId], { type: 'list', listId: c.req.param('id'), ownerId: back.ownerId });
     if (back.ownerId !== me.id) await notifyAccount(back.ownerId, me.id, 'list_restored', { value: back.name });
     return c.json({ ok: true });
   })
@@ -413,7 +415,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     const cell = (v: unknown) => {
       const s = v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v);
       // Quoted, and no formula can run when the file opens in a spreadsheet.
-      return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+      return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
     };
     const lines = [['date', 'auteur', 'action', 'cible', 'id cible', 'détails', 'annulé le'].map(cell).join(',')];
     for (const { a, actor } of rows) lines.push([a.createdAt.toISOString(), actor ?? (a.data as { username?: string }).username ?? '', a.action, a.targetType, a.targetId, a.data, a.undoneAt?.toISOString()].map(cell).join(','));
@@ -434,6 +436,7 @@ export const adminRoutes = new Hono<AuthEnv>()
       if (!back) return c.json({ error: 'not_undoable' }, 400);
       await markListDeleteUndone(e.targetId);
       await audit(c.get('user').id, 'list.restore', 'list', e.targetId, { username: (e.data as { username?: string }).username, name: back.name });
+      hub.emit([back.ownerId], { type: 'list', listId: e.targetId, ownerId: back.ownerId });
       if (back.ownerId !== c.get('user').id) await notifyAccount(back.ownerId, c.get('user').id, 'list_restored', { value: back.name });
       return c.json({ ok: true });
     }
@@ -444,12 +447,15 @@ export const adminRoutes = new Hono<AuthEnv>()
     const was = await dataService.shownState(key);
     if (!before) await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     else {
-      const values = { variantKey: key, released: before.released, labelEn: before.label?.en ?? null, labelFr: before.label?.fr ?? null, genders: before.genders, shinyReleased: before.shinyReleased ?? null, noEvolve: before.noEvolve ?? null, noMega: before.noMega ?? null, kind: before.kind ?? null, hidden: before.hidden ?? null, updatedBy: c.get('user').id, updatedAt: new Date() };
+      const values = { variantKey: key, released: before.released, labelEn: before.label?.en || null, labelFr: before.label?.fr || null, genders: before.genders, shinyReleased: before.shinyReleased ?? null, noEvolve: before.noEvolve ?? null, noMega: before.noMega ?? null, kind: before.kind ?? null, hidden: before.hidden ?? null, updatedBy: c.get('user').id, updatedAt: new Date() };
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();
+    const now = await dataService.shownState(key);
+    await restorePrunedEntries(e.data.pruned as PrunedCollectionEntry[] | undefined);
+    await syncCollectionsForOverrides([{ key, was, now }], await dataService.variants());
     await db.update(schema.auditLog).set({ undoneAt: new Date() }).where(eq(schema.auditLog.id, e.id));
-    await audit(c.get('user').id, 'override.undo', 'variant', key, { before: current ? overrideState(current) : null, after: before, undoes: e.id, was, now: await dataService.shownState(key) });
+    await audit(c.get('user').id, 'override.undo', 'variant', key, { before: current ? overrideState(current) : null, after: before, undoes: e.id, was, now });
     return c.json({ ok: true });
   })
 
@@ -459,7 +465,7 @@ export const adminRoutes = new Hono<AuthEnv>()
     const [devices] = await db.select({ n: sql<number>`count(distinct ${schema.pushSubscriptions.userId})`.mapWith(Number) }).from(schema.pushSubscriptions);
     return c.json({ announcements: rows.map(publicAnnouncement), pushAccounts: devices?.n ?? 0 });
   })
-  .post('/announcements', zValidator('json', z.object({ message: z.string().trim().min(3).max(280), level: z.enum(['info', 'warning']).default('info'), link: z.string().trim().max(200).regex(/^(\/|https:\/\/)/).optional(), push: z.boolean().default(false) })), async (c) => {
+  .post('/announcements', zValidator('json', z.object({ message: z.string().trim().min(3).max(280), level: z.enum(['info', 'warning']).default('info'), link: z.string().trim().max(200).regex(/^(\/(?!\/)|https:\/\/)/).optional(), push: z.boolean().default(false) })), async (c) => {
     const me = c.get('user');
     const b = c.req.valid('json');
     const id = newId();

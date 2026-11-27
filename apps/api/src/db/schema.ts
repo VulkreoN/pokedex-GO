@@ -83,7 +83,7 @@ export const listEntries = pgTable(
     position: integer('position').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.gender] })],
+  (t) => [primaryKey({ columns: [t.listId, t.variantKey, t.shiny, t.tag, t.gender] }), index('list_entries_variant_key_idx').on(t.variantKey)],
 );
 
 export const friendRequests = pgTable(
@@ -203,6 +203,22 @@ export const posts = pgTable(
 );
 
 /** "I have this one": a friend tells the list owner they own an entry they are hunting. */
+export interface ListEventUndoEntry {
+  variantKey: string;
+  gender: string;
+  shiny: boolean;
+  tag: string;
+  done?: boolean;
+  note?: string | null;
+  position?: number;
+}
+
+export interface ListEventUndoPayload {
+  entries?: ListEventUndoEntry[];
+  from?: string;
+  to?: string;
+}
+
 /** What happened in a collection, newest first. Close actions by the same person merge into one line. */
 export const listEvents = pgTable(
   'list_events',
@@ -215,9 +231,12 @@ export const listEvents = pgTable(
     /** A few of the Pokémon concerned, to show their sprites. */
     items: jsonb('items').$type<import('@mydexpogo/shared').ListEventItem[]>().notNull().default([]),
     data: jsonb('data').$type<Record<string, unknown>>(),
+    /** Snapshot of all affected entries or previous settings, so the owner can undo the action from history. */
+    undoPayload: jsonb('undo_payload').$type<ListEventUndoPayload>(),
+    undoneAt: timestamp('undone_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('list_events_list_idx').on(t.listId, t.createdAt)],
+  (t) => [index('list_events_list_idx').on(t.listId, t.createdAt), index('list_events_list_id_idx').on(t.listId, t.id)],
 );
 
 export const listOffers = pgTable(

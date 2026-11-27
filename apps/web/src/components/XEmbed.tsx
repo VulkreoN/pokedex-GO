@@ -68,12 +68,58 @@ export function XEmbed({ html, dark }: { html: string; dark: boolean }) {
   return <XWidget html={html} dark={dark} />;
 }
 
+const ALLOWED_TAGS = new Set(['BLOCKQUOTE', 'P', 'A', 'BR', 'SPAN']);
+
+function sanitizeOEmbed(raw: string, dark: boolean): DocumentFragment {
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const out = document.createDocumentFragment();
+  const walk = (node: Node, target: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      target.appendChild(document.createTextNode(node.textContent ?? ''));
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const src = node as HTMLElement;
+    if (!ALLOWED_TAGS.has(src.tagName)) {
+      for (const child of src.childNodes) walk(child, target);
+      return;
+    }
+    const clean = document.createElement(src.tagName.toLowerCase());
+    const cls = src.getAttribute('class');
+    if (cls && /^(twitter-tweet|twitter-timeline)$/.test(cls.trim())) {
+      clean.setAttribute('class', cls.trim());
+      clean.setAttribute('data-theme', dark ? 'dark' : 'light');
+      clean.setAttribute('data-dnt', 'true');
+      if (cls.trim() === 'twitter-timeline') {
+        clean.setAttribute('data-chrome', 'noheader nofooter noborders');
+        clean.setAttribute('data-height', '1200');
+      }
+    }
+    if (src.tagName === 'A') {
+      const href = src.getAttribute('href') ?? '';
+      if (/^https?:\/\//i.test(href)) {
+        clean.setAttribute('href', href);
+        clean.setAttribute('rel', 'noopener noreferrer');
+        clean.setAttribute('target', '_blank');
+      }
+    }
+    const lang = src.getAttribute('lang');
+    if (lang && /^[a-zA-Z-]{2,10}$/.test(lang)) clean.setAttribute('lang', lang);
+    const dir = src.getAttribute('dir');
+    if (dir === 'ltr' || dir === 'rtl') clean.setAttribute('dir', dir);
+    for (const child of src.childNodes) walk(child, clean);
+    target.appendChild(clean);
+  };
+  for (const child of doc.body.childNodes) walk(child, out);
+  return out;
+}
+
 function XWidget({ html, dark }: { html: string; dark: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.innerHTML = html.replace('<blockquote class="twitter-tweet"', `<blockquote class="twitter-tweet" data-theme="${dark ? 'dark' : 'light'}" data-dnt="true"`).replace('<a class="twitter-timeline"', `<a class="twitter-timeline" data-theme="${dark ? 'dark' : 'light'}" data-dnt="true" data-chrome="noheader nofooter noborders" data-height="1200"`);
+    el.replaceChildren(sanitizeOEmbed(html, dark));
     void loadWidgets().then(() => window.twttr?.widgets.load(el));
   }, [html, dark]);
   return <div ref={ref} className="x-embed min-h-10" />;

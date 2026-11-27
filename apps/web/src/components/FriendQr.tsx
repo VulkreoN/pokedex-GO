@@ -11,8 +11,9 @@ export function friendCodeIn(text: string): string | null {
 
 /** My friend code as a QR code, dark on white whatever the theme so any camera reads it. */
 export function FriendQr({ code, size = 184 }: { code: string; size?: number }) {
+  const digits = code.replace(/\D/g, '');
   const qr = qrcode(0, 'M');
-  qr.addData(code, 'Numeric');
+  qr.addData(digits || code, digits && digits === code.replace(/\s/g, '') ? 'Numeric' : 'Byte');
   qr.make();
   const n = qr.getModuleCount();
   const cells: string[] = [];

@@ -24,6 +24,7 @@ describe("the game's own French", () => {
     expect(translateWith(t, 'Make 3 Great Curveball Throws in a row')).toBe('Fais 3 Super lancers à effet à la suite');
     expect(translateWith(t, 'Make 5 Great Throws')).toBe('Fais 5 Super lancers');
     expect(translateWith(t, 'Catch 10 Pokémon')).toBe('Attrape 10 Pokémon'); // no full stop added
+    expect(translateWith(t, 'Catch 5 Weather Boosted Pokémon')).toBeNull();
     expect(translateWith(t, 'Trade a Pokémon')).toBe('Échange un Pokémon');
     expect(translateWith(t, 'Win a Max Battle')).toBeNull();
   });

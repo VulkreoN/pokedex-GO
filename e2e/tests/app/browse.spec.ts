@@ -198,11 +198,11 @@ test.describe('game tab', () => {
     await page.getByRole('button', { name: 'Capsules', exact: true }).click();
     await expect(page).toHaveURL(/\/game\?tab=tools&tool=caps$/); // tool persisted in URL
     await page.getByRole('button', { name: 'Copier', exact: true }).click();
-    expect(await clipboard(page)).toBe('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow&shiny');
+    expect(await clipboard(page)).toBe('4attaque,4défense&4attaque,4pv&4défense,4pv&!4*&!obscur&chromatique');
     await page.getByRole('button', { name: 'Chromatiques seulement' }).click();
-    await expect(page.locator('code')).toHaveText('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow');
-    await page.getByRole('button', { name: 'Français', exact: true }).click();
     await expect(page.locator('code')).toHaveText('4attaque,4défense&4attaque,4pv&4défense,4pv&!4*&!obscur');
+    await page.getByRole('button', { name: 'English', exact: true }).click();
+    await expect(page.locator('code')).toHaveText('4attack,4defense&4attack,4hp&4defense,4hp&!4*&!shadow');
     await page.getByRole('button', { name: 'PV', exact: true }).click();
     await page.locator('main input[type=range]').fill('13');
     await expect(page.getByText('2 tâches pour atteindre 15')).toBeVisible();
@@ -394,8 +394,8 @@ test('a species the game only knows as forms has no extra "Normal" one (Poltchag
   await page.goto('/dex/1012');
   await expect(page.getByRole('heading', { name: /Poltchageist/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Counterfeit/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Artisan/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Forme Contrefaçon/ }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Forme Onéreuse/ }).first()).toBeVisible();
   await page.goto('/dex/854'); // Sinistea: the game's own French names
   await expect(page.getByRole('heading', { name: /Théffroi/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Normal/ })).toHaveCount(0);
@@ -429,12 +429,12 @@ test('multi-select: each ticked card chooses its genders and versions', async ({
   await expect(card.getByRole('button', { name: 'Mâle Shiny', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByPlaceholder('Nom ou numéro').fill('salamèche');
   await page.getByRole('button', { name: 'Ajouter Salamèche', exact: true }).click();
-  await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
-  const sheet = page.locator('dialog[open]');
-  await expect(sheet.getByRole('button', { name: 'Mettre 3 entrées dans la sélection' })).toBeVisible();
-  await sheet.getByRole('button', { name: 'Mettre 3 entrées dans la sélection' }).click();
+  // Unified selection persists directly in sessionStorage as cards are ticked.
   const basket = await page.evaluate(() => JSON.parse(sessionStorage.getItem('selection') ?? '[]') as { variantKey: string; gender: string; shiny: boolean }[]);
   expect(basket.map((b) => `${b.variantKey}${b.gender}${b.shiny ? '*' : ''}`).sort()).toEqual(['1f*', '4f', '4m']);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).last().click();
+  const sheet = page.locator('dialog[open]');
+  await expect(sheet.getByRole('button', { name: /^Ajouter · 3 sélectionnées/ })).toBeVisible();
 });
 
 test('multi-select: the sheet switches a version on or off for every ticked card', async ({ page }) => {
@@ -450,7 +450,7 @@ test('multi-select: the sheet switches a version on or off for every ticked card
   await expect(sheet.getByRole('button', { name: '♂ Mâle', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await sheet.getByRole('button', { name: '♀✨ Femelle Shiny', exact: true }).click();
   await sheet.getByRole('button', { name: '♂ Mâle', exact: true }).click();
-  await expect(sheet.getByRole('button', { name: 'Mettre 4 entrées dans la sélection' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: /^Ajouter · 4 sélectionnées/ })).toBeVisible();
 });
 
 test('search finds costumes by their name, and unreleased forms can be hidden', async ({ page }) => {
@@ -522,10 +522,7 @@ test('game tools: counters for any Pokémon, power-up and trade costs, buddy dis
   expect(overflow).toBe(false);
   await expect(page.getByRole('link', { name: 'Voir sa fiche dans le Pokédex' })).toHaveAttribute('href', '/dex/150');
   await expect(counters.getByText('Faible contre')).toBeVisible();
-  // They open over the page; closed to go on.
-  await page.keyboard.press('Escape');
-  await expect(counters).toHaveCount(0);
-  // Special evolutions: the full moon group open, with its next dates; the task group shows the game's words.
+  // Counters render directly inline; switching to Special evolutions works in one tap.
   await page.getByRole('button', { name: 'Évolutions spéciales' }).click();
   await expect(page.getByText('Prochaines pleines lunes (heure de ton téléphone)')).toBeVisible();
   await page.getByRole('button', { name: /Avec un objectif à remplir/ }).click();
@@ -666,8 +663,10 @@ test('PvP IV steppers/presets, battle swap, and Me profile stats + inline passwo
   // Me page: copyable friend code, stats pill, new full-app theme picker, and inline error instead of native alert().
   await page.goto('/me');
   await expect(page.getByRole('link', { name: /0 collection/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Préférences' }).click();
   await page.getByRole('button', { name: 'Team Rocket' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-team', 'rocket');
+  await page.getByRole('tab', { name: 'Profil' }).click();
   await page.getByRole('button', { name: 'Changer mon mot de passe' }).click();
   const sheet = page.locator('dialog[open]');
   await sheet.getByLabel('Mot de passe actuel').fill('wrong-password');
@@ -714,7 +713,7 @@ test('startup page picker in Me redirects / to the chosen tab or last collection
   await apiRegister(page.request);
   const listId = (await (await page.request.post('/api/lists', { data: { name: 'Ma chasse' } })).json()).list.id;
 
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   const group = page.getByRole('radiogroup', { name: 'Page au démarrage' });
   await expect(group.getByRole('button', { name: 'Pokédex', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await group.getByRole('button', { name: 'Jeu', exact: true }).click();
@@ -725,7 +724,7 @@ test('startup page picker in Me redirects / to the chosen tab or last collection
 
   await page.goto(`/lists/${listId}`);
   await expect(page.getByRole('heading', { name: 'Ma chasse' })).toBeVisible();
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('radiogroup', { name: 'Page au démarrage' }).getByRole('button', { name: 'Dernière collection', exact: true }).click();
   await page.goto('/');
   await expect(page).toHaveURL(new RegExp(`/lists/${listId}$`));
@@ -851,7 +850,8 @@ test('v1.3: Game "Pour moi" overview + countdowns, Collection stats, Trainer med
   await expect(page.getByRole('heading', { name: 'Mes médailles' })).toBeVisible();
   await page.getByRole('button', { name: 'Voir toutes les médailles' }).click();
   const medalSheet = page.locator('dialog[open]');
-  await expect(medalSheet.getByText('Chasse & profil')).toBeVisible();
+  await expect(medalSheet.getByText('Pokédex du jeu')).toBeVisible();
+  await expect(medalSheet.getByText('Défis Pokémon GO')).toBeVisible();
   await expect(medalSheet.getByText('Régions du Pokédex')).toBeVisible();
   await medalSheet.getByRole('button', { name: /Kanto/ }).click();
   await expect(medalSheet.getByText(/Kanto · 2 \//)).toBeVisible();
@@ -886,12 +886,12 @@ test('v1.3: Game "Pour moi" overview + countdowns, Collection stats, Trainer med
     }),
   );
   await page.goto('/game?tab=hunts');
-  await expect(page.getByRole('tab', { name: 'Pour moi', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: /^Pour moi/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText(/Fin dans /).first()).toBeVisible();
   await expect(page.getByText('Ronflex').first()).toBeVisible();
   await expect(page.getByText('Pikachu').first()).toBeVisible();
 
-  // 5. PvP saved teams of 3: save, reload, load into slots, and delete.
+  // 5. PvP saved teams of 3: save, reload, load into slots, and delete (hold-to-confirm).
   await page.goto('/pvp/team?l=great&p=184,308,227');
   await page.getByRole('button', { name: 'Enregistrer l’équipe' }).click();
   const saveSheet = page.locator('dialog[open]');
@@ -904,7 +904,7 @@ test('v1.3: Game "Pour moi" overview + countdowns, Collection stats, Trainer med
   await page.getByRole('button', { name: 'Charger Mon équipe S26' }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get('p')).toBe('184,308,227');
 
-  await page.getByRole('button', { name: 'Supprimer Mon équipe S26' }).click();
+  await page.locator('li', { hasText: 'Mon équipe S26' }).getByRole('button', { name: /^Supprimer/ }).click({ delay: 1000 });
   await expect(page.getByText('Équipe supprimée')).toBeVisible();
   await expect(page.getByRole('heading', { name: /^Mes équipes enregistrées/ })).toHaveCount(0);
 });
@@ -1097,7 +1097,7 @@ test('automatic Events tab renders multi-template infographics (Max Battle + Lon
   await expect(megaSheet.getByText('Fée', { exact: true })).toBeVisible();
   await expect(megaSheet.getByText('Vol', { exact: true })).toBeVisible();
   await expect(megaSheet.getByText('Début de Méga-Mélodelfe')).toBeVisible();
-  await expect(megaSheet.getByText('Nouveau niveau Méga : Super Max')).toBeVisible();
+  await expect(megaSheet.getByText('Nouveau Méga-Niveau : Super Niveau Max')).toBeVisible();
   await expect(megaSheet.getByText('Pouvoir Lunaire +', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
@@ -1113,7 +1113,13 @@ test('automatic Events tab renders multi-template infographics (Max Battle + Lon
   await expect(sheet2.getByText('Passe de combat premium')).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // Weekly schedule ("Ma semaine") also exports a real PNG poster!
+  // Weekly schedule ("Ma semaine") clicks stay inside MyDexPoGo (even for non-rich events like Raids) and also export a real PNG poster!
+  await weekly.getByRole('button', { name: /Journée Combat Gigamax : Lézargus/ }).first().click();
+  const weeklyOpenSheet = page.locator('dialog[open]');
+  await expect(weeklyOpenSheet.getByRole('heading', { name: 'Journée Combat Gigamax : Lézargus' }).first()).toBeVisible();
+  await expect(weeklyOpenSheet.getByRole('link', { name: 'Voir les Combats Max' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
   await weekly.getByRole('button', { name: /Partager \/ PDF/ }).click();
   const weekSheet = page.locator('dialog[open]');
   const [weekPngDl] = await Promise.all([
@@ -1132,7 +1138,7 @@ test('admin panel upgrades: overrides manager, health runtime + push test, user 
 
   await page.goto('/admin?tab=overrides');
   await expect(page.getByRole('link', { name: /Bulbizarre/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Réinitialiser', exact: true }).first().click();
+  await page.getByRole('button', { name: /^Réinitialiser/ }).first().click({ delay: 1000 });
   await expect(page.getByText('Annulé')).toBeVisible();
 
   await page.getByRole('tab', { name: 'Santé' }).click();
@@ -1219,7 +1225,7 @@ test('skippable per-page guided tutorials & ? help sheet across pages', async ({
   await page.keyboard.press('Escape');
 
   // Re-enabling guides from Me brings the auto guide back.
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('button', { name: 'Relancer sur chaque page' }).click();
   await expect(page.getByRole('complementary', { name: 'Guide rapide · Moi & Réglages' })).toBeVisible();
 });

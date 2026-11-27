@@ -5,7 +5,6 @@
  *   trainers who have those postcards, with 1-tap friend request & pattern filters.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
 import {
   VIVILLON_META,
   VIVILLON_PATTERNS,
@@ -84,33 +83,6 @@ export function PostcardBadges({
         );
       })}
     </div>
-  );
-}
-
-/** Compact summary shown on Friends -> Add friend, linking to MePage where postcards are configured. */
-export function MyPostcardsShortcutCard() {
-  const t = useT();
-  const mine = useMyPostcards();
-  const list = mine.data ?? [];
-  return (
-    <section className="card space-y-2.5 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold">🦋 {t.postcards_mine_title}</h2>
-        <Link
-          to="/me"
-          className="inline-flex min-h-8 items-center rounded-xl bg-paper-2 px-2.5 text-xs font-semibold text-sky hover:brightness-95"
-        >
-          {t.postcards_edit_on_me} ›
-        </Link>
-      </div>
-      {mine.isPending ? (
-        <Spinner />
-      ) : list.length === 0 ? (
-        <p className="text-xs leading-relaxed text-ink-2">{t.postcards_mine_shortcut_empty}</p>
-      ) : (
-        <PostcardBadges postcards={list} compact />
-      )}
-    </section>
   );
 }
 

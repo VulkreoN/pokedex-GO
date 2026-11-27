@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { GameLang } from '@mydexpogo/shared';
 import { candidateSearch, HYPER_TRAINING, type HtStat } from '../lib/hyperTraining.js';
 import { useLang, useT } from '../lib/i18n.js';
+import { savedGameLang, saveGameLang } from '../lib/searchString.js';
 import { Chip, CopyButton } from './ui.js';
 
 /** Hyper Training helper: candidate search string, rules, and the task for each IV step. */
@@ -9,7 +10,7 @@ export function BottleCaps() {
   const t = useT();
   const { lang } = useLang();
   const [shinyOnly, setShinyOnly] = useState(true);
-  const [gameLang, setGameLang] = useState<GameLang>('en');
+  const [gameLang, setGameLang] = useState<GameLang>(() => savedGameLang(lang));
   const [stat, setStat] = useState<HtStat>('atk');
   const [current, setCurrent] = useState(0);
   const search = candidateSearch(shinyOnly, gameLang);
@@ -27,7 +28,7 @@ export function BottleCaps() {
           <Chip active={shinyOnly} onClick={() => setShinyOnly((v) => !v)}>{t.caps_shiny_only}</Chip>
           <span className="ml-auto inline-flex gap-1">
             {(['en', 'fr'] as const).map((gl) => (
-              <Chip key={gl} active={gameLang === gl} onClick={() => setGameLang(gl)} className="min-h-8 px-2.5 text-xs">
+              <Chip key={gl} active={gameLang === gl} onClick={() => { setGameLang(gl); saveGameLang(gl); }} className="min-h-8 px-2.5 text-xs">
                 {gl === 'fr' ? 'Français' : 'English'}
               </Chip>
             ))}
@@ -53,11 +54,29 @@ export function BottleCaps() {
             <Chip key={s} active={stat === s} onClick={() => setStat(s)}>{t[`stat_${s}`]}</Chip>
           ))}
         </div>
-        <label className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex items-center gap-2">
           <span className="shrink-0 text-sm font-medium text-ink-2">{t.caps_current_iv}</span>
-          <input type="range" min={0} max={15} value={current} onChange={(e) => setCurrent(Number(e.target.value))} className="h-8 flex-1 accent-go" />
-          <span className="tnum w-7 text-right text-lg font-bold">{current}</span>
-        </label>
+          <button
+            type="button"
+            disabled={current <= 0}
+            aria-label={t.pvp_iv_dec(t[`stat_${stat}`])}
+            onClick={() => setCurrent((v) => Math.max(0, v - 1))}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-base font-bold text-ink transition active:scale-95 disabled:opacity-35"
+          >
+            −
+          </button>
+          <input type="range" min={0} max={15} value={current} onChange={(e) => setCurrent(Number(e.target.value))} aria-label={t.caps_current_iv} className="h-8 min-w-0 flex-1 accent-go" />
+          <button
+            type="button"
+            disabled={current >= 15}
+            aria-label={t.pvp_iv_inc(t[`stat_${stat}`])}
+            onClick={() => setCurrent((v) => Math.min(15, v + 1))}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-base font-bold text-ink transition active:scale-95 disabled:opacity-35"
+          >
+            +
+          </button>
+          <span className="tnum w-7 shrink-0 text-right text-lg font-bold">{current}</span>
+        </div>
         {current === 15 ? (
           <p className="mt-2 text-sm font-semibold text-go-ink dark:text-go">{t.caps_maxed}</p>
         ) : (

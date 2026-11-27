@@ -65,19 +65,29 @@ export const authRoutes = new Hono<AuthEnv>()
     const existing = countRow?.n ?? 0;
     const role = existing === 0 || env.adminUsernames.includes(username.toLowerCase()) ? 'admin' : 'user'; // the first account owns the instance
     let user: typeof schema.users.$inferSelect | undefined;
+    let inviteNote: string | null = null;
     try {
-      [user] = await db.insert(schema.users).values({ id, username, passwordHash, friendCode, role }).returning();
+      const created = await db.transaction(async (tx) => {
+        if (gate.inviteId) {
+          const [used] = await tx
+            .update(schema.inviteCodes)
+            .set({ uses: sql`${schema.inviteCodes.uses} + 1` })
+            .where(and(eq(schema.inviteCodes.id, gate.inviteId), sql`${schema.inviteCodes.uses} < ${schema.inviteCodes.maxUses}`, or(isNull(schema.inviteCodes.expiresAt), gt(schema.inviteCodes.expiresAt, new Date()))))
+            .returning({ note: schema.inviteCodes.note });
+          if (!used) return { inviteExhausted: true as const };
+          inviteNote = used.note ?? '';
+        }
+        const [inserted] = await tx.insert(schema.users).values({ id, username, passwordHash, friendCode, role }).returning();
+        return { inviteExhausted: false as const, user: inserted };
+      });
+      if (created.inviteExhausted) return c.json({ error: 'invalid_invite' }, 403);
+      user = created.user;
     } catch (e) {
       // Two sign-ups racing for the same name both pass the check above; the unique index settles it.
       if ((e as { code?: string; cause?: { code?: string } }).code === '23505' || (e as { cause?: { code?: string } }).cause?.code === '23505') {
         return c.json({ error: 'username_taken' }, 409);
       }
       throw e;
-    }
-    let inviteNote: string | null = null;
-    if (gate.inviteId) {
-      const [used] = await db.update(schema.inviteCodes).set({ uses: sql`${schema.inviteCodes.uses} + 1` }).where(eq(schema.inviteCodes.id, gate.inviteId)).returning({ note: schema.inviteCodes.note });
-      inviteNote = used?.note ?? '';
     }
     await audit(id, 'account.create', 'user', id, { username, role, invite: gate.inviteId ? { id: gate.inviteId, note: inviteNote } : null });
     await createSession(c, id);
@@ -134,7 +144,7 @@ export const authRoutes = new Hono<AuthEnv>()
     return c.json({ user: publicUser({ ...me, friendCode: code }) });
   })
   /** Logged-in: change the password, every other session is closed. */
-  .post('/password', requireAuth, zValidator('json', z.object({ current: z.string(), password: z.string().min(8).max(200) })), async (c) => {
+  .post('/password', requireAuth, rateLimit({ windowMs: 60_000, max: 10 }), zValidator('json', z.object({ current: z.string(), password: z.string().min(8).max(200) })), async (c) => {
     const me = c.get('user');
     const [user] = await db.select().from(schema.users).where(sql`${schema.users.id} = ${me.id}`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, c.req.valid('json').current))) return c.json({ error: 'invalid_credentials' }, 401);
@@ -165,7 +175,7 @@ export const authRoutes = new Hono<AuthEnv>()
     await createSession(c, user.id);
     return c.json({ user: publicUser({ ...user, role: user.role }) });
   })
-  .delete('/me', requireAuth, zValidator('json', z.object({ password: z.string() })), async (c) => {
+  .delete('/me', requireAuth, rateLimit({ windowMs: 60_000, max: 10 }), zValidator('json', z.object({ password: z.string() })), async (c) => {
     const me = c.get('user');
     const [user] = await db.select().from(schema.users).where(sql`${schema.users.id} = ${me.id}`).limit(1);
     if (!user || !(await verifyPassword(user.passwordHash, c.req.valid('json').password))) return c.json({ error: 'invalid_credentials' }, 401);

@@ -2,10 +2,11 @@ import { errorMessage } from '../lib/errors.js';
 import { useEffect, useMemo, useState } from 'react';
 import { ENTRY_TAGS, neutralKey, type EntryGender, type EntryTag, type Variant } from '@mydexpogo/shared';
 import { Link } from 'react-router';
-import { entryGenders, entryVariant, genderSymbol, type DatasetIndex } from '../lib/dataset.js';
+import { useAddPrefs } from '../lib/addPrefs.js';
+import { entryGenders, entryVariant, genderSymbol, normalize, type DatasetIndex } from '../lib/dataset.js';
+import { feedback } from '../lib/feedback.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 import { useCreateList, useLists, useMembership, useUpsertEntries } from '../lib/lists.js';
-import { selection } from '../lib/selection.js';
 import { Sparkle, Sprite } from './Sprite.js';
 import { useToast } from './toast.js';
 import { Badge, Button, Chip, Sheet, TextField } from './ui.js';
@@ -71,13 +72,43 @@ function optionsOf(idx: DatasetIndex, group: VariantGroup): Option[] {
   });
 }
 
-/** Picks the versions (gender x shiny), an optional trait, then one or more lists, and adds one entry per version to each. */
+/** Shared segmented toggle for "Missing" vs "Already caught" right at add time. */
+export function InitialStatusField({ done, onChange }: { done: boolean; onChange: (done: boolean) => void }) {
+  const t = useT();
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs font-medium text-ink-3">{t.add_status_title}</span>
+      <div className="inline-flex rounded-full bg-paper-2 p-0.5" role="group" aria-label={t.add_status_title}>
+        <button
+          type="button"
+          aria-pressed={!done}
+          onClick={() => onChange(false)}
+          className={`inline-flex min-h-8 items-center rounded-full px-3 text-xs font-semibold transition ${!done ? 'bg-card text-ink shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+        >
+          {t.add_status_missing}
+        </button>
+        <button
+          type="button"
+          aria-pressed={done}
+          onClick={() => onChange(true)}
+          className={`inline-flex min-h-8 items-center gap-1 rounded-full px-3 text-xs font-semibold transition ${done ? 'bg-go text-white shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+          {t.add_status_caught}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Picks versions (gender x shiny), initial status (missing/caught), optional trait, and target collection(s) with a sticky CTA. */
 export function AddToListSheet({
   idx,
   group,
   initialShiny,
   targetListId,
   defaultTag,
+  onAdded,
   onClose,
 }: {
   idx: DatasetIndex;
@@ -85,6 +116,7 @@ export function AddToListSheet({
   initialShiny: boolean;
   targetListId?: string;
   defaultTag?: EntryTag;
+  onAdded?: (count: number) => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -94,7 +126,9 @@ export function AddToListSheet({
   const membership = useMembership(!!group);
   const upsert = useUpsertEntries();
   const create = useCreateList();
+  const [prefs, setPrefs] = useAddPrefs();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [listFilter, setListFilter] = useState('');
   const [newName, setNewName] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   /** Traits are multi-select: picking "lucky" and "none" adds both a plain and a lucky entry per version. */
@@ -111,8 +145,9 @@ export function AddToListSheet({
     const opts = optionsOf(idx, group);
     const look = opts.filter((o) => o.shiny === initialShiny);
     setPicked(new Set((look.length ? look : opts.filter((o) => !o.shiny)).map((o) => o.id)));
-    setTags(new Set([defaultTag || '']));
+    setTags(new Set([defaultTag !== undefined ? defaultTag : prefs.tag]));
     setBgs(new Set());
+    setListFilter('');
     if (targetListId) {
       setSelected(new Set([targetListId]));
     } else {
@@ -156,6 +191,7 @@ export function AddToListSheet({
   const species = group ? idx.speciesByDex.get(group.variants[0]!.dex) : null;
   const chosen = options.filter((o) => picked.has(o.id));
   const effTags = effectiveTags();
+  const totalCount = chosen.length * effTags.length;
 
   /** For each collection, checks whether the currently selected variant+shiny+tag is already present / caught. */
   const listStatus = useMemo(() => {
@@ -180,6 +216,13 @@ export function AddToListSheet({
     return out;
   }, [group, membership.data, chosen, effTags]);
 
+  const filteredLists = useMemo(() => {
+    const all = lists.data ?? [];
+    const q = normalize(listFilter);
+    if (!q) return all;
+    return all.filter((l) => normalize(l.name).includes(q));
+  }, [lists.data, listFilter]);
+
   const submit = async () => {
     if (!group || chosen.length === 0) return;
     const ids = [...selected];
@@ -188,8 +231,10 @@ export function AddToListSheet({
         const r = await create.mutateAsync({ name: newName.trim() });
         ids.push(r.list.id);
       }
-      const entries = chosen.flatMap((o) => effTags.map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag, done: false })));
+      const entries = chosen.flatMap((o) => effTags.map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag, done: prefs.done })));
       await Promise.all(ids.map((id) => upsert.mutateAsync({ id, entries })));
+      feedback('tick');
+      onAdded?.(entries.length);
     } catch (e) {
       toast(errorMessage(t, e));
       return;
@@ -200,41 +245,50 @@ export function AddToListSheet({
     onClose();
   };
 
-  const toSelection = () => {
-    if (chosen.length === 0) return;
-    const entries = chosen.flatMap((o) => effTags.map((tag) => ({ variantKey: o.key, gender: o.gender, shiny: o.shiny, tag })));
-    selection.add(entries);
-    toast(t.added_to_selection(entries.length));
-    onClose();
-  };
-
   const optionLabel = (o: Option) => [genderSymbol(o.gender), o.shiny ? t.shiny : t.normal].filter(Boolean).join(' ');
 
+  const footer = group && species ? (
+    <div className="space-y-2">
+      <Button
+        tone="primary"
+        className="w-full"
+        disabled={chosen.length === 0 || (selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending}
+        onClick={submit}
+      >
+        {t.add} · {t.selected_count(totalCount)}
+      </Button>
+      {lists.isError && (
+        <p className="text-center">
+          <Link to="/login" className="text-xs font-semibold text-sky">{t.login_required}</Link>
+        </p>
+      )}
+    </div>
+  ) : undefined;
+
   return (
-    <Sheet open={!!group} onClose={onClose} title={t.add_to_list}>
+    <Sheet open={!!group} onClose={onClose} title={group && species ? `${localized(species.name, lang)}${group.label ? ` · ${localized(group.label, lang)}` : ''}` : t.add_to_list} footer={footer}>
       {group && species && (
-        <>
-          <div className="mb-4">
-            <div className="mb-2 flex items-baseline gap-2">
-              <span className="font-bold">{localized(species.name, lang)}</span>
-              <span className="text-sm text-ink-2">{localized(group.label, lang) || t.normal}</span>
+        <div className="space-y-4">
+          {/* 1. Versions (gender x normal/shiny) */}
+          <div>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium text-ink-3">{t.which_versions}</p>
+              {presets.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {presets.map((p) => {
+                    const on = p.ids.every((id) => picked.has(id)) && picked.size === p.ids.length;
+                    return (
+                      <Chip key={p.label} active={on} onClick={() => setPicked(new Set(p.ids))} className="min-h-7 px-2.5 text-xs">
+                        {p.label}
+                      </Chip>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.which_versions}</p>
             {group.variants[0]!.gendersGuessed && twoGenders && <p className="mb-1.5 text-xs text-ink-3">{t.genders_unconfirmed}</p>}
             {options.length > 0 && options.every((o) => o.gender === options[0]!.gender) && options[0]!.gender && (
               <p className="mb-1.5 text-xs text-ink-2">{options[0]!.gender === 'f' ? t.female_only : t.male_only}</p>
-            )}
-            {presets.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {presets.map((p) => {
-                  const on = p.ids.every((id) => picked.has(id)) && picked.size === p.ids.length;
-                  return (
-                    <Chip key={p.label} active={on} onClick={() => setPicked(new Set(p.ids))} className="min-h-8 px-2.5 text-xs">
-                      {p.label}
-                    </Chip>
-                  );
-                })}
-              </div>
             )}
             <div className="grid grid-cols-4 gap-1.5">
               {options.map((o) => {
@@ -246,10 +300,10 @@ export function AddToListSheet({
                     aria-pressed={on}
                     aria-label={optionLabel(o)}
                     onClick={() => setPicked((p) => { const n = new Set(p); on ? n.delete(o.id) : n.add(o.id); return n; })}
-                    className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition ${on ? 'border-go bg-go-soft' : 'border-line text-ink-2'}`}
+                    className={`flex flex-col items-center rounded-card border-2 px-1 pb-1.5 pt-1 text-xs font-semibold transition active:scale-[0.97] ${on ? 'border-go bg-go-soft text-go-ink' : 'border-line text-ink-2 hover:border-ink-3'}`}
                   >
                     <span className="relative">
-                      <Sprite idx={idx} variant={o.variant} shiny={o.shiny} size={56} />
+                      <Sprite idx={idx} variant={o.variant} shiny={o.shiny} size={52} />
                       {o.shiny && <Sparkle className="absolute -right-1 top-0 text-shiny" />}
                       {on && <span className="absolute -left-1 top-0 flex h-4 w-4 items-center justify-center rounded-full bg-go text-[10px] text-white">✓</span>}
                     </span>
@@ -258,7 +312,14 @@ export function AddToListSheet({
                 );
               })}
             </div>
-            <p className="mb-1.5 mt-3 text-xs font-medium text-ink-3">{t.trait}</p>
+          </div>
+
+          {/* 2. Initial status: Missing vs Already caught */}
+          <InitialStatusField done={prefs.done} onChange={(done) => setPrefs({ done })} />
+
+          {/* 3. Trait + optional specific backgrounds */}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.trait}</p>
             <div className="flex flex-wrap gap-1.5">
               {ENTRY_TAGS.map((tg) => (
                 <Chip key={tg} active={tags.has(tg)} onClick={() => toggleTag(tg)} className="min-h-8 px-2.5 text-xs">
@@ -268,15 +329,15 @@ export function AddToListSheet({
             </div>
             {tags.has('background') && availableBgs.length > 0 && (
               <>
-                <p className="mb-1.5 mt-3 text-xs font-medium text-ink-3">{t.which_backgrounds}</p>
+                <p className="mb-1.5 mt-2.5 text-xs font-medium text-ink-3">{t.which_backgrounds}</p>
                 <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
-                  <button type="button" onClick={() => setBgs(new Set())} className={`flex h-16 w-24 shrink-0 items-center justify-center rounded-xl border-2 text-xs font-semibold ${bgs.size === 0 ? 'border-go bg-go-soft' : 'border-line'}`}>{t.background_any}</button>
+                  <button type="button" onClick={() => setBgs(new Set())} className={`flex h-16 w-24 shrink-0 items-center justify-center rounded-xl border-2 text-xs font-semibold ${bgs.size === 0 ? 'border-go bg-go-soft text-go-ink' : 'border-line'}`}>{t.background_any}</button>
                   {availableBgs.map((b) => {
                     const on = bgs.has(b.id);
                     return (
                       <button key={b.id} type="button" title={b.label} aria-pressed={on} onClick={() => setBgs((p) => { const n = new Set(p); on ? n.delete(b.id) : n.add(b.id); return n; })} className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 ${on ? 'border-go' : 'border-line'}`}>
                         <img src={b.image} alt={b.label} loading="lazy" className="h-full w-full object-cover" />
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 text-[10px] text-white">{b.label}</span>
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1 text-[10px] text-white">{b.label}</span>
                         {on && <span className="absolute left-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-go text-[10px] text-white">✓</span>}
                       </button>
                     );
@@ -285,43 +346,48 @@ export function AddToListSheet({
               </>
             )}
           </div>
-          <Button tone="quiet" className="mb-4 w-full border border-line bg-card" disabled={chosen.length === 0} onClick={toSelection}>
-            {t.add_to_selection} · {t.selected_count(chosen.length * effTags.length)}
-          </Button>
-          <p className="mb-1.5 text-xs font-medium text-ink-3">{t.or_directly}</p>
-          {lists.data?.length === 0 && !newName && <p className="mb-3 text-sm text-ink-2">{t.no_lists_yet}</p>}
-          <ul className="mb-3 space-y-1">
-            {lists.data?.map((l) => {
-              const on = selected.has(l.id);
-              const status = listStatus.get(l.id);
-              return (
-                <li key={l.id}>
-                  <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-2 hover:bg-paper-2">
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => setSelected((s) => { const n = new Set(s); on ? n.delete(l.id) : n.add(l.id); return n; })}
-                      className="h-5 w-5 accent-go"
-                    />
-                    <span className="min-w-0 flex-1 truncate font-medium">{l.name}</span>
-                    {status === 'caught' && <Badge tone="grass">{t.already_caught_short} ✓</Badge>}
-                    {status === 'present' && <Badge tone="muted">{t.already_in_list}</Badge>}
-                    <span className="tnum shrink-0 text-sm text-ink-3">{l.entryCount}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-          <TextField placeholder={t.new_list} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} />
-          <Button tone="primary" className="mt-3 w-full" disabled={chosen.length === 0 || (selected.size === 0 && !newName.trim()) || upsert.isPending || create.isPending} onClick={submit}>
-            {t.add} · {t.selected_count(chosen.length * effTags.length)}
-          </Button>
-          {lists.isError && (
-            <p className="mt-3 text-center text-sm">
-              <Link to="/login" className="font-semibold text-sky">{t.login_required}</Link>
-            </p>
-          )}
-        </>
+
+          {/* 4. Target collections (prioritized directly in flow) */}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-3">{t.add_collections_title}</p>
+            {(lists.data?.length ?? 0) > 6 && (
+              <input
+                type="search"
+                value={listFilter}
+                onChange={(e) => setListFilter(e.target.value)}
+                placeholder={t.add_filter_lists}
+                aria-label={t.add_filter_lists}
+                className="mb-2 min-h-9 w-full rounded-xl border border-line bg-paper/40 px-3 text-sm text-ink placeholder:text-ink-3 focus:border-sky"
+              />
+            )}
+            {lists.data?.length === 0 && !newName && <p className="mb-2 text-sm text-ink-2">{t.no_lists_yet}</p>}
+            {filteredLists.length > 0 && (
+              <ul className="mb-2.5 space-y-1">
+                {filteredLists.map((l) => {
+                  const on = selected.has(l.id);
+                  const status = listStatus.get(l.id);
+                  return (
+                    <li key={l.id}>
+                      <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-2.5 transition ${on ? 'bg-go-soft/55' : 'hover:bg-paper-2'}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => setSelected((s) => { const n = new Set(s); on ? n.delete(l.id) : n.add(l.id); return n; })}
+                          className="h-5 w-5 accent-go"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">{l.name}</span>
+                        {status === 'caught' && <Badge tone="grass">{t.already_caught_short} ✓</Badge>}
+                        {status === 'present' && <Badge tone="muted">{t.already_in_list}</Badge>}
+                        <span className="tnum shrink-0 text-sm text-ink-3">{l.entryCount}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <TextField placeholder={t.new_list} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} />
+          </div>
+        </div>
       )}
     </Sheet>
   );

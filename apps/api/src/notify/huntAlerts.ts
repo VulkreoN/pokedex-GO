@@ -123,7 +123,7 @@ export function matchHunt(
     const dedupKey = `${mon.key}${isShadow ? '|shadow' : ''}`;
     for (const e of missing) {
       if (!entryMatchesLive(huntIndex, e, { key: mon.key, source, canBeShiny: mon.canBeShiny })) continue;
-      if (alreadyAlerted.has(`${e.userId}|${kind}|${mon.key}`)) continue;
+      if (alreadyAlerted.has(`${e.userId}|${kind}|${dedupKey}`)) continue;
       const mine = out.get(e.userId) ?? out.set(e.userId, []).get(e.userId)!;
       const hit = mine.find((x) => `${x.mon.key}${(x.mon.source === 'rocket' || x.mon.source === 'shadowRaid') ? '|shadow' : ''}` === dedupKey);
       if (!hit) mine.push({ mon, listIds: [e.listId] });
@@ -199,7 +199,12 @@ async function alert(kind: 'spawn' | 'quest', found: Found[], huntIndex: HuntInd
     });
     await db
       .insert(schema.raidAlerts)
-      .values(hits.map((h) => ({ userId, bossId: `${kind}|${h.mon.key}` })))
+      .values(
+        hits.map((h) => {
+          const isShadow = h.mon.source === 'rocket' || h.mon.source === 'shadowRaid';
+          return { userId, bossId: `${kind}|${h.mon.key}${isShadow ? '|shadow' : ''}` };
+        }),
+      )
       .onConflictDoUpdate({ target: [schema.raidAlerts.userId, schema.raidAlerts.bossId], set: { alertedAt: new Date() } });
     sent++;
   }
@@ -265,8 +270,10 @@ export async function remindUpcoming(
       const monNames = hits.map((h) => nameOf(h.mon, names, variants));
       const listIds = [...new Set(hits.flatMap((h) => h.listIds))];
       const title = eventTitle(e.name, species, 'fr');
-      // Leek Duck's times are local ("10:00" wherever you play), without a zone: as written.
-      const at = e.start!.slice(11, 16).replace(':', 'h');
+      // Leek Duck times without zone are already local ("10:00"); UTC/offset timestamps are formatted in Europe/Paris.
+      const at = /(?:Z|[+-]\d\d:\d\d)$/i.test(e.start!)
+        ? new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).format(new Date(e.start!)).replace(':', 'h')
+        : e.start!.slice(11, 16).replace(':', 'h');
       await notify({
         userId,
         type: 'spawn',
@@ -303,7 +310,7 @@ export async function runHuntAlerts(): Promise<number> {
     }),
   );
   // Also alert for active / upcoming Gigantamax & Dynamax Max Battle events.
-  const scrapedEvents = await fetch(EVENTS_URL)
+  const scrapedEvents = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15_000) })
     .then((r) => (r.ok ? (r.json() as Promise<ScrapedEvent[]>) : []))
     .catch(() => [] as ScrapedEvent[]);
   if (huntIndex && dataService.speciesNames()) {

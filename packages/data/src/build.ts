@@ -123,7 +123,7 @@ function textsToMap(t: Texts): Map<string, string> {
 function kindOf(form: string | null, costume: string | null, isGmCostume: boolean): VariantKind {
   if (costume) return 'costume';
   if (!form) return 'base';
-  if (/^(MEGA|MEGA_X|MEGA_Y|MEGA_Z|PRIMAL)$/.test(form)) return 'mega';
+  if (/^(MEGA(?:_[A-Z0-9_]+)?|PRIMAL)$/.test(form)) return 'mega';
   if (/^(GIGANTAMAX|ETERNAMAX)$/.test(form)) return 'gmax';
   if (/^(ALOLA|GALAR|HISUI|PALDEA)/.test(form)) return 'regional';
   if (isGmCostume || looksLikeCostume(form)) return 'costume';
@@ -275,7 +275,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   let megaCount = 0;
   for (const sp of speciesByDex.values()) {
     for (const evo of sp.tempEvos) {
-      const form = evo === 'MEGA' || evo === 'MEGA_X' || evo === 'MEGA_Y' || evo === 'PRIMAL' ? evo : null;
+      const form = /^(?:MEGA(?:_[A-Z0-9]+)*|PRIMAL)$/.test(evo) ? evo : null;
       if (!form) continue;
       addressable(`pm${sp.dex}.f${form}.icon.png`, MEGA_BASE);
       addressable(`pm${sp.dex}.f${form}.s.icon.png`, MEGA_BASE);
@@ -284,7 +284,7 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   }
   // Megas newer than the game master snapshot, listed by hand in overrides.json
   for (const key of overridesFile.megas ?? []) {
-    const m = /^(\d+)\.f(MEGA(?:_X|_Y)?|PRIMAL)$/.exec(key);
+    const m = /^(\d+)\.f(MEGA(?:_[A-Z0-9_]+)?|PRIMAL)$/.exec(key);
     if (!m) continue;
     addressable(`pm${m[1]}.f${m[2]}.icon.png`, MEGA_BASE);
     addressable(`pm${m[1]}.f${m[2]}.s.icon.png`, MEGA_BASE);
@@ -297,7 +297,9 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
   const femaleKeys = new Set([...groups.values()].filter((g) => g.female).map((g) => makeVariantKey({ dex: g.dex, form: g.form, costume: g.costume, gender: null })));
   // Read at build time (not a static import) so a long-running job picks up edits without restarting.
   const overrides = JSON.parse(await readFile(new URL('./overrides.json', import.meta.url), 'utf8')) as {
-    speciesNames?: Record<string, { fr?: string }>;
+    speciesNames?: Record<string, { en?: string; fr?: string }>;
+    /** Renamed or folded variant keys -> replacement key (keeps saved collections intact). */
+    aliases?: Record<string, string>;
     /** Battle-only form key -> the form it is caught in. */
     battleForms?: Record<string, string>;
     labels: Record<string, LocalizedText>;
@@ -307,10 +309,14 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     genders?: Record<string, Gender[]>;
   };
   const labelOverrides = overrides.labels;
-  // Species the game texts do not name in French yet.
+  // Species the game texts do not name in French (or properly in English) yet.
   for (const [dex, n] of Object.entries(overrides.speciesNames ?? {})) {
     const sp = speciesByDex.get(Number(dex));
-    if (sp && n.fr && !sp.name.fr) sp.name = { ...sp.name, fr: n.fr };
+    if (!sp) continue;
+    const nameKey = `pokemon_name_${String(sp.dex).padStart(4, '0')}`;
+    const en = !texts.en.has(nameKey) && n.en ? n.en : sp.name.en;
+    const fr = sp.name.fr ?? (n.fr && n.fr !== en ? n.fr : undefined);
+    sp.name = fr ? { en, fr } : { en };
   }
   const statusOverrides = overrides.status;
 
@@ -439,6 +445,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
     if (art) g.shiny = upcoming?.noShinyArtwork?.includes(key) ? `${POKEAPI_HOME}shiny/${art}.png` : `${POKEAPI_ARTWORK}shiny/${art}.png`;
     push(sp, g, m[2]!, null, null);
     variants[variants.length - 1]!.datamined = true;
+  }
+  // Explicit aliases from overrides.json (e.g. 978.fMEGA -> 978.fMEGA_CURLY).
+  for (const [from, to] of Object.entries(overrides.aliases ?? {})) {
+    if (!from.startsWith('$') && variants.some((v) => v.key === to)) aliases[from] = to;
   }
   // Which shinies are out. Leek Duck's checklist knows each form and costume and when it came out (dated ones not
   // reached yet are announced, not out); pogoapi (species only, no longer updated) when Leek Duck cannot be read.
@@ -604,7 +614,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       const label = token ? labelFor(sp, token, null) : null;
       if (!label) return sp.name;
       const fr = sp.name.fr ?? sp.name.en;
-      return { en: `${sp.name.en} (${label.en})`, fr: `${fr} (${label.fr ?? label.en})` };
+      const enFull = label.en.startsWith(`${sp.name.en} `) || label.en.endsWith(` ${sp.name.en}`) ? label.en : `${sp.name.en} (${label.en})`;
+      const frLbl = label.fr ?? label.en;
+      const frFull = frLbl.startsWith(`${fr} `) || frLbl.endsWith(` ${fr}`) ? frLbl : `${fr} (${frLbl})`;
+      return { en: enFull, fr: frFull };
     },
   });
   if (pvp) {
@@ -632,7 +645,10 @@ export async function buildDataset(options: BuildOptions): Promise<BuildResult> 
       const label = token ? labelFor(sp, token, null) : null;
       if (!label) return sp.name;
       const fr = sp.name.fr ?? sp.name.en;
-      return { en: `${sp.name.en} (${label.en})`, fr: `${fr} (${label.fr ?? label.en})` };
+      const enFull = label.en.startsWith(`${sp.name.en} `) || label.en.endsWith(` ${sp.name.en}`) ? label.en : `${sp.name.en} (${label.en})`;
+      const frLbl = label.fr ?? label.en;
+      const frFull = frLbl.startsWith(`${fr} `) || frLbl.endsWith(` ${fr}`) ? frLbl : `${fr} (${frLbl})`;
+      return { en: enFull, fr: frFull };
     },
     text: (id) => {
       if (id.startsWith('ITEM_')) {
@@ -755,35 +771,88 @@ export function applyManualOverrides(dataset: Dataset, manual: ManualOverrides):
     }
     return sp;
   });
+  const mergeOverride = (v: Variant) => {
+    const exact = manual[v.key];
+    const base = manual[neutralKey(v.key)];
+    if (!exact && !base) return undefined;
+    if (!exact) return base;
+    if (!base || v.key === neutralKey(v.key)) return exact;
+    return {
+      released: exact.released !== undefined && exact.released !== null ? exact.released : base.released,
+      label: exact.label ?? base.label,
+      genders: exact.genders ?? base.genders,
+      shinyReleased: exact.shinyReleased !== undefined && exact.shinyReleased !== null ? exact.shinyReleased : base.shinyReleased,
+      noEvolve: exact.noEvolve !== undefined && exact.noEvolve !== null ? exact.noEvolve : base.noEvolve,
+      noMega: exact.noMega !== undefined && exact.noMega !== null ? exact.noMega : base.noMega,
+      kind: exact.kind ?? base.kind,
+      hidden: exact.hidden !== undefined && exact.hidden !== null ? exact.hidden : base.hidden,
+    };
+  };
+  let reordered = false;
+  const variants = dataset.variants
+    .filter((v) => manual[v.key]?.hidden !== true && manual[neutralKey(v.key)]?.hidden !== true)
+    .map((v) => {
+      const m = mergeOverride(v);
+      const spRel = speciesReleased.get(v.dex);
+      if (!m) return spRel === false ? { ...v, datamined: true } : v;
+      const fr = m.label ? m.label.fr || v.label?.fr : undefined;
+      const mergedLabel: LocalizedText | null = m.label
+        ? {
+            en: m.label.en || v.label?.en || m.label.fr || '',
+            ...(fr ? { fr } : {}),
+          }
+        : v.label;
+      const out: Variant = {
+        ...v,
+        datamined: spRel === false && !m.released ? true : m.released === null || m.released === undefined ? v.datamined : !m.released,
+        label: mergedLabel,
+      };
+      if (m.genders) {
+        out.genders = m.genders;
+        delete out.gendersGuessed;
+      }
+      if (m.shinyReleased === true) delete out.shinyReleased;
+      else if (m.shinyReleased === false) out.shinyReleased = false;
+      if (m.noEvolve === true) out.noEvolve = true;
+      else if (m.noEvolve === false) delete out.noEvolve;
+      if (m.noMega === true) out.noMega = true;
+      else if (m.noMega === false) delete out.noMega;
+      // A manager's category wins over the game master's (Armored Mewtwo, numbered costumes, misclassified forms…).
+      if (m.kind && m.kind !== out.kind) {
+        out.kind = m.kind;
+        reordered = true;
+      }
+      return out;
+    });
+  if (reordered) {
+    variants.sort((a, b) =>
+      a.dex - b.dex ||
+      KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
+      (a.label?.en ?? '').localeCompare(b.label?.en ?? '') ||
+      (GENDER_ORDER[a.gender ?? 'n'] ?? 0) - (GENDER_ORDER[b.gender ?? 'n'] ?? 0),
+    );
+  }
+  // Keep species.shinyReleased consistent when a manager forces shinyReleased on any variant of that species.
+  const shinyOverriddenDex = new Set<number>();
+  for (const [key, m] of Object.entries(manual)) {
+    if (m.shinyReleased === true || m.shinyReleased === false) {
+      const dex = Number(key.split('.')[0]);
+      if (Number.isFinite(dex)) shinyOverriddenDex.add(dex);
+    }
+  }
+  const finalSpecies = shinyOverriddenDex.size
+    ? species.map((sp) => {
+        if (!shinyOverriddenDex.has(sp.dex)) return sp;
+        const sv = variants.filter((v) => v.dex === sp.dex && v.hasShiny);
+        if (!sv.length) return sp;
+        const anyOut = sv.some((v) => v.shinyReleased !== false);
+        return sp.shinyReleased === anyOut ? sp : { ...sp, shinyReleased: anyOut };
+      })
+    : species;
   return {
     ...dataset,
-    species,
-    variants: dataset.variants
-      .filter((v) => manual[v.key]?.hidden !== true && manual[neutralKey(v.key)]?.hidden !== true)
-      .map((v) => {
-        const spRel = speciesReleased.get(v.dex);
-        if (spRel === false && !manual[v.key]?.released) return { ...v, datamined: true };
-        const m = manual[v.key];
-        if (!m) return v;
-        const out: Variant = {
-          ...v,
-          datamined: m.released === null || m.released === undefined ? v.datamined : !m.released,
-          label: m.label ?? v.label,
-        };
-        if (m.genders) {
-          out.genders = m.genders;
-          delete out.gendersGuessed;
-        }
-        if (m.shinyReleased === true) delete out.shinyReleased;
-        else if (m.shinyReleased === false) out.shinyReleased = false;
-        if (m.noEvolve === true) out.noEvolve = true;
-        else if (m.noEvolve === false) delete out.noEvolve;
-        if (m.noMega === true) out.noMega = true;
-        else if (m.noMega === false) delete out.noMega;
-        // A manager's category wins over the game master's (Armored Mewtwo, numbered costumes…).
-        if (m.kind) out.kind = m.kind;
-        return out;
-      }),
+    species: finalSpecies,
+    variants,
   };
 }
 

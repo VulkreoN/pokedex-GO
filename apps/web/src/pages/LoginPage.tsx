@@ -28,9 +28,11 @@ export function LoginPage() {
   const auth = useAuthMutation(mode === 'reset' ? 'login' : mode);
   const me = useMe();
   const [submitted, setSubmitted] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (resetting) return;
     setError(null);
     setSubmitted(true);
     if (newPassword && confirm !== password) {
@@ -39,14 +41,20 @@ export function LoginPage() {
     }
     try {
       if (mode === 'reset') {
-        const r = await api<{ user: unknown }>('/auth/reset', { body: { username: username.trim(), code: code.trim(), password } });
-        qc.setQueryData(['me'], r.user);
-        qc.invalidateQueries();
+        setResetting(true);
+        try {
+          const r = await api<{ user: unknown }>('/auth/reset', { body: { username: username.trim(), code: code.trim(), password } });
+          qc.setQueryData(['me'], r.user);
+          qc.invalidateQueries();
+        } finally {
+          setResetting(false);
+        }
       } else await auth.mutateAsync({ username: username.trim(), password, ...(mode === 'register' && invite.trim() ? { invite: invite.trim() } : {}) });
       // A new account starts with the welcome tour.
       navigate(mode === 'register' ? '/welcome' : ((location.state as { from?: string } | null)?.from ?? getStartPage()), { replace: true });
     } catch (err) {
-      setError(mode === 'reset' ? t.err_invalid_code_reset : errorMessage(t, err));
+      const codeErr = (err as { code?: string })?.code;
+      setError(mode === 'reset' && codeErr === 'invalid_code' ? t.err_invalid_code_reset : errorMessage(t, err));
     }
   };
 
@@ -73,7 +81,7 @@ export function LoginPage() {
             </>
           )}
           {error && <p role="alert" className="text-sm text-berry">{error}</p>}
-          <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending || mismatch}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>
+          <Button tone="primary" type="submit" className="w-full" disabled={auth.isPending || resetting || mismatch}>{mode === 'login' ? t.login : mode === 'register' ? t.register : t.reset_submit}</Button>
         </form>
         {mode === 'login' && <p className="mt-3 text-center text-sm"><button type="button" className="text-ink-2 underline" onClick={() => { setMode('reset'); setError(null); setConfirm(''); }}>{t.forgot}</button></p>}
         <p className="mt-4 text-center text-sm text-ink-2">

@@ -146,8 +146,8 @@ function Health() {
         <div className="flex justify-between gap-2"><span className="text-ink-2">{t.data_next}</span><span className="tnum font-semibold">{h.dataset.running ? t.data_running : relativeTime(h.dataset.nextRunAt, lang)}</span></div>
         {h.runtime && (
           <>
-            <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_mem}</span><span className="tnum font-semibold">{h.runtime.memoryMb} Mo</span></div>
-            {h.runtime.dbSizeMb !== null && <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_db}</span><span className="tnum font-semibold">{h.runtime.dbSizeMb} Mo</span></div>}
+            <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_mem}</span><span className="tnum font-semibold">{h.runtime.memoryMb} {lang === 'fr' ? 'Mo' : 'MB'}</span></div>
+            {h.runtime.dbSizeMb !== null && <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_db}</span><span className="tnum font-semibold">{h.runtime.dbSizeMb} {lang === 'fr' ? 'Mo' : 'MB'}</span></div>}
             <div className="flex justify-between gap-2"><span className="text-ink-2">{t.admin_runtime_sse}</span><span className="tnum font-semibold">{h.runtime.sseConnections}</span></div>
           </>
         )}
@@ -299,7 +299,7 @@ function Overrides() {
           const flags = [
             o.released !== null && `${t.change_released}: ${o.released ? t.change_yes_plain : t.change_no_plain}`,
             o.shinyReleased !== null && `${t.shiny_status}: ${o.shinyReleased ? t.change_yes_plain : t.change_no_plain}`,
-            (o.label ?? (o.hidden ? o.meta?.label : null)) && `${(o.label ?? o.meta?.label)?.fr || (o.label ?? o.meta?.label)?.en}`,
+            (o.label ?? (o.hidden ? o.meta?.label : null)) && `${localized((o.label ?? o.meta?.label) as { en: string; fr?: string }, lang)}`,
             o.genders && `${t.change_genders}: ${o.genders.length ? o.genders.map((g) => (g === 'm' ? '♂' : '♀')).join('') : t.change_genderless}`,
             o.kind && (t.kinds[o.kind] ?? o.kind),
             o.noEvolve !== null && `${t.no_evolve}: ${o.noEvolve ? t.change_yes_plain : t.change_no_plain}`,
@@ -340,17 +340,18 @@ function Overrides() {
                     {t.variant_restore}
                   </Button>
                 )}
-                <Button
-                  tone="ghost"
-                  className="min-h-8 shrink-0 px-2 text-xs text-berry"
+                <HoldButton
+                  small
+                  ms={700}
+                  className="shrink-0"
                   disabled={reset.isPending}
-                  onClick={async () => {
+                  onConfirm={async () => {
                     await reset.mutateAsync(o.variantKey);
                     toast(t.admin_undone);
                   }}
                 >
                   {t.admin_overrides_reset}
-                </Button>
+                </HoldButton>
               </div>
             </li>
           );
@@ -394,7 +395,7 @@ function UserSheet({ id, onClose, onOpen, onAudit }: { id: string | null; onClos
               <Badge tone="muted">{t.admin_suspended}</Badge>
               <p className="mt-1 text-xs text-ink-2">{t.admin_suspended_by(u!.suspendedBy ?? '?', relativeTime(u!.suspendedAt, lang))}</p>
               <p className="text-xs text-ink-2">{u!.suspendedUntil ? t.admin_suspended_until(new Date(u!.suspendedUntil).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' })) : t.admin_suspended_forever}</p>
-              {u!.suspendReason && <p className="mt-0.5 text-sm">« {u!.suspendReason} »</p>}
+              {u!.suspendReason && <p className="mt-0.5 text-sm">{lang === 'fr' ? `« ${u!.suspendReason} »` : `“${u!.suspendReason}”`}</p>}
             </div>
           )}
           <AccountEdit key={u!.id} id={u!.id} username={u!.username} friendCode={u!.friendCode} />
@@ -654,7 +655,7 @@ function Signups() {
           <input type="checkbox" checked={s.dailyCap !== null} onChange={(e) => save.mutate({ ...s, dailyCap: e.target.checked ? 20 : null })} className="h-5 w-5 accent-go" />
           {t.admin_daily_cap}
           {s.dailyCap !== null && (
-            <input type="number" min={1} max={10000} defaultValue={s.dailyCap} onBlur={(e) => { const v = Number(e.target.value); if (v >= 1 && v !== s.dailyCap) save.mutate({ ...s, dailyCap: v }); }} className="tnum w-20 rounded-lg border border-line bg-card px-2 py-1" aria-label={t.admin_daily_cap} />
+            <input key={s.dailyCap} type="number" min={1} max={10000} defaultValue={s.dailyCap} onBlur={(e) => { const v = Number(e.target.value); if (v >= 1 && v !== s.dailyCap) save.mutate({ ...s, dailyCap: v }); }} className="tnum w-20 rounded-lg border border-line bg-card px-2 py-1" aria-label={t.admin_daily_cap} />
           )}
         </label>
       </section>
@@ -898,7 +899,7 @@ function Announcements() {
   const [link, setLink] = useState('');
   const [push, setPush] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const linkOk = !link || /^(\/|https:\/\/)/.test(link);
+  const linkOk = !link || /^(\/(?!\/)|https:\/\/)/.test(link);
   const send = async () => {
     const r = (await create.mutateAsync({ message: message.trim(), level, link: link.trim() || undefined, push })) as { pushed: number };
     toast(push ? t.announce_sent_push(r.pushed) : t.announce_sent);

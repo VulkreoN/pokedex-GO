@@ -1,6 +1,6 @@
 /** A basket of entries picked while browsing, sent to one or more lists in one go. Survives navigation (sessionStorage). */
 import { useEffect, useSyncExternalStore } from 'react';
-import type { EntryGender, EntryTag } from '@mydexpogo/shared';
+import { neutralKey, type EntryGender, type EntryTag } from '@mydexpogo/shared';
 
 export interface SelectionItem {
   id: string; // `${variantKey}:${gender}:${shiny ? 1 : 0}:${tag}`
@@ -43,6 +43,28 @@ export const selection = {
   },
   remove(id: string) {
     commit(items.filter((i) => i.id !== id));
+  },
+  removeVariant(variantKey: string) {
+    const nk = neutralKey(variantKey);
+    commit(items.filter((i) => neutralKey(i.variantKey) !== nk));
+  },
+  replaceVariant(variantKey: string, entries: Omit<SelectionItem, 'id'>[]) {
+    const nk = neutralKey(variantKey);
+    const kept = items.filter((i) => neutralKey(i.variantKey) !== nk);
+    const byId = new Map(kept.map((i) => [i.id, i]));
+    for (const e of entries) {
+      const id = selectionId(e.variantKey, e.shiny, e.tag, e.gender);
+      byId.set(id, { ...e, id });
+    }
+    commit([...byId.values()]);
+  },
+  replaceAll(entries: Omit<SelectionItem, 'id'>[]) {
+    const byId = new Map<string, SelectionItem>();
+    for (const e of entries) {
+      const id = selectionId(e.variantKey, e.shiny, e.tag, e.gender);
+      byId.set(id, { ...e, id });
+    }
+    commit([...byId.values()]);
   },
   clear() {
     commit([]);

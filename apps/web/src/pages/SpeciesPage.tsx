@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
-import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSheet.js';
-import { BulkManageSheet } from '../components/BulkManageSheet.js';
+import { defaultPick, type DexPick } from '../components/BulkAddSheet.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
+import { AddPresetsBar } from '../components/QuickAddSheet.js';
+import { picksFromSelection } from '../components/SelectionBar.js';
+import { buildQuickEntries, useAddPrefs } from '../lib/addPrefs.js';
 import { useMe } from '../lib/auth.js';
 import { useBulkOverride, useOverrides, type Override } from '../lib/admin.js';
 import { Sparkle } from '../components/Sprite.js';
@@ -15,11 +17,12 @@ import { api } from '../lib/api.js';
 import { eventTitle, neutralKey } from '@mydexpogo/shared';
 import { normalize, useDataset } from '../lib/dataset.js';
 import { liveAppearancesOf, suggestListTag } from '../lib/dexSearch.js';
+import { errorMessage } from '../lib/errors.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { localized, typeName, useLang, useT } from '../lib/i18n.js';
-import { useList, useMembership } from '../lib/lists.js';
+import { useList, useMembership, useRemoveEntries, useUpsertEntries } from '../lib/lists.js';
 import { useEggs, useEvents, useRaids, useResearch } from '../lib/live.js';
-import { useSelection } from '../lib/selection.js';
+import { selection, useSelection } from '../lib/selection.js';
 import { rocketName, useRockets } from '../lib/tools.js';
 import { TypeBadge } from '../components/TypeBadge.js';
 import { EvolutionCard, useEventSpawns } from '../components/GameTools.js';
@@ -35,20 +38,24 @@ export function SpeciesPage() {
   const [shiny, setShiny] = useState(false);
   const [gender, setGender] = useState<GenderFilter>('all');
   const [multi, setMulti] = useState(false);
-  const [ticked, setTicked] = useState<Map<string, DexPick>>(new Map());
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkManaging, setBulkManaging] = useState(false);
+  const selectedItems = useSelection();
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [managing, setManaging] = useState<VariantGroup | null>(null);
   const [query, setQuery] = useState('');
   const [reporting, setReporting] = useState(false);
+  const [prefs, setPrefs] = useAddPrefs();
+  const upsert = useUpsertEntries();
+  const remove = useRemoveEntries();
   const me = useMe();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const toast = useToast();
   const overrides = useOverrides(isManager);
   const bulkOverride = useBulkOverride();
-  const basketCount = useSelection().length;
   const idx = dataset.data;
+  const picksMap = useMemo(
+    () => (idx ? picksFromSelection(idx, selectedItems) : new Map<string, DexPick>()),
+    [idx, selectedItems],
+  );
   const species = idx?.speciesByDex.get(dex);
   const variants = useMemo(() => idx?.variantsByDex.get(dex) ?? [], [idx, dex]);
   const hiddenGroups = useMemo(() => {
@@ -68,21 +75,77 @@ export function SpeciesPage() {
   const targetQuery = useList(targetListId ?? '', !!targetListId && !!me.data);
   const targetList = targetQuery.data?.access === 'owner' ? targetQuery.data.list : undefined;
   const targetDefaultTag = useMemo(() => (targetList ? suggestListTag(targetList.entries) : ''), [targetList]);
+  const oneTapActive = !!targetList && prefs.oneTap && !multi;
   const membership = useMembership(!!me.data && !targetListId);
 
+  const targetEntryMap = useMemo(() => {
+    const map = new Map<string, { done: boolean; note: string | null }>();
+    if (!targetList) return map;
+    for (const e of targetList.entries) {
+      map.set(`${neutralKey(e.variantKey)}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`, { done: e.done, note: e.note ?? null });
+    }
+    return map;
+  }, [targetList]);
+
+  const effectiveShiny = oneTapActive ? prefs.version === 'shiny' : shiny;
   const variantStatus = useMemo(() => {
     const out = new Map<string, 'caught' | 'present'>();
     const entries = targetList ? targetList.entries : membership.data;
     if (!entries?.length) return out;
     for (const e of entries) {
-      if (e.shiny !== shiny) continue;
+      if (e.shiny !== effectiveShiny) continue;
       const k = neutralKey(e.variantKey);
       const prev = out.get(k);
       if (e.done) out.set(k, 'caught');
       else if (!prev) out.set(k, 'present');
     }
     return out;
-  }, [targetList, membership.data, shiny]);
+  }, [targetList, membership.data, effectiveShiny]);
+
+  const quickToggleTarget = async (g: VariantGroup) => {
+    if (!targetList || !idx) return;
+    const tag = targetDefaultTag || prefs.tag;
+    const entries = buildQuickEntries(idx, g, {
+      version: prefs.version,
+      gender: prefs.gender,
+      tags: [tag],
+      done: prefs.done,
+    });
+    if (!entries.length) return;
+    const name = `${species ? localized(species.name, lang) : ''}${g.label ? ` (${localized(g.label, lang)})` : ''}`.trim();
+    const allIn = entries.every((e) => targetEntryMap.has(`${e.variantKey}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`));
+    try {
+      if (allIn) {
+        const prevRows = entries.map((e) => {
+          const prev = targetEntryMap.get(`${e.variantKey}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`);
+          return { ...e, done: prev?.done ?? false, note: prev?.note ?? null };
+        });
+        await remove.mutateAsync({
+          id: targetList.id,
+          entries: entries.map(({ variantKey, gender: gd, shiny: sh, tag: tg }) => ({ variantKey, gender: gd, shiny: sh, tag: tg })),
+        });
+        feedback('untick');
+        toast(t.quick_add_removed_one(name), {
+          action: { label: t.undo, onClick: () => void upsert.mutateAsync({ id: targetList.id, entries: prevRows }) },
+        });
+      } else {
+        await upsert.mutateAsync({ id: targetList.id, entries });
+        feedback('tick');
+        toast(t.quick_add_added_one(name), {
+          action: {
+            label: t.undo,
+            onClick: () =>
+              void remove.mutateAsync({
+                id: targetList.id,
+                entries: entries.map(({ variantKey, gender: gd, shiny: sh, tag: tg }) => ({ variantKey, gender: gd, shiny: sh, tag: tg })),
+              }),
+          },
+        });
+      }
+    } catch (e) {
+      toast(errorMessage(t, e));
+    }
+  };
 
   const hasFemaleArt = useMemo(() => variants.some((v) => v.gender === 'f'), [variants]);
 
@@ -93,7 +156,8 @@ export function SpeciesPage() {
       [t.filter_regional, by(['regional'])],
       [t.filter_forms, by(['form'])],
       [t.filter_costumes, by(['costume'])],
-      [t.filter_mega, by(['mega', 'gmax'])],
+      [t.kinds.mega, by(['mega'])],
+      [t.kinds.gmax, by(['gmax'])],
     ] as [string, VariantGroup[]][];
   }, [variants, t]);
   const total = sections.reduce((n, [, g]) => n + g.length, 0);
@@ -106,14 +170,17 @@ export function SpeciesPage() {
   );
   const visibleGroups = useMemo(() => shown.flatMap(([, groups]) => groups), [shown]);
 
+  const baseKeyOf = (g: VariantGroup) => neutralKey((g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!).key);
+  const savePick = (g: VariantGroup, p: DexPick) => {
+    const bk = baseKeyOf(g);
+    selection.replaceVariant(bk, p.combos.map((c) => ({ variantKey: bk, gender: c.sex, shiny: c.shiny, tag: '' })));
+  };
   const toggleTick = (g: VariantGroup) => {
-    const id = `${dex}-${g.id}`;
-    feedback(ticked.has(id) ? 'untick' : 'tick');
-    setTicked((m) => {
-      const n = new Map(m);
-      n.has(id) ? n.delete(id) : n.set(id, defaultPick(g, gender, shiny));
-      return n;
-    });
+    const bk = baseKeyOf(g);
+    const was = picksMap.has(bk);
+    feedback(was ? 'untick' : 'tick');
+    if (was) selection.removeVariant(bk);
+    else savePick(g, defaultPick(g, gender, effectiveShiny));
   };
 
   if (dataset.isPending) return <Spinner />;
@@ -135,11 +202,27 @@ export function SpeciesPage() {
           </div>
         }
       />
-      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${multi && basketCount > 0 ? 'pb-44' : 'pb-24'}`}>
+      <main className="mx-auto max-w-6xl px-3 pb-28 sm:px-5">
         {targetList && (
-          <div className="mb-3 flex items-center gap-2 rounded-xl bg-go-soft px-3 py-1.5 text-xs font-semibold text-go-ink">
-            <span className="min-w-0 flex-1 truncate">{t.adding_to_banner(targetList.name)}</span>
-            <Link to={`/lists/${targetList.id}`} className="shrink-0 underline">{t.adding_to_back}</Link>
+          <div className="mb-3 space-y-1.5 rounded-xl bg-go-soft px-3 py-2 text-xs font-semibold text-go-ink">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">{t.adding_to_banner(targetList.name)}</span>
+              <button
+                type="button"
+                aria-pressed={prefs.oneTap}
+                onClick={() => setPrefs({ oneTap: !prefs.oneTap })}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${prefs.oneTap ? 'bg-go text-white' : 'bg-card/85 text-go-ink'}`}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" /></svg>
+                {t.quick_add_one_tap}
+              </button>
+              <Link to={`/lists/${targetList.id}`} className="shrink-0 underline">{t.adding_to_back}</Link>
+            </div>
+            {oneTapActive && (
+              <div className="pt-0.5">
+                <AddPresetsBar compact />
+              </div>
+            )}
           </div>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -182,19 +265,23 @@ export function SpeciesPage() {
                 <button
                   key={String(s)}
                   type="button"
-                  aria-pressed={shiny === s}
-                  onClick={() => setShiny(s)}
-                  className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${shiny === s ? 'jelly-on bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
+                  aria-pressed={effectiveShiny === s}
+                  onClick={() => {
+                    if (oneTapActive) setPrefs({ version: s ? 'shiny' : 'normal' });
+                    else setShiny(s);
+                  }}
+                  className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap rounded-full px-3 text-sm font-semibold transition ${effectiveShiny === s ? 'jelly-on bg-ink text-paper shadow-sm' : 'text-ink-3 hover:text-ink'}`}
                 >
-                  {s && <Sparkle className={shiny ? 'text-shiny' : ''} />}
+                  {s && <Sparkle className={effectiveShiny ? 'text-shiny' : ''} />}
                   {s ? t.shiny : t.normal}
                 </button>
               ))}
             </span>
             {total > 1 && (
-              <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }} aria-label={t.multi_select} className="min-h-8 px-2.5 text-xs">
+              <Chip active={multi} onClick={() => setMulti((m) => !m)} aria-label={t.multi_select} className="min-h-8 px-2.5 text-xs">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" /><path d="m8 12 3 3 5-6" /></svg>
                 {t.multi_short}
+                {picksMap.size > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[10px] font-bold leading-4 text-white">{picksMap.size}</span>}
               </Chip>
             )}
           </span>
@@ -209,11 +296,18 @@ export function SpeciesPage() {
             <button
               type="button"
               className="shrink-0 text-sky"
-              onClick={() => setTicked((m) => new Map(visibleGroups.map((g) => [`${dex}-${g.id}`, m.get(`${dex}-${g.id}`) ?? defaultPick(g, gender, shiny)])))}
+              onClick={() => {
+                const batch = visibleGroups.flatMap((g) => {
+                  const bk = baseKeyOf(g);
+                  if (picksMap.has(bk)) return [];
+                  return defaultPick(g, gender, effectiveShiny).combos.map((co) => ({ variantKey: bk, gender: co.sex, shiny: co.shiny, tag: '' as const }));
+                });
+                if (batch.length) selection.add(batch);
+              }}
             >
               {t.select_all_visible}
             </button>
-            <button type="button" className="shrink-0 text-ink-3" onClick={() => setTicked(new Map())}>{t.clear}</button>
+            <button type="button" className="shrink-0 text-ink-3" onClick={() => selection.clear()}>{t.clear}</button>
           </div>
         )}
 
@@ -245,22 +339,22 @@ export function SpeciesPage() {
               <h2 className="mb-2 text-base font-bold">{title} <span className="tnum font-normal text-ink-3">{groups.length}</span></h2>
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {groups.map((g) => {
-                  const id = `${dex}-${g.id}`;
-                  const baseKey = neutralKey((g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!).key);
+                  const baseKey = baseKeyOf(g);
                   return (
                     <li key={g.id}>
                       <VariantCard
                         idx={idx}
                         species={species}
                         group={g}
-                        shiny={shiny}
+                        shiny={effectiveShiny}
                         gender={gender}
                         selectable={multi}
-                        selected={ticked.has(id)}
-                        pick={ticked.get(id)}
-                        onPick={(p) => setTicked((m) => new Map(m).set(id, p))}
+                        selected={picksMap.has(baseKey)}
+                        pick={picksMap.get(baseKey)}
+                        onPick={(p) => savePick(g, p)}
                         inCollection={variantStatus.get(baseKey) ?? false}
-                        onAdd={(gr) => (multi ? toggleTick(gr) : setAdding(gr))}
+                        quickMode={oneTapActive}
+                        onAdd={(gr) => (multi ? toggleTick(gr) : oneTapActive ? void quickToggleTarget(gr) : setAdding(gr))}
                         onManage={isManager && !multi ? setManaging : undefined}
                       />
                     </li>
@@ -310,37 +404,16 @@ export function SpeciesPage() {
         )}
       </main>
 
-      {multi && ticked.size > 0 && (
-        <div className={`pb-safe fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-6xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
-            <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
-            {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}
-            <Button tone="ghost" className="min-h-9 bg-white px-3 text-sm text-go-ink hover:bg-white" onClick={() => setBulkOpen(true)}>{t.add}</Button>
-          </div>
-        </div>
-      )}
-
       <AddToListSheet
         idx={idx}
         group={adding}
-        initialShiny={shiny}
+        initialShiny={effectiveShiny}
         targetListId={targetList?.id}
-        defaultTag={targetDefaultTag}
+        defaultTag={targetList && targetDefaultTag ? targetDefaultTag : undefined}
         onClose={() => setAdding(null)}
       />
-      <BulkAddSheet
-        idx={idx}
-        open={bulkOpen}
-        picks={[...ticked.values()]}
-        targetListId={targetList?.id}
-        defaultTag={targetDefaultTag}
-        onApplyAll={(change) => setTicked((m) => new Map([...m].map(([k, p]) => [k, change(p)])))}
-        onClose={() => setBulkOpen(false)}
-        onDone={() => { setTicked(new Map()); setMulti(false); }}
-      />
       <ReportSheet open={reporting} onClose={() => setReporting(false)} groups={sections.flatMap(([title, g]) => g.map((x) => ({ key: x.variants[0]!.key, label: x.label ? localized(x.label, lang) : title })))} />
-      {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
-      {isManager && <BulkManageSheet open={bulkManaging} groups={[...ticked.values()].map((p) => p.group)} onClose={() => setBulkManaging(false)} onDone={() => { setTicked(new Map()); setMulti(false); }} />}
+      {isManager && <ManagerSheet idx={idx} group={managing} onClose={() => setManaging(null)} />}
     </>
   );
 }

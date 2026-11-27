@@ -97,8 +97,26 @@ const APEX_FORMS = new Set(['249.fS', '250.fS']);
 const typeOf = (t?: string) => (t ? (t.replace('POKEMON_TYPE_', '').toLowerCase() as PokemonType) : null);
 const tokenOf = (pokemonId: string, form?: string) => {
   if (!form) return null;
+  if (pokemonId.startsWith('NIDORAN_') && form === 'NIDORAN_NORMAL') return null;
   const t = form.startsWith(`${pokemonId}_`) ? form.slice(pokemonId.length + 1) : form;
   return t === 'NORMAL' ? null : t;
+};
+
+/** Official French move names missing from older game text dumps. */
+const MOVE_FR_FALLBACK: Record<string, string> = {
+  'Plasma Fists': 'Plasma-Poing',
+  'Glaive Rush': 'Charge Glaive',
+  'Snipe Shot': 'Tir de Précision',
+  Dive: 'Plongée',
+  'Gulp Missile Gulping': 'Dégobage (Gobe-Tout)',
+  'Gulp Missile Gorging': 'Dégobage (Gobe-Chu)',
+  'Chilling Water': 'Douche Froide',
+  'Secret Sword': 'Lame Ointe',
+  'Beak Blast': 'Bec-Canon',
+  'Mind Blown': 'Caboche-Kaboum',
+  'Drum Beating': 'Tambour Battant',
+  Pyroball: 'Ballon Brûlant',
+  'Gigaton Hammer': 'Marteau Mastoc',
 };
 
 export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string): ToolsData {
@@ -113,8 +131,9 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     const id = String(ms.movementId);
     moves[id] = { type, power: ms.power ?? 0, duration: ms.durationMs, energy: Math.abs(ms.energyDelta ?? 0) };
     // Recent moves only have a number as id ("590"): the texts, or the template's name, name them.
-    const name = ctx.text(id) ?? ctx.moveText(m[1]!) ?? { en: humanize(m[2]!) };
-    moveNames[id] = name;
+    const raw = ctx.text(id) ?? ctx.moveText(m[1]!) ?? { en: humanize(m[2]!) };
+    const frFallback = !raw.fr ? MOVE_FR_FALLBACK[raw.en] : undefined;
+    moveNames[id] = frFallback ? { ...raw, fr: frFallback } : raw;
   }
 
   // Collect form-change signature moves (Fusion / Crowned forms: Moongeist Beam, Sunsteel Strike, Freeze Shock, Ice Burn, Behemoth Blade/Bash).
@@ -177,12 +196,21 @@ export function extractTools(gm: GmEntry[], ctx: ToolsContext, version: string):
     // Megas and Primals fight with their own stats and types, and the moves of the plain form.
     for (const evo of ps.tempEvoOverrides ?? []) {
       const id = evo.tempEvoId?.replace('TEMP_EVOLUTION_', '');
-      if (!id || !evo.stats?.baseAttack || token) continue;
+      if (!id || !evo.stats?.baseAttack) continue;
+      // Only create Mega/Primal entries from the base form unless the evo id itself targets this specific form (e.g. MEGA_CURLY on CURLY).
+      if (token && id !== `MEGA_${token}` && id !== token) continue;
       const megaKey = makeVariantKey({ dex, form: id, costume: null, gender: null });
-      // "Mega Charizard X" / "Méga-Dracaufeu X", "Primal Kyogre" / "Primo-Kyogre".
+      if (pokemon.has(megaKey)) continue;
+      // "Mega Charizard X" / "Méga-Dracaufeu X", "Primal Kyogre" / "Primo-Kyogre", or form-named Megas like Mega Tatsugiri.
       const base = ctx.name(dex, null);
-      const suffix = id.startsWith('MEGA_') ? ` ${id.slice(5)}` : '';
-      const name = id === 'PRIMAL' ? { en: `Primal ${base.en}`, fr: `Primo-${base.fr ?? base.en}` } : { en: `Mega ${base.en}${suffix}`, fr: `Méga-${base.fr ?? base.en}${suffix}` };
+      const isSimpleLetter = /^MEGA_[XYZ]$/.test(id);
+      const suffix = isSimpleLetter ? ` ${id.slice(5)}` : '';
+      const name =
+        id === 'PRIMAL'
+          ? { en: `Primal ${base.en}`, fr: `Primo-${base.fr ?? base.en}` }
+          : id === 'MEGA' || isSimpleLetter
+            ? { en: `Mega ${base.en}${suffix}`, fr: `Méga-${base.fr ?? base.en}${suffix}` }
+            : ctx.name(dex, id);
       pokemon.set(megaKey, {
         ...p,
         key: megaKey,

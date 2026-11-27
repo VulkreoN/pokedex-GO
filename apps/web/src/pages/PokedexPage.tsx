@@ -2,24 +2,27 @@ import { useDeferredValue, useLayoutEffect, useMemo, useState } from 'react';
 import { Link, useNavigationType, useSearchParams } from 'react-router';
 import { neutralKey, type PokemonType, type Rarity, type Species, type Variant, type VariantKind } from '@mydexpogo/shared';
 import { AddToListSheet, groupVariants, type VariantGroup } from '../components/AddToList.js';
-import { BulkAddSheet, defaultPick, type DexPick } from '../components/BulkAddSheet.js';
+import { defaultPick, type DexPick } from '../components/BulkAddSheet.js';
+import { BannerSlot } from '../components/BannerSlot.js';
+import { AddPresetsBar } from '../components/QuickAddSheet.js';
+import { picksFromSelection } from '../components/SelectionBar.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { TYPE_COLORS } from '../components/TypeBadge.js';
 import { VariantCard, variantForGender, type GenderFilter } from '../components/VariantCard.js';
 import { Button, CardsSkeleton, Chip, Empty, Sheet, TopBar } from '../components/ui.js';
+import { buildQuickEntries, useAddPrefs } from '../lib/addPrefs.js';
 import { familyOrder, normalize, pvpOf, useDataset } from '../lib/dataset.js';
 import { matchesDexToken, suggestListTag } from '../lib/dexSearch.js';
+import { errorMessage } from '../lib/errors.js';
 import { LeagueIcon, PvpTops } from '../components/PvpTops.js';
-import { InstallBanner, WelcomeResume } from '../components/InstallBanner.js';
 import { ManagerSheet } from '../components/ManagerSheet.js';
-import { BulkManageSheet } from '../components/BulkManageSheet.js';
+import { useToast } from '../components/toast.js';
 import { useMe } from '../lib/auth.js';
 import { feedback } from '../lib/feedback.js';
 import { localized, typeName, useLang, useT } from '../lib/i18n.js';
-import { useList, useMembership } from '../lib/lists.js';
-import { useSelection } from '../lib/selection.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
+import { useList, useMembership, useRemoveEntries, useUpsertEntries } from '../lib/lists.js';
+import { selection, useSelection } from '../lib/selection.js';
+import { PageTourButton } from '../components/PageTour.js';
 import { useProgressive } from '../lib/progressive.js';
 
 /** Appeared in the last 45 days. */
@@ -70,37 +73,98 @@ export function PokedexPage() {
   const [gender, setGender] = useState<GenderFilter>(restore?.gender ?? 'all');
   const [forceExploded, setForceExploded] = useState(restore?.forceExploded ?? false);
   const [sort, setSort] = useState<'dex' | 'new' | 'family'>(restore?.sort ?? 'dex');
+  const [collectionFilter, setCollectionFilter] = useState<'all' | 'uncaught' | 'untracked'>('all');
   const [hideInTarget, setHideInTarget] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [adding, setAdding] = useState<VariantGroup | null>(null);
   const [multi, setMulti] = useState(false);
   // Managers correct a variant from any card, search results included, as on the species page.
   const me = useMe();
+  const toast = useToast();
   const isManager = me.data?.role === 'manager' || me.data?.role === 'admin';
   const [managing, setManaging] = useState<VariantGroup | null>(null);
-  const [bulkManaging, setBulkManaging] = useState(false);
-  const basketCount = useSelection().length;
+  const [prefs, setPrefs] = useAddPrefs();
+  const upsert = useUpsertEntries();
+  const remove = useRemoveEntries();
 
-  // Target collection mode ("/dex?to=<listId>"): opened from "+ Add Pokémon" inside a collection.
+  // Target collection mode ("/dex?to=<listId>"): opened from a collection's "Full Pokédex" link.
   const targetQuery = useList(targetListId ?? '', !!targetListId && !!me.data);
   const targetList = targetQuery.data?.access === 'owner' ? targetQuery.data.list : undefined;
   const targetDefaultTag = useMemo(() => (targetList ? suggestListTag(targetList.entries) : ''), [targetList]);
+  const oneTapActive = !!targetList && prefs.oneTap && !multi;
   const membership = useMembership(!!me.data && !targetListId);
 
+  /** Existing exact entries in the target list, for 1-tap toggle feedback (preserves notes on undo). */
+  const targetEntryMap = useMemo(() => {
+    const map = new Map<string, { done: boolean; note: string | null }>();
+    if (!targetList) return map;
+    for (const e of targetList.entries) {
+      map.set(`${neutralKey(e.variantKey)}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`, { done: e.done, note: e.note ?? null });
+    }
+    return map;
+  }, [targetList]);
+
   /** Status per neutral variant key (caught / present) for either the active target list or all of the player's collections. */
+  const effectiveShiny = oneTapActive ? prefs.version === 'shiny' : shiny;
   const variantStatus = useMemo(() => {
     const out = new Map<string, 'caught' | 'present'>();
     const entries = targetList ? targetList.entries : membership.data;
     if (!entries?.length) return out;
     for (const e of entries) {
-      if (e.shiny !== shiny) continue;
+      if (e.shiny !== effectiveShiny) continue;
       const k = neutralKey(e.variantKey);
       const prev = out.get(k);
       if (e.done) out.set(k, 'caught');
       else if (!prev) out.set(k, 'present');
     }
     return out;
-  }, [targetList, membership.data, shiny]);
+  }, [targetList, membership.data, effectiveShiny]);
+
+  const quickToggleTarget = async (g: VariantGroup) => {
+    if (!targetList || !dataset.data) return;
+    const tag = targetDefaultTag || prefs.tag;
+    const entries = buildQuickEntries(dataset.data, g, {
+      version: prefs.version,
+      gender: prefs.gender,
+      tags: [tag],
+      done: prefs.done,
+    });
+    if (!entries.length) return;
+    const sp = dataset.data.speciesByDex.get(g.variants[0]!.dex);
+    const name = `${sp ? localized(sp.name, lang) : ''}${g.label ? ` (${localized(g.label, lang)})` : ''}`.trim();
+    const allIn = entries.every((e) => targetEntryMap.has(`${e.variantKey}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`));
+    try {
+      if (allIn) {
+        const prevRows = entries.map((e) => {
+          const prev = targetEntryMap.get(`${e.variantKey}|${e.gender}|${e.shiny ? 1 : 0}|${e.tag}`);
+          return { ...e, done: prev?.done ?? false, note: prev?.note ?? null };
+        });
+        await remove.mutateAsync({
+          id: targetList.id,
+          entries: entries.map(({ variantKey, gender: gd, shiny: sh, tag: tg }) => ({ variantKey, gender: gd, shiny: sh, tag: tg })),
+        });
+        feedback('untick');
+        toast(t.quick_add_removed_one(name), {
+          action: { label: t.undo, onClick: () => void upsert.mutateAsync({ id: targetList.id, entries: prevRows }) },
+        });
+      } else {
+        await upsert.mutateAsync({ id: targetList.id, entries });
+        feedback('tick');
+        toast(t.quick_add_added_one(name), {
+          action: {
+            label: t.undo,
+            onClick: () =>
+              void remove.mutateAsync({
+                id: targetList.id,
+                entries: entries.map(({ variantKey, gender: gd, shiny: sh, tag: tg }) => ({ variantKey, gender: gd, shiny: sh, tag: tg })),
+              }),
+          },
+        });
+      }
+    } catch (e) {
+      toast(errorMessage(t, e));
+    }
+  };
 
   /** PvP mode: rank 1 IVs in Great and Ultra League on every card. Remembered per device. */
   const [pvpMode, setPvpModeState] = useState(() => {
@@ -116,12 +180,15 @@ export function PokedexPage() {
       localStorage.setItem('dexPvp', on ? '1' : '0');
     } catch {}
   };
-  const [ticked, setTicked] = useState<Map<string, DexPick>>(new Map());
-  const [bulkOpen, setBulkOpen] = useState(false);
+  const selectedItems = useSelection();
+  const picksMap = useMemo(
+    () => (dataset.data ? picksFromSelection(dataset.data, selectedItems) : new Map<string, DexPick>()),
+    [dataset.data, selectedItems],
+  );
   const q = useDeferredValue(normalize(query));
-  /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter or a search. */
+  /** Exploded = one card per form/costume instead of one tile per species. Automatic with a filter, search, multi-select, or 1-tap mode. */
   const allKinds = kinds.size === KINDS.length;
-  const exploded = forceExploded || !allKinds || onlyDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || q !== '' || multi;
+  const exploded = forceExploded || !allKinds || onlyDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || collectionFilter !== 'all' || q !== '' || multi || oneTapActive;
   const activeCount =
     (allKinds ? 0 : 1) +
     (onlyDatamined ? 1 : 0) +
@@ -129,6 +196,7 @@ export function PokedexPage() {
     (onlyShinyOut ? 1 : 0) +
     (onlyBackgrounds ? 1 : 0) +
     (onlyRecent ? 1 : 0) +
+    (collectionFilter !== 'all' ? 1 : 0) +
     (typeFilter ? 1 : 0) +
     (rarity ? 1 : 0) +
     (gen ? 1 : 0) +
@@ -149,6 +217,8 @@ export function PokedexPage() {
     if (onlyRecent && (!isRecent(v.firstSeen) || v.datamined)) return false;
     if (typeFilter && !(v.types ?? species?.types ?? []).includes(typeFilter)) return false;
     if (hideInTarget && targetList && variantStatus.has(neutralKey(v.key))) return false;
+    if (!targetList && collectionFilter === 'uncaught' && variantStatus.get(neutralKey(v.key)) !== 'present') return false;
+    if (!targetList && collectionFilter === 'untracked' && variantStatus.has(neutralKey(v.key))) return false;
     return true;
   };
 
@@ -183,7 +253,7 @@ export function PokedexPage() {
     if (!idx) return [];
     const familyCache = new Map<string, Set<string>>();
     const tokens = q ? q.split(/\s+/).filter(Boolean) : [];
-    const hasVariantFilter = !allKinds || onlyDatamined || hideDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || !!typeFilter || (hideInTarget && !!targetList);
+    const hasVariantFilter = !allKinds || onlyDatamined || hideDatamined || onlyShinyOut || onlyBackgrounds || onlyRecent || !!typeFilter || (hideInTarget && !!targetList) || (!targetList && collectionFilter !== 'all');
     return idx.ds.species.filter((s) => {
       if (gen && s.gen !== gen) return false;
       if (rarity && s.rarity !== rarity) return false;
@@ -191,7 +261,7 @@ export function PokedexPage() {
       if (!hasVariantFilter) return true;
       return (idx.variantsByDex.get(s.dex) ?? []).some((v) => shown(v, s));
     });
-  }, [dataset.data, q, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, rarity, gen, labelText, hideInTarget, targetList, variantStatus]);
+  }, [dataset.data, q, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, rarity, gen, labelText, hideInTarget, targetList, variantStatus, collectionFilter]);
 
   /** Newest first: a species ranks by the most recent of its variants. `+family` searches show evolution order automatically. */
   const newest = (dex: number) => (dataset.data?.variantsByDex.get(dex) ?? []).reduce((m, v) => (v.firstSeen && v.firstSeen > m ? v.firstSeen : m), '');
@@ -225,15 +295,19 @@ export function PokedexPage() {
       out.sort((a, b) => groupNewest(b.group).localeCompare(groupNewest(a.group)) || a.species.dex - b.species.dex);
     }
     return out;
-  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, q, gender, sort, hideInTarget, targetList, variantStatus]);
+  }, [dataset.data, exploded, rows, sortedRows, kinds, onlyDatamined, hideDatamined, onlyShinyOut, onlyBackgrounds, onlyRecent, typeFilter, q, gender, sort, hideInTarget, targetList, variantStatus, collectionFilter]);
 
-  const toggleTick = (id: string, g: VariantGroup) => {
-    feedback(ticked.has(id) ? 'untick' : 'tick');
-    setTicked((m) => {
-      const n = new Map(m);
-      n.has(id) ? n.delete(id) : n.set(id, defaultPick(g, gender, shiny));
-      return n;
-    });
+  const baseKeyOf = (g: VariantGroup) => neutralKey((g.variants.find((x) => x.gender !== 'f') ?? g.variants[0]!).key);
+  const savePick = (g: VariantGroup, p: DexPick) => {
+    const bk = baseKeyOf(g);
+    selection.replaceVariant(bk, p.combos.map((c) => ({ variantKey: bk, gender: c.sex, shiny: c.shiny, tag: '' })));
+  };
+  const toggleTick = (g: VariantGroup) => {
+    const bk = baseKeyOf(g);
+    const was = picksMap.has(bk);
+    feedback(was ? 'untick' : 'tick');
+    if (was) selection.removeVariant(bk);
+    else savePick(g, defaultPick(g, gender, effectiveShiny));
   };
   const reset = () => {
     setKinds(ALL_KINDS);
@@ -242,6 +316,7 @@ export function PokedexPage() {
     setOnlyShinyOut(false);
     setOnlyBackgrounds(false);
     setOnlyRecent(false);
+    setCollectionFilter('all');
     setTypeFilter('');
     setRarity('');
     setGen(0);
@@ -259,7 +334,7 @@ export function PokedexPage() {
   const speciesLinkSuffix = targetList ? `?to=${targetList.id}` : '';
   const resultCount = exploded ? t.variants_count(cards.length) : t.species_count(rows.length);
   // Long grids build their first cards at once, the next ones as they come near the screen.
-  const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${onlyShinyOut}|${onlyBackgrounds}|${onlyRecent}|${typeFilter}|${rarity}|${gen}|${gender}|${sort}|${shiny}|${multi}|${hideInTarget}`;
+  const gridKey = `${q}|${[...kinds].join()}|${onlyDatamined}|${hideDatamined}|${onlyShinyOut}|${onlyBackgrounds}|${onlyRecent}|${collectionFilter}|${typeFilter}|${rarity}|${gen}|${gender}|${sort}|${effectiveShiny}|${multi}|${hideInTarget}`;
   const { shown: shownCards, more: cardsMore, sentinel: cardsSentinel } = useProgressive(cards, gridKey, 60, restore?.built);
   const { shown: shownRows, more: rowsMore, sentinel: rowsSentinel } = useProgressive(sortedRows, gridKey, 60, restore?.built);
   // Remembered as it changes, so a Pokémon opened from here comes back to the same place.
@@ -292,20 +367,36 @@ export function PokedexPage() {
     <>
       <TopBar title={t.nav_dex} actions={<PageTourButton page="dex" />}>
         <div className="mx-auto max-w-6xl px-3 pb-2 sm:px-5">
-          {/* Active target collection banner when arriving from "+ Add Pokémon" inside a collection. */}
+          {/* Active target collection banner when arriving from a collection. */}
           {targetList && (
-            <div className="mb-2 flex items-center gap-2 rounded-xl bg-go-soft px-2.5 py-1.5 text-xs font-semibold text-go-ink">
-              <span className="min-w-0 flex-1 truncate">{t.adding_to_banner(targetList.name)}</span>
-              <button
-                type="button"
-                aria-pressed={hideInTarget}
-                onClick={() => setHideInTarget((v) => !v)}
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${hideInTarget ? 'bg-go text-white' : 'bg-card/80 text-go-ink'}`}
-              >
-                {t.hide_already_in}
-              </button>
-              <Link to={`/lists/${targetList.id}`} className="shrink-0 underline">{t.adding_to_back}</Link>
-              <button type="button" onClick={exitTarget} aria-label={t.close} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-black/10">✕</button>
+            <div className="mb-2 space-y-1.5 rounded-xl bg-go-soft px-2.5 py-1.5 text-xs font-semibold text-go-ink">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate">{t.adding_to_banner(targetList.name)}</span>
+                <button
+                  type="button"
+                  aria-pressed={prefs.oneTap}
+                  onClick={() => setPrefs({ oneTap: !prefs.oneTap })}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${prefs.oneTap ? 'bg-go text-white' : 'bg-card/85 text-go-ink'}`}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" /></svg>
+                  {t.quick_add_one_tap}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={hideInTarget}
+                  onClick={() => setHideInTarget((v) => !v)}
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${hideInTarget ? 'bg-go text-white' : 'bg-card/85 text-go-ink'}`}
+                >
+                  {t.hide_already_in}
+                </button>
+                <Link to={`/lists/${targetList.id}`} className="shrink-0 underline">{t.adding_to_back}</Link>
+                <button type="button" onClick={exitTarget} aria-label={t.close} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-black/10">✕</button>
+              </div>
+              {oneTapActive && (
+                <div className="pt-0.5">
+                  <AddPresetsBar compact />
+                </div>
+              )}
             </div>
           )}
           <div className="relative">
@@ -338,17 +429,25 @@ export function PokedexPage() {
               {t.filters}
               {activeCount > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[11px] font-bold leading-4 text-white">{activeCount}</span>}
             </Chip>
-            <Chip active={shiny} onClick={() => setShiny((v) => !v)} aria-label={t.shiny}>
-              <Sparkle className={shiny ? 'text-shiny' : ''} />
+            <Chip
+              active={effectiveShiny}
+              onClick={() => {
+                if (oneTapActive) setPrefs({ version: effectiveShiny ? 'normal' : 'shiny' });
+                else setShiny((v) => !v);
+              }}
+              aria-label={t.shiny}
+            >
+              <Sparkle className={effectiveShiny ? 'text-shiny' : ''} />
               {t.shiny}
             </Chip>
             <Chip active={pvpMode} onClick={() => setPvpMode(!pvpMode)} aria-label={t.pvp_mode}>
               <LeagueIcon league="great" size={16} />
               PvP
             </Chip>
-            <Chip active={multi} onClick={() => { setMulti((m) => !m); setTicked(new Map()); }} aria-label={t.multi_select}>
+            <Chip active={multi} onClick={() => setMulti((m) => !m)} aria-label={t.multi_select}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" /><path d="m8 12 3 3 5-6" /></svg>
               {t.multi_short}
+              {picksMap.size > 0 && <span className="tnum rounded-full bg-go px-1.5 text-[11px] font-bold leading-4 text-white">{picksMap.size}</span>}
             </Chip>
           </div>
           {/* Active filters on their own row, each removable with a tap. */}
@@ -360,6 +459,11 @@ export function PokedexPage() {
               {onlyShinyOut && <Chip active onClick={() => setOnlyShinyOut(false)}>{t.only_shiny_out} ✕</Chip>}
               {onlyBackgrounds && <Chip active onClick={() => setOnlyBackgrounds(false)}>{t.only_backgrounds} ✕</Chip>}
               {onlyRecent && <Chip active onClick={() => setOnlyRecent(false)}>{t.only_recent} ✕</Chip>}
+              {collectionFilter !== 'all' && (
+                <Chip active onClick={() => setCollectionFilter('all')}>
+                  {collectionFilter === 'uncaught' ? t.dex_only_uncaught : t.dex_only_untracked} ✕
+                </Chip>
+              )}
               {typeFilter && <Chip active onClick={() => setTypeFilter('')}>{typeName(typeFilter, lang)} ✕</Chip>}
               {rarity && <Chip active onClick={() => setRarity('')}>{t[`rarity_${rarity}`]} ✕</Chip>}
               {gen > 0 && <Chip active onClick={() => setGen(0)}>{t.filter_gen} {gen} ✕</Chip>}
@@ -383,21 +487,31 @@ export function PokedexPage() {
         </div>
       </TopBar>
 
-      <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${multi && basketCount > 0 ? 'pb-44' : 'pb-28'}`}>
+      <main className="mx-auto max-w-6xl px-3 pb-28 sm:px-5">
         {dataset.isPending && <CardsSkeleton count={12} className="grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6" />}
         {dataset.isError && <Empty>{t.err_generic}</Empty>}
-        <WelcomeResume />
-        <InstallBanner />
-        <WhatsNewBanner />
-        <PageTourBanner page="dex" />
+        <BannerSlot page="dex" includeWelcome includeInstall />
         {dataset.data && (
           <>
             <p className="tnum flex items-center gap-2 py-2 text-xs font-semibold text-ink-3">
               {resultCount}
               {multi && cards.length > 0 && (
                 <>
-                  <button type="button" className="ml-auto text-sky" onClick={() => setTicked((m) => new Map(cards.map((c) => [c.id, m.get(c.id) ?? defaultPick(c.group, gender, shiny)])))}>{t.select_all_visible}</button>
-                  <button type="button" className="text-ink-3" onClick={() => setTicked(new Map())}>{t.clear}</button>
+                  <button
+                    type="button"
+                    className="ml-auto text-sky"
+                    onClick={() => {
+                      const batch = cards.flatMap((c) => {
+                        const bk = baseKeyOf(c.group);
+                        if (picksMap.has(bk)) return [];
+                        return defaultPick(c.group, gender, effectiveShiny).combos.map((co) => ({ variantKey: bk, gender: co.sex, shiny: co.shiny, tag: '' as const }));
+                      });
+                      if (batch.length) selection.add(batch);
+                    }}
+                  >
+                    {t.select_all_visible}
+                  </button>
+                  <button type="button" className="text-ink-3" onClick={() => selection.clear()}>{t.clear}</button>
                 </>
               )}
             </p>
@@ -406,25 +520,26 @@ export function PokedexPage() {
             {exploded && (
               <ul className="stagger grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {shownCards.map(({ species, group, id }) => {
-                  const baseKey = neutralKey((group.variants.find((x) => x.gender !== 'f') ?? group.variants[0]!).key);
+                  const baseKey = baseKeyOf(group);
                   return (
                     <li key={id} style={{ contentVisibility: 'auto', containIntrinsicSize: '0 190px' }}>
                       <VariantCard
                         idx={dataset.data}
                         species={species}
                         group={group}
-                        shiny={shiny}
+                        shiny={effectiveShiny}
                         gender={gender}
                         showSpecies
                         selectable={multi}
-                        selected={ticked.has(id)}
-                        pick={ticked.get(id)}
-                        onPick={(p) => setTicked((m) => new Map(m).set(id, p))}
+                        selected={picksMap.has(baseKey)}
+                        pick={picksMap.get(baseKey)}
+                        onPick={(p) => savePick(group, p)}
                         showPvp={pvpMode}
                         openOnTap
                         speciesLinkSuffix={speciesLinkSuffix}
                         inCollection={variantStatus.get(baseKey) ?? false}
-                        onAdd={(g) => (multi ? toggleTick(id, g) : setAdding(g))}
+                        quickMode={oneTapActive}
+                        onAdd={(g) => (multi ? toggleTick(g) : oneTapActive ? void quickToggleTarget(g) : setAdding(g))}
                         onManage={isManager && !multi ? setManaging : undefined}
                       />
                     </li>
@@ -448,16 +563,21 @@ export function PokedexPage() {
                       <Link to={`/dex/${s.dex}${speciesLinkSuffix}`} className="card flex flex-col items-center px-1 pb-2 pt-1 transition hover:brightness-[0.97]">
                         <div className="relative">
                           <span className="tnum absolute -left-1 top-0 text-[11px] font-semibold text-ink-3">#{s.dex}</span>
-                          <Sprite idx={idx} variant={shownVar} shiny={shiny && shownVar.hasShiny} muted={!s.released} size={72} />
+                          <Sprite idx={idx} variant={shownVar} shiny={effectiveShiny && shownVar.hasShiny} muted={!s.released} size={72} />
                           {extra > 0 && <span className="tnum absolute -right-1 bottom-0 rounded-md bg-ink px-1 text-[10px] font-bold text-card">+{extra}</span>}
-                          {hasDatamined && <span className="absolute -right-1 top-0 h-2 w-2 rounded-full bg-sky" aria-label={t.filter_datamined} />}
-                          {coverStatus && !hasDatamined && (
+                          {coverStatus && (
                             <span
                               className={`absolute -right-1 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[8px] font-bold text-white ${coverStatus === 'caught' ? 'bg-go' : 'bg-sky'}`}
                               title={coverStatus === 'caught' ? t.already_caught_short : t.already_in_list}
                             >
                               {coverStatus === 'caught' ? '✓' : '•'}
                             </span>
+                          )}
+                          {hasDatamined && (
+                            <span
+                              className={`absolute -right-1 h-2 w-2 rounded-full bg-sky ${coverStatus ? 'top-4' : 'top-0'}`}
+                              aria-label={t.filter_datamined}
+                            />
                           )}
                           {isRecent(newest(s.dex)) && <span className="absolute -left-2 bottom-0 rounded-md bg-go px-1 text-[9px] font-bold text-white">{t.new_badge}</span>}
                         </div>
@@ -473,16 +593,6 @@ export function PokedexPage() {
           </>
         )}
       </main>
-
-      {multi && ticked.size > 0 && (
-        <div className={`pb-safe fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-6xl items-center gap-2 rounded-2xl bg-go px-3 py-2 text-white shadow-lg">
-            <span className="tnum min-w-0 flex-1 truncate text-sm font-bold">{t.bulk_title(ticked.size)}</span>
-            {isManager && <Button tone="ghost" className="min-h-9 bg-white/20 px-3 text-sm text-white hover:bg-white/30" onClick={() => setBulkManaging(true)}>{t.manage_short}</Button>}
-            <Button tone="ghost" className="min-h-9 bg-white px-3 text-sm text-go-ink hover:bg-white" onClick={() => setBulkOpen(true)}>{t.add}</Button>
-          </div>
-        </div>
-      )}
 
       <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title={t.filters}>
         {filtersOpen && (
@@ -504,8 +614,14 @@ export function PokedexPage() {
                 <Chip active={onlyRecent} onClick={() => { const next = !onlyRecent; setOnlyRecent(next); if (next) { setOnlyDatamined(false); setSort('new'); } }}>{t.only_recent}</Chip>
                 <Chip active={onlyDatamined} onClick={() => { setOnlyDatamined((v) => !v); setHideDatamined(false); setOnlyRecent(false); }}>{t.only_datamined}</Chip>
                 <Chip active={hideDatamined} onClick={() => { setHideDatamined((v) => !v); setOnlyDatamined(false); }}>{t.hide_datamined}</Chip>
-                <Chip active={onlyShinyOut} onClick={() => { const next = !onlyShinyOut; setOnlyShinyOut(next); if (next) setShiny(true); }}>{t.only_shiny_out}</Chip>
+                <Chip active={onlyShinyOut} onClick={() => { const next = !onlyShinyOut; setOnlyShinyOut(next); if (next) { if (oneTapActive) setPrefs({ version: 'shiny' }); else setShiny(true); } }}>{t.only_shiny_out}</Chip>
                 <Chip active={onlyBackgrounds} onClick={() => setOnlyBackgrounds((v) => !v)}>{t.only_backgrounds}</Chip>
+                {me.data && !targetList && (
+                  <>
+                    <Chip active={collectionFilter === 'uncaught'} onClick={() => setCollectionFilter((v) => (v === 'uncaught' ? 'all' : 'uncaught'))}>{t.dex_only_uncaught}</Chip>
+                    <Chip active={collectionFilter === 'untracked'} onClick={() => setCollectionFilter((v) => (v === 'untracked' ? 'all' : 'untracked'))}>{t.dex_only_untracked}</Chip>
+                  </>
+                )}
               </div>
             </div>
             <div>
@@ -555,7 +671,6 @@ export function PokedexPage() {
             <div>
               <p className="mb-1.5 text-xs font-medium text-ink-3">{t.display_title}</p>
               <div className="flex flex-wrap gap-1.5">
-                <Chip active={shiny} onClick={() => setShiny((v) => !v)}><Sparkle className={shiny ? 'text-shiny' : ''} /> {t.shiny}</Chip>
                 <Chip active={forceExploded} onClick={() => setForceExploded((v) => !v)}>{t.exploded_view}</Chip>
               </div>
             </div>
@@ -571,24 +686,13 @@ export function PokedexPage() {
         <AddToListSheet
           idx={dataset.data}
           group={adding}
-          initialShiny={shiny}
+          initialShiny={effectiveShiny}
           targetListId={targetList?.id}
-          defaultTag={targetDefaultTag}
+          defaultTag={targetList && targetDefaultTag ? targetDefaultTag : undefined}
           onClose={() => setAdding(null)}
         />
       )}
-      {isManager && <ManagerSheet group={managing} onClose={() => setManaging(null)} />}
-      {isManager && <BulkManageSheet open={bulkManaging} groups={[...ticked.values()].map((p) => p.group)} onClose={() => setBulkManaging(false)} onDone={() => { setTicked(new Map()); setMulti(false); }} />}
-      <BulkAddSheet
-        idx={dataset.data}
-        open={bulkOpen}
-        picks={[...ticked.values()]}
-        targetListId={targetList?.id}
-        defaultTag={targetDefaultTag}
-        onApplyAll={(change) => setTicked((m) => new Map([...m].map(([k, p]) => [k, change(p)])))}
-        onClose={() => setBulkOpen(false)}
-        onDone={() => { setTicked(new Map()); setMulti(false); }}
-      />
+      {isManager && <ManagerSheet idx={dataset.data} group={managing} onClose={() => setManaging(null)} />}
     </>
   );
 }

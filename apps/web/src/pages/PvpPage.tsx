@@ -2,18 +2,21 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LEAGUES, cpOf, cpmAt, gblSeasonFr, ivSearch, levelSteps, levelsForCp, powerUpCost, rankOf, rankTable, type Ivs, type PowerUpKind, type PvpData, type PvpPokemon, type RankInfo, type Variant } from '@mydexpogo/shared';
 import { Sprite } from '../components/Sprite.js';
+import { BannerSlot } from '../components/BannerSlot.js';
+import { cupName, cupsOf } from '../components/GameTools.js';
 import { LeagueIcon } from '../components/PvpTops.js';
 import { PvpokeCard } from '../components/PvpokeCard.js';
 import { LEAGUE_LIST, PVPOKE_URL, formOf, leagueName, moveName, pvpokeRanks, pvpokeUrl, usePvpDetails, usePvpRankings, type League, type RankedDetail, type RankedPokemon } from '../lib/pvpoke.js';
 import { TypeBadge } from '../components/TypeBadge.js';
-import { Button, Chip, CopyButton, Empty, Spinner, TopBar } from '../components/ui.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { Badge, Button, Chip, CopyButton, Empty, Spinner, TopBar } from '../components/ui.js';
+import { PageTourButton } from '../components/PageTour.js';
 import { useToast } from '../components/toast.js';
 import { savedGameLang } from '../lib/searchString.js';
 import { useMe } from '../lib/auth.js';
+import { eventStatus, useEvents } from '../lib/live.js';
 import { useDeleteMyPvp, useMyPvp, useSaveMyPvp, type MyPvpPokemon } from '../lib/myPvp.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
+import { errorMessage } from '../lib/errors.js';
 import { localized, useLang, useT } from '../lib/i18n.js';
 
 /** IV floors by how the Pokémon was obtained: they shrink the pool a rank is computed against. */
@@ -60,19 +63,20 @@ function PvpSearch() {
   const rankings = usePvpRankings();
   const [league, setLeague] = useState<League>('great');
   const [season, setSeason] = useState<'current' | 'preview'>('current');
+  const [topLimit, setTopLimit] = useState(20);
   const preview = rankings.data?.preview;
   const activeSeason = season === 'preview' && preview ? 'preview' : 'current';
   const picks = useMemo(() => {
-    if (!pvp) return { recent: [], popular: [], top: [] };
+    if (!pvp) return { recent: [], popular: [], top: [], totalTop: 0 };
     const recent = recentPvp().flatMap((k) => byKey.get(k) ?? []);
     const popular = POPULAR_DEX.flatMap((dex) => byKey.get(String(dex)) ?? pvp.pokemon.find((p) => p.dex === dex) ?? []).filter((p) => !recent.includes(p));
     const list = activeSeason === 'preview' && preview ? preview[league] : rankings.data?.[league];
-    const top = (list ?? []).slice(0, 20).flatMap((r) => {
+    const allTop = (list ?? []).slice(0, 100).flatMap((r) => {
       const p = formOf(pvp, r);
       return p ? [{ p, r }] : [];
     });
-    return { recent, popular, top };
-  }, [pvp, byKey, rankings.data, preview, activeSeason, league]);
+    return { recent, popular, top: allTop.slice(0, topLimit), totalTop: allTop.length };
+  }, [pvp, byKey, rankings.data, preview, activeSeason, league, topLimit]);
   const tile = (p: PvpPokemon, r?: RankedPokemon) => {
     const v = ds.data && picture(ds.data, p);
     const delta = activeSeason === 'preview' ? r?.delta : undefined;
@@ -140,14 +144,13 @@ function PvpSearch() {
         </div>
       </TopBar>
       <main className="mx-auto max-w-6xl px-3 pb-24 pt-3 sm:px-5">
-        <WhatsNewBanner />
-        <PageTourBanner page="pvp" />
+        <BannerSlot page="pvp" />
         {ds.isPending && <Spinner />}
         {ds.data && !pvp && <Empty>{t.pvp_unavailable}</Empty>}
         {pvp && !query && (
           <>
             <p className="mb-4 text-sm text-ink-2">{t.pvp_intro}</p>
-            <div className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Link to="/pvp/battle" className="card flex items-center gap-3 p-3 hover:brightness-[0.98]">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-berry/10 text-berry">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /></svg>
@@ -167,6 +170,7 @@ function PvpSearch() {
                 </span>
               </Link>
             </div>
+            <GblScheduleCard />
             {ds.data && <MyPokemon idx={ds.data} pvp={pvp} byKey={byKey} />}
             {picks.recent.length > 0 && (
               <section className="mb-5">
@@ -192,13 +196,20 @@ function PvpSearch() {
                 )}
                 <div className="mb-2 flex flex-wrap gap-2">
                   {LEAGUE_LIST.map((l) => (
-                    <Chip key={l} active={league === l} onClick={() => setLeague(l)}>
+                    <Chip key={l} active={league === l} onClick={() => { setLeague(l); setTopLimit(20); }}>
                       <LeagueIcon league={l} size={16} />
                       {leagueName(t, l)}
                     </Chip>
                   ))}
                 </div>
                 <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8">{picks.top.map(({ p, r }) => tile(p, r))}</ul>
+                {picks.totalTop > topLimit && (
+                  <div className="mt-3 text-center">
+                    <Button tone="quiet" className="min-h-9 px-4 text-xs" onClick={() => setTopLimit((n) => (n < 50 ? 50 : 100))}>
+                      {t.pvp_show_more(Math.min(picks.totalTop, topLimit < 50 ? 50 : 100))}
+                    </Button>
+                  </div>
+                )}
                 <p className="mt-2 text-xs text-ink-3">
                   {t.pvp_source}{' '}
                   <a href={activeSeason === 'preview' && preview ? preview.url : PVPOKE_URL} target="_blank" rel="noreferrer" className="font-semibold text-sky">
@@ -238,6 +249,76 @@ function PvpSearch() {
   );
 }
 
+/** Current & upcoming GO Battle League cups surfaced directly inside the PvP tab. */
+function GblScheduleCard() {
+  const t = useT();
+  const { lang } = useLang();
+  const events = useEvents();
+  const [expanded, setExpanded] = useState(false);
+
+  const weeks = useMemo(
+    () =>
+      (events.data ?? [])
+        .filter((e) => e.eventType === 'go-battle-league' && eventStatus(e) !== 'past')
+        .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')),
+    [events.data],
+  );
+  if (!weeks.length) return null;
+
+  const date = (iso: string | null) => {
+    if (!iso) return '?';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '?' : d.toLocaleDateString(lang, { day: 'numeric', month: 'short' });
+  };
+  const current = weeks.find((w) => eventStatus(w) === 'current') ?? weeks[0]!;
+  const upcoming = weeks.filter((w) => w.eventID !== current.eventID);
+  const season = current.name.split(' | ')[1];
+
+  return (
+    <section className="card mb-5 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-bold">🏆 {t.pvp_gbl_now}</span>
+        {eventStatus(current) === 'current' && <Badge tone="grass">{t.league_now}</Badge>}
+        <span className="tnum text-xs text-ink-3">{date(current.start)} → {date(current.end)}</span>
+        {upcoming.length > 0 && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="ml-auto text-xs font-semibold text-sky hover:underline"
+          >
+            {expanded ? t.pvp_gbl_hide : `${t.pvp_gbl_schedule} (${upcoming.length})`} {expanded ? '▴' : '▾'}
+          </button>
+        )}
+      </div>
+      {season && <p className="mt-0.5 text-xs text-ink-3">{t.league_season(gblSeasonFr(season, lang))}</p>}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {cupsOf(current.name).map((c) => (
+          <span key={c} className="rounded-full bg-go-soft px-2.5 py-1 text-xs font-semibold text-go-ink">
+            {cupName(c, lang)}
+          </span>
+        ))}
+      </div>
+      {expanded && upcoming.length > 0 && (
+        <ul className="mt-3 space-y-2 border-t border-line pt-2.5">
+          {upcoming.map((w) => (
+            <li key={w.eventID} className="rounded-xl bg-paper-2/50 p-2">
+              <p className="tnum text-[11px] font-semibold text-ink-3">{date(w.start)} → {date(w.end)}</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {cupsOf(w.name).map((c) => (
+                  <span key={c} className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-ink-2">
+                    {cupName(c, lang)}
+                  </span>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** This form and everything it can evolve into: level carries over when evolving, so one set of IVs covers the line. */
 function evolutionLine(start: PvpPokemon, byKey: Map<string, PvpPokemon>): PvpPokemon[] {
   const out: PvpPokemon[] = [];
@@ -266,7 +347,25 @@ function PvpDetail({ pkey }: { pkey: string }) {
   const rankings = usePvpRankings();
   const [params, setParams] = useSearchParams();
   const [cpInput, setCpInput] = useState('');
-  const iv: Ivs = { atk: clampIv(params.get('a')), def: clampIv(params.get('d')), sta: clampIv(params.get('s')) };
+  const [chosenEvo, setChosenEvo] = useState<string | null>(null);
+  useEffect(() => {
+    setChosenEvo(null);
+  }, [pkey]);
+
+  const me = byKey.get(pkey);
+  const line = useMemo(() => (me ? evolutionLine(me, byKey) : []), [me, byKey]);
+  const activeForm = line.find((x) => x.key === chosenEvo) ?? line[line.length - 1] ?? me;
+
+  const hasIvParams = params.has('a') || params.has('d') || params.has('s');
+  const defaultIv = useMemo<Ivs>(() => {
+    if (!me) return { atk: 0, def: 15, sta: 15 };
+    const target = line[line.length - 1] ?? me;
+    const top = target.top?.great ?? target.top?.ultra ?? me.top?.great ?? me.top?.ultra;
+    return top ? { atk: top[0], def: top[1], sta: top[2] } : { atk: 15, def: 15, sta: 15 };
+  }, [me, line]);
+  const iv: Ivs = hasIvParams
+    ? { atk: clampIv(params.get('a')), def: clampIv(params.get('d')), sta: clampIv(params.get('s')) }
+    : defaultIv;
   const level = params.get('l') ? Number(params.get('l')) : null;
   const floor = Number(params.get('f') ?? 0);
   const buddy = params.get('b') === '1';
@@ -279,8 +378,13 @@ function PvpDetail({ pkey }: { pkey: string }) {
       for (const [k, v] of Object.entries(patch)) (v === null ? next.delete(k) : next.set(k, v));
       return next;
     }, { replace: true });
+  const setIv = (patch: Partial<Ivs>) =>
+    set({
+      a: String(patch.atk ?? iv.atk),
+      d: String(patch.def ?? iv.def),
+      s: String(patch.sta ?? iv.sta),
+    });
 
-  const me = byKey.get(pkey);
   useEffect(() => {
     if (me) rememberPvp(me.key);
   }, [me]);
@@ -294,9 +398,10 @@ function PvpDetail({ pkey }: { pkey: string }) {
     );
   }
   const maxLevel = pvp.maxLevel + (buddy ? 1 : 0);
-  const line = evolutionLine(me, byKey);
   const cpLevels = cpInput ? levelsForCp(pvp, me, iv, Number(cpInput), pvp.maxLevel + 1) : [];
   const meVariant = picture(ds.data, me);
+  const battleForm = activeForm ?? me;
+  const battleLeague: League = battleForm.top?.great ? 'great' : battleForm.top?.ultra ? 'ultra' : 'master';
 
   return (
     <>
@@ -357,10 +462,11 @@ function PvpDetail({ pkey }: { pkey: string }) {
             })()}
           </div>
           <div className="mt-2 space-y-2">
-            <IvSlider label={t.stat_atk} value={iv.atk} onChange={(v) => set({ a: String(v) })} />
-            <IvSlider label={t.stat_def} value={iv.def} onChange={(v) => set({ d: String(v) })} />
-            <IvSlider label={t.stat_sta} value={iv.sta} onChange={(v) => set({ s: String(v) })} />
+            <IvSlider label={t.stat_atk} value={iv.atk} onChange={(v) => setIv({ atk: v })} />
+            <IvSlider label={t.stat_def} value={iv.def} onChange={(v) => setIv({ def: v })} />
+            <IvSlider label={t.stat_sta} value={iv.sta} onChange={(v) => setIv({ sta: v })} />
           </div>
+          {!hasIvParams && <p className="mt-1.5 text-xs text-ink-3">{t.pvp_default_rank1_hint}</p>}
 
           <div className="mt-4 grid grid-cols-2 gap-3">
             <label className="block">
@@ -381,7 +487,7 @@ function PvpDetail({ pkey }: { pkey: string }) {
                 inputMode="numeric"
                 min={10}
                 value={cpInput}
-                placeholder="PC"
+                placeholder={lang === 'fr' ? 'PC' : 'CP'}
                 onChange={(e) => {
                   setCpInput(e.target.value);
                   const found = e.target.value ? levelsForCp(pvp, me, iv, Number(e.target.value), pvp.maxLevel + 1) : [];
@@ -425,15 +531,18 @@ function PvpDetail({ pkey }: { pkey: string }) {
               {t.pvp_buddy}
             </label>
           </details>
-          <SaveMine me={me} iv={iv} level={level} mineId={params.get('m')} onSaved={(id) => set({ m: id })} onRemoved={() => set({ m: null })} />
-          <Link to={`/pvp/battle?a=${encodeURIComponent(me.key)}&aiv=${iv.atk}-${iv.def}-${iv.sta}`} className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-paper-2 text-[15px] font-semibold text-ink hover:brightness-95">
+          <SaveMine me={me} iv={iv} level={level} shadow={costKind === 'shadow'} mineId={params.get('m')} onSaved={(id) => set({ m: id })} onRemoved={() => set({ m: null })} />
+          <Link
+            to={`/pvp/battle?l=${battleLeague}&a=${encodeURIComponent(battleForm.key)}&aiv=${iv.atk}-${iv.def}-${iv.sta}${costKind === 'shadow' ? '&ash=1' : ''}`}
+            className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-paper-2 text-[15px] font-semibold text-ink hover:brightness-95"
+          >
             {t.battle_open}
           </Link>
         </section>
 
         <div>
-          <Results me={me} line={line} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} costKind={costKind} />
-          <PvpokeCard idx={ds.data!} pvp={pvp} me={me} />
+          <Results me={me} line={line} chosen={chosenEvo} onChoose={setChosenEvo} idx={ds.data} pvp={pvp} iv={iv} level={level} floor={floor} maxLevel={maxLevel} costKind={costKind} />
+          <PvpokeCard idx={ds.data!} pvp={pvp} me={battleForm} />
         </div>
       </main>
     </>
@@ -472,11 +581,10 @@ function IvSlider({ label, value, onChange }: { label: string; value: number; on
 }
 
 /** Results for one form of the evolution line at a time: the last one first, as that is what gets played. */
-function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; costKind: PowerUpKind }) {
-  const { me, line, idx, pvp, iv, level, maxLevel } = props;
+function Results(props: { me: PvpPokemon; line: PvpPokemon[]; chosen: string | null; onChoose: (k: string) => void; idx: DatasetIndex; pvp: PvpData; iv: Ivs; level: number | null; floor: number; maxLevel: number; costKind: PowerUpKind }) {
+  const { me, line, chosen, onChoose, idx, pvp, iv, level, maxLevel } = props;
   const t = useT();
   const { lang } = useLang();
-  const [chosen, setChosen] = useState<string | null>(null);
   const p = line.find((x) => x.key === chosen) ?? line[line.length - 1] ?? me;
   const details = usePvpDetails(p.dex);
   // PvPoke's view of this form per league (the normal one when Shadow is ranked too): its recommended moves.
@@ -491,7 +599,7 @@ function Results(props: { me: PvpPokemon; line: PvpPokemon[]; idx: DatasetIndex;
           {line.map((x) => {
             const v = picture(idx, x);
             return (
-              <Chip key={x.key} role="tab" aria-selected={x.key === p.key} active={x.key === p.key} onClick={() => setChosen(x.key)} className="pl-1.5">
+              <Chip key={x.key} role="tab" aria-selected={x.key === p.key} active={x.key === p.key} onClick={() => onChoose(x.key)} className="pl-1.5">
                 {v && <Sprite idx={idx} variant={v} size={26} />}
                 {localized(x.name, lang)}
               </Chip>
@@ -588,7 +696,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, costKind,
         </div>
         <div className="rounded-lg bg-paper-2 px-2.5 py-1.5">
           <dt className="text-[11px] text-ink-3">{t.pvp_target_cp}</dt>
-          <dd className="font-bold">{fmt(r.cp)} PC</dd>
+          <dd className="font-bold">{fmt(r.cp)} {lang === 'fr' ? 'PC' : 'CP'}</dd>
         </div>
       </dl>
       {league !== 'master' && r.level === maxLevel && r.cp < cap * 0.93 && <p className="mt-1 text-xs text-ink-3">{t.pvp_under_cap}</p>}
@@ -631,7 +739,7 @@ function LeagueCard({ league, p, idx, pvp, iv, level, floor, maxLevel, costKind,
       {/* Against rank 1 of this league. */}
       <div className="mt-3 border-t border-line pt-2.5">
         <p className="tnum text-xs text-ink-2">
-          <span className="font-semibold text-ink">{t.pvp_rank1}</span> {r.best.ivs.atk}/{r.best.ivs.def}/{r.best.ivs.sta} · {t.pvp_level} {fmt(r.best.level)} · PC {r.best.cp}
+          <span className="font-semibold text-ink">{t.pvp_rank1}</span> {r.best.ivs.atk}/{r.best.ivs.def}/{r.best.ivs.sta} · {t.pvp_level} {fmt(r.best.level)} · {lang === 'fr' ? 'PC' : 'CP'} {r.best.cp}
         </p>
         {r.rank > 1 && (
           <p className="tnum mt-1 flex flex-wrap gap-x-3 text-xs">
@@ -696,7 +804,7 @@ function Cost({ pvp, from, to, kind = 'normal' }: { pvp: PvpData; from: number; 
 }
 
 /** Save the Pokémon as entered to "My Pokémon", or update / remove the saved one this page was opened from. */
-function SaveMine({ me, iv, level, mineId, onSaved, onRemoved }: { me: PvpPokemon; iv: Ivs; level: number | null; mineId: string | null; onSaved: (id: string) => void; onRemoved: () => void }) {
+function SaveMine({ me, iv, level, shadow, mineId, onSaved, onRemoved }: { me: PvpPokemon; iv: Ivs; level: number | null; shadow: boolean; mineId: string | null; onSaved: (id: string) => void; onRemoved: () => void }) {
   const t = useT();
   const toast = useToast();
   const user = useMe();
@@ -705,7 +813,7 @@ function SaveMine({ me, iv, level, mineId, onSaved, onRemoved }: { me: PvpPokemo
   const del = useDeleteMyPvp();
   if (!user.data) return null;
   const saved = mineId ? mine.data?.find((p) => p.id === mineId) : undefined;
-  const same = saved && saved.atk === iv.atk && saved.def === iv.def && saved.sta === iv.sta && saved.level === level;
+  const same = saved && saved.atk === iv.atk && saved.def === iv.def && saved.sta === iv.sta && saved.level === level && saved.shadow === shadow;
   return (
     <div className="mt-3 flex gap-2">
       <Button
@@ -713,15 +821,31 @@ function SaveMine({ me, iv, level, mineId, onSaved, onRemoved }: { me: PvpPokemo
         className="flex-1"
         disabled={save.isPending || !!same}
         onClick={async () => {
-          const r = await save.mutateAsync({ id: saved?.id, formKey: me.key, atk: iv.atk, def: iv.def, sta: iv.sta, level });
-          toast(saved ? t.pvp_mine_updated : t.pvp_mine_saved);
-          if (!saved) onSaved(r.pokemon.id);
+          try {
+            const r = await save.mutateAsync({ id: saved?.id, formKey: me.key, atk: iv.atk, def: iv.def, sta: iv.sta, level, shadow });
+            toast(saved ? t.pvp_mine_updated : t.pvp_mine_saved);
+            if (!saved) onSaved(r.pokemon.id);
+          } catch (err) {
+            toast(errorMessage(t, err));
+          }
         }}
       >
         {saved ? (same ? t.pvp_mine_is_saved : t.pvp_mine_update) : t.pvp_mine_save}
       </Button>
       {saved && (
-        <Button tone="danger" disabled={del.isPending} onClick={async () => { await del.mutateAsync(saved.id); toast(t.pvp_mine_removed); onRemoved(); }}>
+        <Button
+          tone="danger"
+          disabled={del.isPending}
+          onClick={async () => {
+            try {
+              await del.mutateAsync(saved.id);
+              toast(t.pvp_mine_removed);
+              onRemoved();
+            } catch (err) {
+              toast(errorMessage(t, err));
+            }
+          }}
+        >
           {t.pvp_mine_remove}
         </Button>
       )}
@@ -734,14 +858,28 @@ function bestUse(pvp: PvpData, byKey: Map<string, PvpPokemon>, m: MyPvpPokemon) 
   const start = byKey.get(m.formKey);
   if (!start) return null;
   const iv = { atk: m.atk, def: m.def, sta: m.sta };
-  let best: { form: PvpPokemon; league: 'great' | 'ultra'; r: RankInfo } | null = null;
-  for (const form of evolutionLine(start, byKey))
+  const line = evolutionLine(start, byKey);
+  let best: { form: PvpPokemon; league: League; r: RankInfo } | null = null;
+  for (const form of line) {
     for (const league of ['great', 'ultra'] as const) {
       const r = rankOf(pvp, form, iv, LEAGUES[league], pvp.maxLevel);
-      // A league it cannot reach the cap of does not count.
+      // A league it cannot reach the cap of does not count here.
       if (r.best.level === pvp.maxLevel && r.best.cp < LEAGUES[league]) continue;
       if (!best || r.rank < best.r.rank) best = { form, league, r };
     }
+    const master = rankOf(pvp, form, iv, Infinity, pvp.maxLevel);
+    // Only consider Master League for species whose max CP exceeds Ultra League (2500).
+    if (master.best.cp > LEAGUES.ultra && (!best || master.rank < best.r.rank)) {
+      best = { form, league: 'master', r: master };
+    }
+  }
+  // Species capped under 1500 CP (Shuckle, Wobbuffet, Chansey, Smeargle…): still show their Great League rank.
+  if (!best) {
+    for (const form of line) {
+      const r = rankOf(pvp, form, iv, LEAGUES.great, pvp.maxLevel);
+      if (!best || r.rank < best.r.rank) best = { form, league: 'great', r };
+    }
+  }
   return best && { start, ...best };
 }
 
@@ -750,22 +888,22 @@ function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey
   const { lang } = useLang();
   const q = useMyPvp();
   const [all, setAll] = useState(false);
-  const [leagueFilter, setLeagueFilter] = useState<'all' | 'great' | 'ultra'>('all');
+  const [leagueFilter, setLeagueFilter] = useState<'all' | League>('all');
   const rows = useMemo(
     () => (q.data ?? []).flatMap((m) => { const b = bestUse(pvp, byKey, m); return b ? [{ m, ...b }] : []; }).sort((a, b) => a.r.rank - b.r.rank),
     [q.data, pvp, byKey],
   );
   if (!rows.length) return null;
-  const hasBothLeagues = rows.some((x) => x.league === 'great') && rows.some((x) => x.league === 'ultra');
+  const presentLeagues = (['great', 'ultra', 'master'] as const).filter((lf) => rows.some((x) => x.league === lf));
   const filtered = leagueFilter === 'all' ? rows : rows.filter((x) => x.league === leagueFilter);
   const shown = all ? filtered : filtered.slice(0, 6);
   return (
     <section className="mb-5">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h2 className="mr-auto text-base font-bold">{t.pvp_mine_title} <span className="tnum font-normal text-ink-3">{filtered.length}</span></h2>
-        {hasBothLeagues && (
+        {presentLeagues.length > 1 && (
           <div className="flex gap-1">
-            {(['all', 'great', 'ultra'] as const).map((lf) => (
+            {(['all', ...presentLeagues] as const).map((lf) => (
               <Chip key={lf} active={leagueFilter === lf} onClick={() => setLeagueFilter(lf)} className="min-h-7 px-2 text-xs">
                 {lf === 'all' ? t.filter_all : leagueName(t, lf)}
               </Chip>
@@ -776,13 +914,16 @@ function MyPokemon({ idx, pvp, byKey }: { idx: DatasetIndex; pvp: PvpData; byKey
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map(({ m, start, form, league, r }) => {
           const v = picture(idx, start);
-          const qs = new URLSearchParams({ a: String(m.atk), d: String(m.def), s: String(m.sta), m: m.id, ...(m.level ? { l: String(m.level) } : {}) });
+          const qs = new URLSearchParams({ a: String(m.atk), d: String(m.def), s: String(m.sta), m: m.id, ...(m.level ? { l: String(m.level) } : {}), ...(m.shadow ? { k: 'shadow' } : {}) });
           return (
             <li key={m.id}>
               <Link to={`/pvp/${encodeURIComponent(start.key)}?${qs}`} className="card flex items-center gap-3 p-2 hover:brightness-[0.98]">
                 {v && <Sprite idx={idx} variant={v} size={48} />}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">{localized(start.name, lang)}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold">{localized(start.name, lang)}</span>
+                    {m.shadow && <Badge tone="muted">{t.tag_shadow}</Badge>}
+                  </div>
                   <div className="tnum text-xs text-ink-3">
                     {m.atk}/{m.def}/{m.sta}{m.level ? ` · ${t.pvp_level} ${m.level.toLocaleString(lang)}` : ''}
                   </div>

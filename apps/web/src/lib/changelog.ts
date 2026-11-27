@@ -14,6 +14,27 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-27-v1-3-1',
+    version: '1.3.1',
+    date: '2026-11-27',
+    fr: [
+      'Ajouter des Pokémon plus vite : un seul bouton « + Ajouter » dans tes collections (recherche, import du jeu et modèles au même endroit), un mode « Ajout 1 clic » dans le Pokédex, et la possibilité d’annuler n’importe quelle erreur depuis l’historique d’une collection.',
+      'Médailles repensées comme dans le jeu : 26 médailles inspirées des vrais Pokédex (National, Shiny, Chanceux, Obscur, Purifié, Méga, Max, Costumes), des défis Zarbi, Prismillon et Légendaires Shiny, avec des médailles Platine vraiment méritées.',
+      'Onglet Jeu encore plus pratique : coche directement tes Pokémon comme attrapés depuis « Pour moi », retrouve les phrases des sbires Team GO Rocket pour les reconnaître en un coup d’œil, filtre les contres sans CT Élite et cherche facilement un événement.',
+      'Programme de la Ligue Combat GO ajouté dans l’onglet PvP : vois les coupes de la semaine et celles à venir sans quitter l’appli.',
+      'Amis, Prismillon & Profil plus clairs : un onglet « 🦋 Prismillon » dédié pour tes cartes postales, une recherche dans tes amis, une page Moi rangée en deux onglets (Profil et Préférences) avec ton QR code en un clic, et des notifications qui ne se marquent lues que quand tu les ouvres.',
+      'Correctifs & français amélioré : ajout des formes Méga de Nigirigon, noms français complétés (Métalosse Obscur, Super Niveau Max…), et les événements de « Ma semaine » s’ouvrent maintenant directement dans l’appli.',
+    ],
+    en: [
+      'Add Pokémon faster: one “+ Add” button inside collections (search, game import and templates in one place), a “1-tap add” mode in the Pokédex, and undo any mistake straight from collection history.',
+      'Reworked in-game inspired medals: 26 medals matching real Pokédex tabs (National, Shiny, Lucky, Shadow, Purified, Mega, Max, Costumes) plus Unown, Vivillon and Shiny Legendaries — with truly challenging Platinum tiers.',
+      'Handier Game tab: tick Pokémon as caught right from “For me”, spot Team GO Rocket grunts by their in-game catchphrases, filter raid counters without Elite TMs, and search or filter events easily.',
+      'GO Battle League schedule added to PvP: check this week’s active cups and upcoming rotations right inside the PvP tab.',
+      'Cleaner Friends, Vivillon & Profile: a dedicated “🦋 Vivillon” tab for gift postcards, friend search & filters, a 2-tab Me page (Profile & Preferences) with a quick QR code, and notifications only marked read when you tap them.',
+      'Fixes & localization: Mega Tatsugiri forms added, cleaner French & English names, and “This week” events now open directly inside the app.',
+    ],
+  },
+  {
     id: '2026-11-26-v1-3',
     version: '1.3',
     date: '2026-11-27',
@@ -143,7 +164,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
 ];
 
+import { useSyncExternalStore } from 'react';
+
 const KEY = 'changelogSeen';
+const listeners = new Set<() => void>();
 
 export function seenChangelog(): string | null {
   try {
@@ -153,15 +177,34 @@ export function seenChangelog(): string | null {
   }
 }
 
+let cachedUnseen: ChangelogEntry[] = computeUnseen();
+
+function computeUnseen(seen = seenChangelog()): ChangelogEntry[] {
+  if (!seen) return CHANGELOG.slice(0, 1);
+  const i = CHANGELOG.findIndex((e) => e.id === seen);
+  return i < 0 ? CHANGELOG.slice(0, 1) : CHANGELOG.slice(0, i);
+}
+
 export function markChangelogSeen() {
   try {
     localStorage.setItem(KEY, CHANGELOG[0]!.id);
   } catch {}
+  cachedUnseen = [];
+  listeners.forEach((l) => l());
 }
 
 /** The entries not seen on this device; only the newest one for a device that never saw any. */
 export function unseenChangelog(seen = seenChangelog()): ChangelogEntry[] {
-  if (!seen) return CHANGELOG.slice(0, 1);
-  const i = CHANGELOG.findIndex((e) => e.id === seen);
-  return i < 0 ? CHANGELOG.slice(0, 1) : CHANGELOG.slice(0, i);
+  return computeUnseen(seen);
+}
+
+export function useUnseenChangelog(): ChangelogEntry[] {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => cachedUnseen,
+    () => cachedUnseen,
+  );
 }

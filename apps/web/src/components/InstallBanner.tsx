@@ -26,33 +26,47 @@ if (typeof window !== 'undefined') {
 
 const DISMISS_KEY = 'installDismissed';
 
+function isInstallDismissed(): boolean {
+  try {
+    return localStorage.getItem(DISMISS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismissInstallBanner() {
+  try {
+    localStorage.setItem(DISMISS_KEY, '1');
+  } catch {}
+  listeners.forEach((l) => l());
+}
+
+/** Reactive check used by BannerSlot so install prompts participate in the single-banner priority queue. */
+export function useCanShowInstallBanner(dismissible = true): boolean {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const l = () => rerender((n) => n + 1);
+    listeners.add(l);
+    return () => void listeners.delete(l);
+  }, []);
+  if (dismissible && isInstallDismissed()) return false;
+  if (isStandalone()) return false;
+  const ios = isIos();
+  const android = /Android/i.test(navigator.userAgent);
+  return !!(deferred || ios || android);
+}
+
 /**
  * "Install the app": a button where the browser offers it (Android Chrome), the Share > Add to Home Screen steps on
  * iPhone, where nothing is offered. Hidden once installed; the dismissible one stays closed on this device.
  */
 export function InstallBanner({ dismissible = true }: { dismissible?: boolean }) {
   const t = useT();
-  const [, rerender] = useState(0);
-  const [dismissed, setDismissed] = useState(() => {
-    try {
-      return dismissible && localStorage.getItem(DISMISS_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    const l = () => rerender((n) => n + 1);
-    listeners.add(l);
-    return () => void listeners.delete(l);
-  }, []);
+  const canShow = useCanShowInstallBanner(dismissible);
   const ios = isIos();
-  const android = /Android/i.test(navigator.userAgent);
-  if (dismissed || isStandalone() || (!deferred && !ios && !android)) return null;
+  if (!canShow) return null;
   const close = () => {
-    setDismissed(true);
-    try {
-      localStorage.setItem(DISMISS_KEY, '1');
-    } catch {}
+    dismissInstallBanner();
   };
   return (
     <aside className="card my-2 flex items-start gap-3 p-3" aria-label={t.install_title}>
@@ -69,7 +83,7 @@ export function InstallBanner({ dismissible = true }: { dismissible?: boolean })
                 const p = deferred!;
                 await p.prompt();
                 if ((await p.userChoice).outcome === 'accepted') deferred = null;
-                rerender((n) => n + 1);
+                listeners.forEach((l) => l());
               }}
             >
               {t.install_button}

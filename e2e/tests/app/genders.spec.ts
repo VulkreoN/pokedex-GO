@@ -187,11 +187,12 @@ test('a basket saved before a data update still goes to a list (folded forms fol
     sessionStorage.setItem('selection', JSON.stringify([item('1', 'm'), item('778.fBUSTED', 'f'), item('9999.fNOPE', '')]));
   });
   await page.reload();
-  // The stale key is gone, the folded one follows: 2 left.
-  await page.getByRole('button', { name: /^2 sélectionnés/ }).click();
+  // The stale key is gone, the folded one follows: 2 left in the unified Selection bar.
+  await page.getByRole('button', { name: /^2 cartes cochées/ }).click();
   const sheet = page.locator('dialog[open]');
-  await expect(sheet.getByText('Bulbizarre ♂')).toBeVisible();
-  await expect(sheet.getByText('Mimiqui ♀')).toBeVisible(); // Busted -> Disguised
+  await sheet.getByText('Voir / retirer (2)').click();
+  await expect(sheet.getByText('Bulbizarre')).toBeVisible();
+  await expect(sheet.getByText('Mimiqui')).toBeVisible(); // Busted -> Disguised
   await sheet.getByPlaceholder('Nouvelle collection').fill('Depuis le panier');
   await sheet.getByRole('button', { name: /^Ajouter · 2/ }).click();
   await expect(page.getByText(/Ajouté à 1 collection/)).toBeVisible();

@@ -34,6 +34,11 @@ export async function trashList(listId: string, deletedBy: string | null): Promi
 }
 
 const date = (v: unknown) => (v ? new Date(v as string) : new Date());
+const at = (v: unknown) => (v ? new Date(v as string) : null);
+
+async function insertInChunks<T>(rows: T[], insert: (chunk: T[]) => Promise<unknown>, size = 500) {
+  for (let i = 0; i < rows.length; i += size) await insert(rows.slice(i, i + size));
+}
 
 /** Puts a trashed collection back, first in its owner's order. Null when it is no longer in the trash. */
 export async function restoreList(id: string): Promise<{ ownerId: string; name: string } | null> {
@@ -43,12 +48,27 @@ export async function restoreList(id: string): Promise<{ ownerId: string; name: 
     const s = row.snapshot as unknown as Snapshot;
     const [top] = await tx.select({ min: sql<number>`coalesce(min(${schema.lists.position}), 0)`.mapWith(Number) }).from(schema.lists).where(eq(schema.lists.ownerId, row.ownerId));
     await tx.insert(schema.lists).values({ ...s.list, alertPreEvolutions: s.list.alertPreEvolutions ?? false, position: (top?.min ?? 0) - 1, createdAt: date(s.list.createdAt), updatedAt: new Date() });
-    if (s.entries.length) await tx.insert(schema.listEntries).values(s.entries.map((e) => ({ ...e, updatedAt: date(e.updatedAt) })));
-    // History rows get new ids; their dates stay.
-    if (s.events.length) await tx.insert(schema.listEvents).values(s.events.map(({ id: _id, ...e }) => ({ ...e, createdAt: date(e.createdAt) })));
-    // Follows and pins of players still around.
+    if (s.entries.length) {
+      await insertInChunks(
+        s.entries.map((e) => ({ ...e, updatedAt: date(e.updatedAt) })),
+        (chunk) => tx.insert(schema.listEntries).values(chunk),
+      );
+    }
+    // Only link players who still exist (history actors, follows and pins).
     const alive = async (ids: string[]) => new Set(ids.length ? (await tx.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.id, ids))).map((u) => u.id) : []);
-    const people = await alive([...new Set([...s.unfollows, ...s.favorites].map((x) => x.userId))]);
+    const people = await alive([...new Set([...s.unfollows.map((x) => x.userId), ...s.favorites.map((x) => x.userId), ...s.events.map((e) => e.actorId).filter((x): x is string => !!x)])]);
+    // History rows get new ids; their dates and undoneAt stay.
+    if (s.events.length) {
+      await insertInChunks(
+        s.events.map(({ id: _id, ...e }) => ({
+          ...e,
+          actorId: e.actorId && people.has(e.actorId) ? e.actorId : null,
+          createdAt: date(e.createdAt),
+          undoneAt: at(e.undoneAt),
+        })),
+        (chunk) => tx.insert(schema.listEvents).values(chunk),
+      );
+    }
     const unf = s.unfollows.filter((x) => people.has(x.userId));
     const fav = s.favorites.filter((x) => people.has(x.userId));
     if (unf.length) await tx.insert(schema.listUnfollows).values(unf.map((x) => ({ ...x, createdAt: date(x.createdAt) })));

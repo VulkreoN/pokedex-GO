@@ -28,6 +28,7 @@ interface LiveEvent {
   end: string | null;
   extraData?: {
     generic?: { hasSpawns?: boolean; hasFieldResearchTasks?: boolean };
+    raidbattles?: { bosses?: { name: string; image: string; canBeShiny?: boolean }[]; shinies?: { name: string; image: string }[] };
     spotlight?: { name: string; canBeShiny: boolean; image: string; bonus: string; list?: { name: string; image: string; canBeShiny?: boolean }[] };
     communityday?: {
       spawns?: { name: string; image: string; canBeShiny?: boolean }[];
@@ -41,13 +42,18 @@ interface LiveEvent {
 const SKIP_TYPES = new Set(['raid-battles', 'raid-hour', 'go-battle-league', 'pokestop-showcase', 'season']);
 const UA = { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' };
 const CACHE_MS = 3600_000;
+const MAX_PAGE_CACHE = 200;
 
 const pageCache = new Map<string, { at: number; event: Omit<RichGameEvent, 'eventID' | 'name' | 'eventType' | 'heading' | 'template' | 'link' | 'image' | 'start' | 'end'> }>();
+const pageInFlight = new Map<string, Promise<Omit<RichGameEvent, 'eventID' | 'name' | 'eventType' | 'heading' | 'template' | 'link' | 'image' | 'start' | 'end'>>>();
 let listCache: { at: number; events: RichGameEvent[] } | null = null;
+let rawEventsCache: { at: number; events: LiveEvent[] } | null = null;
 
 export function resetEventDetailsCache() {
   pageCache.clear();
+  pageInFlight.clear();
   listCache = null;
+  rawEventsCache = null;
 }
 
 const decode = (s: string) =>
@@ -75,7 +81,7 @@ const isBoilerplate = (s: string) =>
 export function templateOf(e: Pick<LiveEvent, 'eventType' | 'name'>): EventTemplateKind {
   if (e.eventType === 'community-day') return 'community_day';
   if (e.eventType === 'pokemon-spotlight-hour') return 'spotlight';
-  if (e.eventType === 'raid-day') return 'raid_day';
+  if (e.eventType === 'raid-day' || e.eventType === 'raid-battles' || e.eventType === 'raid-hour') return 'raid_day';
   if (e.eventType === 'max-battles' || e.eventType === 'max-mondays' || /gigantamax|dynamax|max battle/i.test(e.name)) return 'max';
   return 'event';
 }
@@ -196,7 +202,7 @@ export function parseEventHtml(html: string, base: LiveEvent): RichGameEvent {
 
     // 1. Graphic
     if (id === 'graphic') {
-      graphicUrl = /<img[^>]+src="([^"]+)"/.exec(content)?.[1] ?? graphicUrl;
+      graphicUrl = resolveAssetUrl(/<img[^>]+src="([^"]+)"/.exec(content)?.[1]) ?? graphicUrl;
       continue;
     }
 
@@ -370,6 +376,23 @@ export function parseEventHtml(html: string, base: LiveEvent): RichGameEvent {
       });
     }
   }
+  if (!raidGroups.length && base.extraData?.raidbattles?.bosses?.length) {
+    const label = /mega/i.test(base.name)
+      ? 'Mega Raids'
+      : /shadow/i.test(base.name)
+        ? 'Shadow Raids'
+        : /5-star/i.test(base.name)
+          ? 'Five-Star Raids'
+          : /3-star/i.test(base.name)
+            ? 'Three-Star Raids'
+            : /1-star/i.test(base.name)
+              ? 'One-Star Raids'
+              : 'Raids';
+    raidGroups.push({
+      label,
+      mons: base.extraData.raidbattles.bosses.map((b) => ({ name: b.name, image: b.image, canBeShiny: !!b.canBeShiny })),
+    });
+  }
 
   // Flag newShiny across featured / spawns / raids / highlights when present in newShinies.
   if (newShinies.length) {
@@ -410,36 +433,51 @@ export function parseEventHtml(html: string, base: LiveEvent): RichGameEvent {
 }
 
 async function fetchOneEvent(base: LiveEvent): Promise<RichGameEvent> {
+  const assemble = (rest: Omit<RichGameEvent, 'eventID' | 'name' | 'eventType' | 'heading' | 'template' | 'link' | 'image' | 'start' | 'end'>): RichGameEvent => ({
+    eventID: base.eventID,
+    name: base.name,
+    eventType: base.eventType,
+    heading: base.heading,
+    template: templateOf(base),
+    link: base.link,
+    image: base.image,
+    start: base.start,
+    end: base.end,
+    ...rest,
+  });
   const hit = pageCache.get(base.link);
-  if (hit && Date.now() - hit.at < CACHE_MS) {
-    return {
-      eventID: base.eventID,
-      name: base.name,
-      eventType: base.eventType,
-      heading: base.heading,
-      template: templateOf(base),
-      link: base.link,
-      image: base.image,
-      start: base.start,
-      end: base.end,
-      ...hit.event,
-    };
+  if (hit && Date.now() - hit.at < CACHE_MS) return assemble(hit.event);
+  let pending = pageInFlight.get(base.link);
+  if (!pending) {
+    pending = (async () => {
+      const res = await fetch(base.link, { headers: UA, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`event detail ${base.eventID}: HTTP ${res.status}`);
+      const parsed = parseEventHtml(await res.text(), base);
+      const { eventID: _a, name: _b, eventType: _c, heading: _d, template: _e, link: _f, image: _g, start: _h, end: _i, ...rest } = parsed;
+      pageCache.delete(base.link);
+      pageCache.set(base.link, { at: Date.now(), event: rest });
+      while (pageCache.size > MAX_PAGE_CACHE) pageCache.delete(pageCache.keys().next().value!);
+      return rest;
+    })().finally(() => pageInFlight.delete(base.link));
+    pageInFlight.set(base.link, pending);
   }
-  const res = await fetch(base.link, { headers: UA, signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`event detail ${base.eventID}: HTTP ${res.status}`);
-  const parsed = parseEventHtml(await res.text(), base);
-  const { eventID: _a, name: _b, eventType: _c, heading: _d, template: _e, link: _f, image: _g, start: _h, end: _i, ...rest } = parsed;
-  pageCache.set(base.link, { at: Date.now(), event: rest });
-  return parsed;
+  return assemble(await pending);
+}
+
+async function loadRawEvents(): Promise<LiveEvent[]> {
+  if (rawEventsCache && Date.now() - rawEventsCache.at < CACHE_MS) return rawEventsCache.events;
+  const res = await fetch('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json', { headers: UA, signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`events.json: HTTP ${res.status}`);
+  const all = (await res.json()) as LiveEvent[];
+  rawEventsCache = { at: Date.now(), events: all };
+  return all;
 }
 
 /** Active and upcoming events (next 30 days) enriched from Leek Duck pages, ordered soonest first. */
 export async function getRichEvents(): Promise<RichGameEvent[]> {
   if (listCache && Date.now() - listCache.at < CACHE_MS) return listCache.events;
   return tracked('events', async () => {
-    const res = await fetch('https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json', { headers: UA, signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`events.json: HTTP ${res.status}`);
-    const all = (await res.json()) as LiveEvent[];
+    const all = await loadRawEvents();
     const now = Date.now();
     const horizon = now + 30 * 86_400_000;
     const wanted = all.filter((e) => {
@@ -465,4 +503,19 @@ export async function getRichEvents(): Promise<RichGameEvent[]> {
     listCache = { at: Date.now(), events: out };
     return out;
   });
+}
+
+/** On-demand rich detail for any event in the weekly timeline (raids, raid hours, GBL, past or far-future events). */
+export async function getRichEventById(eventID: string, archived?: LiveEvent | null): Promise<RichGameEvent | null> {
+  const fromList = listCache?.events.find((e) => e.eventID === eventID);
+  if (fromList) return fromList;
+  const live = await loadRawEvents().catch(() => [] as LiveEvent[]);
+  const base = live.find((e) => e.eventID === eventID) ?? archived ?? null;
+  if (!base) return null;
+  if (!base.link) return parseEventHtml('', base);
+  try {
+    return await fetchOneEvent(base);
+  } catch {
+    return parseEventHtml('', base);
+  }
 }

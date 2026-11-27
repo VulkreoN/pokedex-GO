@@ -12,7 +12,7 @@ export interface NewsPost {
 const UA = 'Mozilla/5.0 (compatible; mydexpogo/1.0)';
 
 export async function listNewsSlugs(locale: string): Promise<string[]> {
-  const res = await fetch(`https://pokemongo.com/${locale}/news`, { headers: { 'user-agent': UA } });
+  const res = await fetch(`https://pokemongo.com/${locale}/news`, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`news list ${locale}: HTTP ${res.status}`);
   const html = await res.text();
   const slugs = [...html.matchAll(new RegExp(`href="/${locale}/news/([a-z0-9-]+)"`, 'g'))].map((m) => m[1]!);
@@ -21,7 +21,7 @@ export async function listNewsSlugs(locale: string): Promise<string[]> {
 
 export async function fetchNewsPost(locale: string, slug: string): Promise<NewsPost> {
   const url = `https://pokemongo.com/${locale}/news/${slug}`;
-  const res = await fetch(url, { headers: { 'user-agent': UA } });
+  const res = await fetch(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`news ${slug}: HTTP ${res.status}`);
   const html = await res.text();
   const title = decode((/<title>(.*?)<\/title>/s.exec(html)?.[1] ?? slug).replace(/\s*[—|-]\s*Pokémon GO\s*$/i, '').trim());

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { importFromSearch, parseGameSearch, type ListDetail, type Variant } from '@mydexpogo/shared';
+import { InitialStatusField } from './AddToList.js';
+import { useAddPrefs } from '../lib/addPrefs.js';
 import { entryVariant, type DatasetIndex } from '../lib/dataset.js';
 import { useT } from '../lib/i18n.js';
 import { useUpsertEntries } from '../lib/lists.js';
@@ -10,12 +12,14 @@ import { Button, Chip } from './ui.js';
 
 type Extra = 'costume' | 'mega' | 'gmax' | 'datamined';
 
-/** Pastes an in-game search string and adds every Pokémon it shows to the collection. */
+/** Pastes an in-game search string and adds every Pokémon it shows to the collection (as missing or already caught). */
 export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: ListDetail; onDone: () => void }) {
   const t = useT();
   const toast = useToast();
   const upsert = useUpsertEntries();
+  const [prefs, setPrefs] = useAddPrefs();
   const [text, setText] = useState('');
+  const [markExistingCaught, setMarkExistingCaught] = useState(true);
   const [extras, setExtras] = useState<Partial<Record<Extra, boolean>>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -25,15 +29,21 @@ export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: L
   const on = (k: Extra) => extras[k] ?? (k !== 'datamined' && parsed.wants.has(k === 'gmax' ? 'gigantamax' : k));
   const unreleased = (key: string) => !!idx.variantByKey.get(key)?.datamined;
   const all = useMemo(() => importFromSearch(parsed, idx.ds.variants), [parsed, idx]);
-  const has = useMemo(() => new Set(list.entries.map((e) => `${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`)), [list.entries]);
+  const existingDone = useMemo(
+    () => new Map(list.entries.map((e) => [`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`, e.done])),
+    [list.entries],
+  );
   const kept = all.filter((e) => (e.kind !== 'costume' || on('costume')) && (e.kind !== 'mega' || on('mega')) && (e.kind !== 'gmax' || on('gmax')) && (!unreleased(e.variantKey) || on('datamined')));
-  const fresh = kept.filter((e) => !has.has(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`));
+  const fresh = kept.filter((e) => !existingDone.has(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`));
+  const existingUncaught = kept.filter((e) => existingDone.get(`${e.variantKey}|${e.gender}|${e.shiny}|${e.tag}`) === false);
+  const toUpdate = prefs.done && markExistingCaught ? existingUncaught : [];
+  const toSend = [...fresh, ...toUpdate];
   const count = (k: Variant['kind'] | 'datamined') => all.filter((e) => (k === 'datamined' ? unreleased(e.variantKey) : e.kind === k)).length;
 
   const add = async () => {
     setError(null);
     try {
-      const entries = fresh.map(({ variantKey, gender, shiny, tag }) => ({ variantKey, gender, shiny, tag, done: false }));
+      const entries = toSend.map(({ variantKey, gender, shiny, tag }) => ({ variantKey, gender, shiny, tag, done: prefs.done }));
       for (let k = 0; k < entries.length; k += 1000) await upsert.mutateAsync({ id: list.id, entries: entries.slice(k, k + 1000) });
       toast(t.import_added(entries.length));
       onDone();
@@ -59,6 +69,18 @@ export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: L
           className="w-full rounded-xl border border-line bg-card p-3 font-mono text-[15px] text-ink placeholder:text-ink-3 focus:border-sky"
         />
       </label>
+      <InitialStatusField done={prefs.done} onChange={(done) => setPrefs({ done })} />
+      {prefs.done && existingUncaught.length > 0 && (
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-2">
+          <input
+            type="checkbox"
+            checked={markExistingCaught}
+            onChange={(e) => setMarkExistingCaught(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-go"
+          />
+          <span>{t.import_mark_existing} ({existingUncaught.length})</span>
+        </label>
+      )}
       {(count('costume') > 0 || count('mega') > 0 || count('gmax') > 0 || count('datamined') > 0) && (
         <div className="flex flex-wrap gap-1.5">
           {(['costume', 'mega', 'gmax', 'datamined'] as const).map((k) =>
@@ -73,10 +95,14 @@ export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: L
       {parsed.ignored.length > 0 && <p className="text-xs text-ink-3">{t.import_ignored(parsed.ignored.join(', '))}</p>}
       {text.trim() && (
         <div className="rounded-card border border-line p-3">
-          <p className="text-sm font-semibold">{t.import_preview(fresh.length, kept.length - fresh.length)}</p>
-          {fresh.length > 0 && (
+          <p className="text-sm font-semibold">
+            {toUpdate.length > 0
+              ? t.import_preview_update(fresh.length, toUpdate.length)
+              : t.import_preview(fresh.length, kept.length - fresh.length)}
+          </p>
+          {toSend.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-0.5">
-              {fresh.slice(0, 24).map((e) => {
+              {toSend.slice(0, 24).map((e) => {
                 const v = entryVariant(idx, e.variantKey, e.gender === 'f' ? 'f' : 'm');
                 return v ? (
                   <span key={`${e.variantKey}${e.gender}${e.shiny}${e.tag}`} className="relative">
@@ -85,14 +111,14 @@ export function ImportSearch({ idx, list, onDone }: { idx: DatasetIndex; list: L
                   </span>
                 ) : null;
               })}
-              {fresh.length > 24 && <span className="text-xs font-semibold text-ink-3">+{fresh.length - 24}</span>}
+              {toSend.length > 24 && <span className="text-xs font-semibold text-ink-3">+{toSend.length - 24}</span>}
             </div>
           )}
         </div>
       )}
       {error && <p role="alert" className="text-sm text-berry">{error}</p>}
-      <Button tone="primary" className="w-full" disabled={!fresh.length || upsert.isPending} onClick={add}>
-        {fresh.length ? t.import_add(fresh.length) : t.import_add_none}
+      <Button tone="primary" className="w-full" disabled={!toSend.length || upsert.isPending} onClick={add}>
+        {toSend.length ? t.import_add(toSend.length) : t.import_add_none}
       </Button>
     </div>
   );

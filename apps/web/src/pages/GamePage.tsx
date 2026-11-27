@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { BannerSlot } from '../components/BannerSlot.js';
 import { BottleCaps } from '../components/BottleCaps.js';
-import { EventFeed } from '../components/EventInfographic.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { EventDetailModal, EventFeed } from '../components/EventInfographic.js';
+import { PageTourButton } from '../components/PageTour.js';
+import { useToast } from '../components/toast.js';
 import { useMe } from '../lib/auth.js';
-import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
-import { Button, CopyButton } from '../components/ui.js';
+import { normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
+import { errorMessage } from '../lib/errors.js';
+import { feedback } from '../lib/feedback.js';
+import { useUpsertEntries } from '../lib/lists.js';
+import { Button, CopyButton, buttonClass } from '../components/ui.js';
 import { Link, useSearchParams } from 'react-router';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { Badge, Chip, Empty, Spinner, TopBar } from '../components/ui.js';
 import { localized, typeName, useLang, useT } from '../lib/i18n.js';
-import { BuddyTool, CostsTool, CountersSheet, CountersTool, EVENT_MARK, EventLegend, EvolutionsTool, LeagueTool, RocketTab, useEventMarks, useEventSpawns, useFromImage, useKnownPokemon, useMissingHunts, type EventSpawns } from '../components/GameTools.js';
+import { BuddyTool, CostsTool, CountersSheet, CountersTool, EVENT_MARK, EventLegend, EvolutionsTool, LeagueTool, RocketTab, useEventMarks, useEventSpawns, useFromImage, useKnownPokemon, useMissingHunts, useWantedMatches, type EventSpawns, type WantedMatchGroup } from '../components/GameTools.js';
 import { liveKey, rocketName, useRockets, useTools } from '../lib/tools.js';
 import { cpmAt, cpOf, eventLabelFr, promoTextFr, researchTaskFr, weatherFr, type HuntSource, type ToolPokemon } from '@mydexpogo/shared';
 import { TYPE_COLORS, TypeBadge } from '../components/TypeBadge.js';
@@ -44,12 +48,118 @@ function CountdownBadge({ e, now }: { e: { start?: string | null; end?: string |
   );
 }
 
+const ENDING_SOON_MS = 24 * 3600_000;
+
+/** Shared live-hunts computation powering both the "For me" tab counter badge, Events banner, and MyHuntsOverview. */
+function useLiveHunts(now: number) {
+  const { lang } = useLang();
+  const me = useMe();
+  const dataset = useDataset();
+  const idx = dataset.data;
+  const { hasMissing, isWanted, isWantedKey } = useMissingHunts();
+  const raids = useRaids();
+  const events = useEvents();
+  const spawns = useEventSpawns();
+  const rockets = useRockets();
+  const research = useResearch();
+  const eggs = useEggs();
+
+  const wantedRaids = useMemo(() => {
+    if (!me.data || !hasMissing) return [];
+    return currentRaidBosses(raids.data ?? [], events.data ?? [])
+      .filter((b) => isWanted(b.image, b.name, raidSource(b), b.canBeShiny))
+      .sort((a, b) => {
+        const aEnd = a.end ? Date.parse(a.end) : Number.MAX_SAFE_INTEGER;
+        const bEnd = b.end ? Date.parse(b.end) : Number.MAX_SAFE_INTEGER;
+        return aEnd - bEnd;
+      });
+  }, [me.data, hasMissing, raids.data, events.data, isWanted]);
+
+  const wantedSpawns = useMemo(() => {
+    if (!me.data || !hasMissing) return [];
+    const out = new Map<string, { m: LivePokemon; event: string; end: string | null }>();
+    for (const e of spawns.data ?? []) {
+      if (eventStatus(e, now) !== 'current') continue;
+      const evTitle = eventTitle(e.name, idx?.speciesByDex, lang);
+      for (const m of [...e.featured, ...e.spawns]) {
+        if (!out.has(m.image) && isWanted(m.image, m.name, 'wild', m.canBeShiny)) {
+          out.set(m.image, { m, event: evTitle, end: e.end });
+        }
+      }
+    }
+    return [...out.values()].sort((a, b) => (dexFromImage(a.m.image) ?? 9999) - (dexFromImage(b.m.image) ?? 9999));
+  }, [me.data, hasMissing, spawns.data, now, idx, lang, isWanted]);
+
+  const wantedMax = useMemo(() => {
+    if (!me.data || !hasMissing || !idx) return [];
+    const list = (events.data ?? [])
+      .filter((e) => isMaxEvent(e) && eventStatus(e, now) !== 'past')
+      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    const out: { event: GameEvent; gmax: boolean; species: typeof idx.ds.species }[] = [];
+    for (const e of list) {
+      const gmax = /gigantamax/i.test(e.name);
+      const hay = ` ${e.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+      const matched = idx.ds.species.filter((sp) => {
+        if (sp.name.en.length < 3 || !hay.includes(` ${sp.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `)) return false;
+        const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') : undefined;
+        return isWantedKey(gmax ? (v?.key ?? `${sp.dex}.fGIGANTAMAX`) : String(sp.dex), gmax ? 'gmax' : 'max');
+      });
+      if (matched.length) out.push({ event: e, gmax, species: matched });
+    }
+    return out;
+  }, [me.data, hasMissing, events.data, idx, now, isWantedKey]);
+
+  const wantedRockets = useMemo(() => {
+    if (!me.data || !hasMissing) return [];
+    const out: { trainer: string; mons: LivePokemon[] }[] = [];
+    for (const r of rockets.data ?? []) {
+      const mons = [r.firstPokemon, r.secondPokemon, r.thirdPokemon]
+        .flat()
+        .filter((m) => m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny));
+      if (mons.length) out.push({ trainer: rocketName(r.name, lang, (ty) => typeName(ty, lang)), mons });
+    }
+    return out;
+  }, [me.data, hasMissing, rockets.data, lang, isWanted]);
+
+  const wantedResearch = useMemo(() => {
+    if (!me.data || !hasMissing) return [];
+    const out: { text: string; rewards: LivePokemon[] }[] = [];
+    for (const c of research.data ?? []) {
+      for (const task of c.tasks) {
+        const rewards = task.rewards.filter((r) => r.kind === 'encounter' && isWanted(r.image, r.name, 'research', r.canBeShiny));
+        if (rewards.length) {
+          out.push({ text: lang === 'fr' ? (task.textFr ?? researchTaskFr(task.text, idx?.speciesByDex, 'fr')) : task.text, rewards });
+        }
+      }
+    }
+    return out;
+  }, [me.data, hasMissing, research.data, lang, idx, isWanted]);
+
+  const wantedEggs = useMemo(
+    () => (me.data && hasMissing ? (eggs.data ?? []).filter((m) => isWanted(m.image, m.name, 'egg', m.canBeShiny)) : []),
+    [me.data, hasMissing, eggs.data, isWanted],
+  );
+
+  const total =
+    wantedRaids.length +
+    wantedSpawns.length +
+    wantedMax.length +
+    wantedRockets.length +
+    wantedResearch.length +
+    wantedEggs.length;
+  const allLoading = raids.isPending && spawns.isPending && events.isPending && rockets.isPending && research.isPending && eggs.isPending;
+
+  return { hasMissing, wantedRaids, wantedSpawns, wantedMax, wantedRockets, wantedResearch, wantedEggs, total, allLoading };
+}
+
 export function GamePage() {
   const t = useT();
+  const now = useNowMinute();
   // The tab lives in the URL: coming back from a Pokémon page lands on the same tab.
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((x) => x === params.get('tab')) ?? 'events';
   const setTab = (id: Tab) => setParams(id === 'events' ? {} : { tab: id }, { replace: true });
+  const hunts = useLiveHunts(now);
   const labels: Record<Tab, string> = {
     events: t.tab_events,
     hunts: t.tab_hunts,
@@ -76,15 +186,19 @@ export function GamePage() {
               onClick={() => setTab(id)}
             >
               {labels[id]}
+              {id === 'hunts' && hunts.total > 0 && (
+                <span className={`tnum rounded-full px-1.5 text-[10px] font-bold leading-4 ${tab === 'hunts' ? 'bg-white/25 text-white' : 'bg-go text-white'}`}>
+                  {hunts.total > 99 ? '99+' : hunts.total}
+                </span>
+              )}
             </Chip>
           ))}
         </div>
       </TopBar>
       <main className="mx-auto max-w-6xl px-3 pb-24 sm:px-5">
-        <WhatsNewBanner />
-        <PageTourBanner page="game" />
-        {tab === 'events' && <Events />}
-        {tab === 'hunts' && <MyHuntsOverview onGoTab={setTab} />}
+        <BannerSlot page="game" />
+        {tab === 'events' && <Events huntsTotal={hunts.total} onGoHunts={() => setTab('hunts')} />}
+        {tab === 'hunts' && <MyHuntsOverview now={now} hunts={hunts} onGoTab={setTab} />}
         {tab === 'raids' && <Raids />}
         {tab === 'spawns' && <EventSpawnsTab />}
         {tab === 'max' && <MaxBattles />}
@@ -189,91 +303,81 @@ function Section({ title, count, subtitle, action, children }: { title: ReactNod
   );
 }
 
+/** Compact collection pills + 1-tap "Caught ✓" action (with Undo) shown inside "For me" hunts. */
+function HuntActions({
+  idx,
+  matches,
+  monName,
+  compact = false,
+  onMarkCaught,
+  busy,
+}: {
+  idx?: DatasetIndex;
+  matches: WantedMatchGroup[];
+  monName: string;
+  compact?: boolean;
+  onMarkCaught: (m: WantedMatchGroup, monName: string) => void;
+  busy: boolean;
+}) {
+  const t = useT();
+  if (!matches.length) return null;
+  const primary = matches[0]!;
+  return (
+    <div className={`flex flex-wrap items-center gap-1 ${compact ? 'mt-1 justify-center' : 'mt-1.5'}`}>
+      {matches.slice(0, compact ? 1 : 2).map((m) => (
+        <Link
+          key={`${m.listId}-${m.shiny ? 1 : 0}-${m.tag}`}
+          to={`/lists/${m.listId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex max-w-[9.5rem] items-center gap-1 rounded-full bg-paper-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2 hover:text-ink"
+          title={m.listName}
+        >
+          {m.shiny && <Sparkle className="h-2.5 w-2.5 shrink-0 text-shiny" />}
+          <span className="truncate">{m.listName}</span>
+          {m.tag && <span className="shrink-0 opacity-75">· {tagLabel(idx, m.tag, t)}</span>}
+        </Link>
+      ))}
+      {matches.length > (compact ? 1 : 2) && (
+        <span className="tnum text-[10px] font-semibold text-ink-3">+{matches.length - (compact ? 1 : 2)}</span>
+      )}
+      {primary.exact && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkCaught(primary, monName);
+          }}
+          className="inline-flex min-h-6 items-center gap-0.5 rounded-full bg-go px-2 py-0.5 text-[10px] font-bold text-white transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+        >
+          ✓ {t.hunts_mark_caught}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Aggregated "For me" summary of everything currently active in the game that matches the player's missing hunts. */
-function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
+function MyHuntsOverview({
+  now,
+  hunts,
+  onGoTab,
+}: {
+  now: number;
+  hunts: ReturnType<typeof useLiveHunts>;
+  onGoTab: (tab: Tab) => void;
+}) {
   const t = useT();
   const { lang } = useLang();
-  const now = useNowMinute();
+  const toast = useToast();
   const me = useMe();
   const dataset = useDataset();
   const idx = dataset.data;
-  const { hasMissing, isWanted, isWantedKey } = useMissingHunts();
-  const raids = useRaids();
-  const events = useEvents();
-  const spawns = useEventSpawns();
-  const rockets = useRockets();
-  const research = useResearch();
-  const eggs = useEggs();
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
+  const wantedMatches = useWantedMatches();
+  const upsert = useUpsertEntries();
   const [target, setTarget] = useState<ToolPokemon | null>(null);
-
-  const wantedRaids = useMemo(
-    () => currentRaidBosses(raids.data ?? [], events.data ?? []).filter((b) => isWanted(b.image, b.name, raidSource(b), b.canBeShiny)),
-    [raids.data, events.data, isWanted],
-  );
-
-  const wantedSpawns = useMemo(() => {
-    const out = new Map<string, { m: LivePokemon; event: string }>();
-    for (const e of spawns.data ?? []) {
-      if (eventStatus(e, now) !== 'current') continue;
-      const evTitle = eventTitle(e.name, idx?.speciesByDex, lang);
-      for (const m of [...e.featured, ...e.spawns]) {
-        if (!out.has(m.image) && isWanted(m.image, m.name, 'wild', m.canBeShiny)) {
-          out.set(m.image, { m, event: evTitle });
-        }
-      }
-    }
-    return [...out.values()].sort((a, b) => (dexFromImage(a.m.image) ?? 9999) - (dexFromImage(b.m.image) ?? 9999));
-  }, [spawns.data, now, idx, lang, isWanted]);
-
-  const wantedMax = useMemo(() => {
-    if (!idx) return [];
-    const list = (events.data ?? [])
-      .filter((e) => isMaxEvent(e) && eventStatus(e, now) !== 'past')
-      .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-    const out: { event: GameEvent; gmax: boolean; species: typeof idx.ds.species }[] = [];
-    for (const e of list) {
-      const gmax = /gigantamax/i.test(e.name);
-      const hay = ` ${e.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
-      const matched = idx.ds.species.filter((sp) => {
-        if (sp.name.en.length < 3 || !hay.includes(` ${sp.name.en.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `)) return false;
-        const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') : undefined;
-        return isWantedKey(gmax ? (v?.key ?? `${sp.dex}.fGIGANTAMAX`) : String(sp.dex), gmax ? 'gmax' : 'max');
-      });
-      if (matched.length) out.push({ event: e, gmax, species: matched });
-    }
-    return out;
-  }, [events.data, idx, now, isWantedKey]);
-
-  const wantedRockets = useMemo(() => {
-    const out: { trainer: string; mons: LivePokemon[] }[] = [];
-    for (const r of rockets.data ?? []) {
-      const mons = [r.firstPokemon, r.secondPokemon, r.thirdPokemon]
-        .flat()
-        .filter((m) => m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny));
-      if (mons.length) out.push({ trainer: rocketName(r.name, lang, (ty) => typeName(ty, lang)), mons });
-    }
-    return out;
-  }, [rockets.data, lang, isWanted]);
-
-  const wantedResearch = useMemo(() => {
-    const out: { text: string; rewards: LivePokemon[] }[] = [];
-    for (const c of research.data ?? []) {
-      for (const task of c.tasks) {
-        const rewards = task.rewards.filter((r) => r.kind === 'encounter' && isWanted(r.image, r.name, 'research', r.canBeShiny));
-        if (rewards.length) {
-          out.push({ text: lang === 'fr' ? (task.textFr ?? researchTaskFr(task.text, idx?.speciesByDex, 'fr')) : task.text, rewards });
-        }
-      }
-    }
-    return out;
-  }, [research.data, lang, idx, isWanted]);
-
-  const wantedEggs = useMemo(
-    () => (eggs.data ?? []).filter((m) => isWanted(m.image, m.name, 'egg', m.canBeShiny)),
-    [eggs.data, isWanted],
-  );
 
   if (me.isPending || dataset.isPending) return <Spinner />;
   if (!me.data) {
@@ -281,20 +385,33 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
       <Empty>
         {t.hunts_login}
         <br />
-        <Link to="/login" className="mt-3 inline-block"><Button tone="primary">{t.login}</Button></Link>
+        <Link to="/login" className={buttonClass('primary', 'mt-3')}>{t.login}</Link>
       </Empty>
     );
   }
-  const allLoading = raids.isPending && spawns.isPending && events.isPending && rockets.isPending && research.isPending && eggs.isPending;
-  if (allLoading) return <Spinner />;
+  if (hunts.allLoading) return <Spinner />;
 
-  const total =
-    wantedRaids.length +
-    wantedSpawns.length +
-    wantedMax.length +
-    wantedRockets.length +
-    wantedResearch.length +
-    wantedEggs.length;
+  const { hasMissing, wantedRaids, wantedSpawns, wantedMax, wantedRockets, wantedResearch, wantedEggs, total } = hunts;
+
+  const markCaught = async (m: WantedMatchGroup, monName: string) => {
+    const payload = m.entries.map((e) => ({ variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag, done: true }));
+    const undoPayload = m.entries.map((e) => ({ variantKey: e.variantKey, gender: e.gender, shiny: e.shiny, tag: e.tag, done: false }));
+    try {
+      await upsert.mutateAsync({ id: m.listId, entries: payload });
+      feedback('tick');
+      toast(t.hunts_caught_toast(monName, m.listName), {
+        action: { label: t.undo, onClick: () => void upsert.mutateAsync({ id: m.listId, entries: undoPayload }) },
+      });
+    } catch (err) {
+      toast(errorMessage(t, err));
+    }
+  };
+
+  const isEndingSoon = (end?: string | null) => {
+    if (!end) return false;
+    const ms = Date.parse(end) - now;
+    return ms > 0 && ms <= ENDING_SOON_MS;
+  };
 
   const pickTarget = (image: string, bossName: string) => {
     const found = fromImage(image, bossName) ?? tools.data?.pokemon.find((p) => p.dex === dexFromImage(image) && !p.mega);
@@ -314,19 +431,26 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
       {wantedRaids.length > 0 && (
         <Section title={t.tab_raids} count={wantedRaids.length} action={goBtn('raids')}>
           <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-            {wantedRaids.map((b) => (
-              <li key={b.image + b.tier}>
-                <button
-                  type="button"
-                  onClick={() => pickTarget(b.image, b.name)}
-                  className="card flex w-full items-center gap-3 p-2 text-left ring-2 ring-go/60 transition active:scale-[0.99]"
-                >
-                  <img src={b.image} alt="" width={48} height={48} loading="lazy" className="shrink-0 object-contain" />
+            {wantedRaids.map((b) => {
+              const label = liveName(b.name, b.image, idx, lang);
+              const matches = wantedMatches.forLive(b.image, b.name, raidSource(b), b.canBeShiny);
+              return (
+                <li key={b.image + b.tier} className="card flex items-start gap-3 p-2.5 ring-2 ring-go/60">
+                  <button
+                    type="button"
+                    onClick={() => pickTarget(b.image, b.name)}
+                    aria-label={t.counters_title(label)}
+                    className="relative shrink-0 rounded-lg p-0.5 hover:bg-paper-2"
+                  >
+                    <img src={b.image} alt="" width={50} height={50} loading="lazy" className="object-contain" />
+                    <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-card px-0.5 text-[9px] shadow-sm" aria-hidden="true">⚔️</span>
+                  </button>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5 font-semibold">
-                      <span className="truncate">{liveName(b.name, b.image, idx, lang)}</span>
+                      <button type="button" onClick={() => pickTarget(b.image, b.name)} className="truncate text-left hover:underline">{label}</button>
                       {b.canBeShiny && <Sparkle className="shrink-0 text-shiny" />}
                       <Badge tone="muted">{t.raid_tier[b.tier]}</Badge>
+                      {isEndingSoon(b.end) && <Badge tone="shiny">{t.hunts_ending_soon}</Badge>}
                     </div>
                     {b.end && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
@@ -334,23 +458,31 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
                         <CountdownBadge e={{ end: b.end }} now={now} />
                       </div>
                     )}
+                    <HuntActions idx={idx} matches={matches} monName={label} onMarkCaught={markCaught} busy={upsert.isPending} />
                   </div>
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </Section>
       )}
 
       {wantedSpawns.length > 0 && (
         <Section title={t.tab_spawns} count={wantedSpawns.length} action={goBtn('spawns')}>
-          <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
-            {wantedSpawns.map(({ m, event }) => (
-              <li key={m.image} className="flex flex-col items-center">
-                <Mon p={m} wanted />
-                <span className="mt-0.5 line-clamp-1 w-[4.5rem] text-center text-[10px] text-ink-3">{event}</span>
-              </li>
-            ))}
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {wantedSpawns.map(({ m, event, end }) => {
+              const label = liveName(m.name, m.image, idx, lang);
+              const matches = wantedMatches.forLive(m.image, m.name, 'wild', m.canBeShiny);
+              return (
+                <li key={m.image} className="card flex flex-col items-center p-2 text-center ring-2 ring-go/60">
+                  <Mon p={m} wanted />
+                  <span className="mt-0.5 line-clamp-1 w-full text-[10px] text-ink-3">
+                    {isEndingSoon(end) ? `⏳ ${event}` : event}
+                  </span>
+                  <HuntActions idx={idx} matches={matches} monName={label} compact onMarkCaught={markCaught} busy={upsert.isPending} />
+                </li>
+              );
+            })}
           </ul>
         </Section>
       )}
@@ -363,6 +495,7 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
                   <Badge tone={gmax ? 'shiny' : 'datamined'}>{gmax ? t.kinds.gmax : t.tag_dynamax}</Badge>
                   <CountdownBadge e={e} now={now} />
+                  {isEndingSoon(e.end) && <Badge tone="shiny">{t.hunts_ending_soon}</Badge>}
                   <span>{formatRange(e.start, e.end, lang)}</span>
                 </div>
                 <div className="mt-1 font-semibold">{eventTitle(e.name, idx.speciesByDex, lang)}</div>
@@ -370,11 +503,17 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
                   {species.map((sp) => {
                     const cover = idx.coverOf.get(sp.dex);
                     const v = gmax ? idx.variantsByDex.get(sp.dex)?.find((x) => x.kind === 'gmax') ?? cover : cover;
+                    const key = gmax ? (v?.key ?? `${sp.dex}.fGIGANTAMAX`) : String(sp.dex);
+                    const label = localized(sp.name, lang);
+                    const matches = wantedMatches.forKey(key, gmax ? 'gmax' : 'max');
                     return v ? (
-                      <Link key={sp.dex} to={`/dex/${sp.dex}`} className="flex flex-col items-center rounded-lg bg-go-soft/50 p-1 text-center ring-2 ring-go/60">
-                        <Sprite idx={idx} variant={v} size={48} />
-                        <span className="w-[4.5rem] truncate text-[11px] font-semibold">{localized(sp.name, lang)}</span>
-                      </Link>
+                      <div key={sp.dex} className="flex flex-col items-center rounded-xl bg-go-soft/45 p-1.5 text-center ring-1 ring-go/50">
+                        <Link to={`/dex/${sp.dex}`} className="flex flex-col items-center">
+                          <Sprite idx={idx} variant={v} size={48} />
+                          <span className="w-[5rem] truncate text-[11px] font-semibold">{label}</span>
+                        </Link>
+                        <HuntActions idx={idx} matches={matches} monName={label} compact onMarkCaught={markCaught} busy={upsert.isPending} />
+                      </div>
                     ) : null;
                   })}
                 </div>
@@ -391,7 +530,27 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
               <li key={r.trainer} className="card p-2.5 ring-2 ring-go/60">
                 <p className="mb-1.5 text-sm font-bold">{r.trainer}</p>
                 <div className="flex flex-wrap gap-2">
-                  {r.mons.map((m, i) => <Mon key={`${m.image}-${i}`} p={m} size={48} wanted />)}
+                  {r.mons.map((m, i) => {
+                    const label = liveName(m.name, m.image, idx, lang);
+                    const matches = wantedMatches.forLive(m.image, m.name, 'rocket', m.canBeShiny);
+                    return (
+                      <div key={`${m.image}-${i}`} className="flex flex-col items-center rounded-xl bg-paper-2/40 p-1.5">
+                        <div className="relative">
+                          <Mon p={m} size={48} wanted />
+                          <button
+                            type="button"
+                            onClick={() => pickTarget(m.image, m.name)}
+                            aria-label={t.counters_title(label)}
+                            title={t.counters_title(label)}
+                            className="absolute -right-1 bottom-4 flex h-5 w-5 items-center justify-center rounded-full bg-card text-[10px] shadow ring-1 ring-line hover:bg-paper-2"
+                          >
+                            ⚔️
+                          </button>
+                        </div>
+                        <HuntActions idx={idx} matches={matches} monName={label} compact onMarkCaught={markCaught} busy={upsert.isPending} />
+                      </div>
+                    );
+                  })}
                 </div>
               </li>
             ))}
@@ -406,7 +565,16 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
               <li key={`${task.text}-${ti}`} className="card p-3 ring-2 ring-go/60">
                 <div className="text-sm font-semibold">{task.text}</div>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {task.rewards.map((r, i) => <Mon key={`${r.image}-${i}`} p={r} size={48} wanted />)}
+                  {task.rewards.map((r, i) => {
+                    const label = liveName(r.name, r.image, idx, lang);
+                    const matches = wantedMatches.forLive(r.image, r.name, 'research', r.canBeShiny);
+                    return (
+                      <div key={`${r.image}-${i}`} className="flex flex-col items-center rounded-xl bg-paper-2/40 p-1.5">
+                        <Mon p={r} size={48} wanted />
+                        <HuntActions idx={idx} matches={matches} monName={label} compact onMarkCaught={markCaught} busy={upsert.isPending} />
+                      </div>
+                    );
+                  })}
                 </div>
               </li>
             ))}
@@ -416,10 +584,17 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
 
       {wantedEggs.length > 0 && (
         <Section title={t.tab_eggs} count={wantedEggs.length} action={goBtn('eggs')}>
-          <div className="flex flex-wrap gap-2">
-            {wantedEggs.map((m, i) => (
-              <Mon key={`${m.name}-${m.eggType}-${i}`} p={m} wanted regional={m.isRegional} sub={m.eggType} />
-            ))}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {wantedEggs.map((m, i) => {
+              const label = liveName(m.name, m.image, idx, lang);
+              const matches = wantedMatches.forLive(m.image, m.name, 'egg', m.canBeShiny);
+              return (
+                <div key={`${m.name}-${m.eggType}-${i}`} className="card flex flex-col items-center p-2 text-center ring-2 ring-go/60">
+                  <Mon p={m} wanted regional={m.isRegional} sub={m.eggType} />
+                  <HuntActions idx={idx} matches={matches} monName={label} compact onMarkCaught={markCaught} busy={upsert.isPending} />
+                </div>
+              );
+            })}
           </div>
         </Section>
       )}
@@ -432,6 +607,7 @@ function MyHuntsOverview({ onGoTab }: { onGoTab: (tab: Tab) => void }) {
 function Raids() {
   const t = useT();
   const { lang } = useLang();
+  const [params] = useSearchParams();
   const now = useNowMinute();
   // A boss opens its best counters.
   const tools = useTools();
@@ -441,7 +617,7 @@ function Raids() {
   const { hasMissing, isWanted } = useMissingHunts();
   const [target, setTarget] = useState<ToolPokemon | null>(null);
   const [tierFilter, setTierFilter] = useState<RaidTier | 'all'>('all');
-  const [onlyHunts, setOnlyHunts] = useState(false);
+  const [onlyHunts, setOnlyHunts] = useState(() => params.get('onlyHunts') === '1');
   const raids = useRaids();
   const events = useEvents();
   const dataset = useDataset();
@@ -463,7 +639,7 @@ function Raids() {
     const fromTools = fromImage(b.image, b.name)?.types;
     if (fromTools?.length) return fromTools;
     const key = liveKey(b.image, b.name, known);
-    const v = key ? idx?.variantByKey.get(key) ?? idx?.variantByKey.get(key.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '')) : undefined;
+    const v = key ? idx?.variantByKey.get(key) ?? idx?.variantByKey.get(key.replace(/\.f(MEGA(?:_[A-Z0-9_]+)?|PRIMAL)$/, '')) : undefined;
     return v ? v.types ?? idx?.speciesByDex.get(v.dex)?.types ?? [] : [];
   };
   const cpLine = (b: { image: string; name: string; combatPower?: CurrentBoss['combatPower'] }, compact = false) => {
@@ -635,7 +811,7 @@ function saveHiddenPromos(codes: string[]) {
   } catch {}
 }
 
-function Events() {
+function Events({ huntsTotal, onGoHunts }: { huntsTotal: number; onGoHunts: () => void }) {
   const t = useT();
   const { lang } = useLang();
   const now = useNowMinute();
@@ -661,6 +837,17 @@ function Events() {
 
   return (
     <>
+      {huntsTotal > 0 && (
+        <button
+          type="button"
+          onClick={onGoHunts}
+          className="mb-3 flex w-full items-center gap-2.5 rounded-2xl border border-go/35 bg-go-soft/55 px-3.5 py-2.5 text-left transition hover:brightness-[0.98] active:scale-[0.99]"
+        >
+          <span className="text-base" aria-hidden="true">🎯</span>
+          <span className="tnum min-w-0 flex-1 text-sm font-bold text-go-ink dark:text-go">{t.hunts_banner(huntsTotal)}</span>
+          <span className="shrink-0 text-xs font-bold text-go-ink dark:text-go">{t.hunts_banner_cta} ›</span>
+        </button>
+      )}
       {visiblePromos.length > 0 && (
         <section className="card mb-4 overflow-hidden">
           <div className="flex items-center">
@@ -762,6 +949,7 @@ function MaxBattles() {
   const dataset = useDataset();
   const { hasMissing, isWantedKey } = useMissingHunts();
   const [onlyHunts, setOnlyHunts] = useState(false);
+  const [openEvent, setOpenEvent] = useState<GameEvent | null>(null);
   const list = useMemo(() => (events.data ?? []).filter((e) => isMaxEvent(e) && eventStatus(e) !== 'past').sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')), [events.data]);
   if (events.isPending) return <Spinner />;
   if (events.isError) return <LiveError retry={() => void events.refetch()} />;
@@ -817,7 +1005,9 @@ function MaxBattles() {
                   })}
                 </div>
               )}
-              <a href={e.link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-sky">{t.open_leekduck}</a>
+              <button type="button" onClick={() => setOpenEvent(e)} className="mt-2 inline-block text-xs font-semibold text-sky hover:underline">
+                {t.events_open_sheet} ›
+              </button>
             </li>
           );
         })}
@@ -833,6 +1023,7 @@ function MaxBattles() {
       )}
       {block(t.max_now, now)}
       {block(t.max_upcoming, upcoming)}
+      <EventDetailModal event={openEvent} now={nowMs} onClose={() => setOpenEvent(null)} />
     </>
   );
 }
@@ -840,13 +1031,14 @@ function MaxBattles() {
 function Research() {
   const t = useT();
   const { lang } = useLang();
+  const [params] = useSearchParams();
   const q = useResearch();
   const dataset = useDataset();
   const { hasMissing, isWanted } = useMissingHunts();
   const [items, setItems] = useState(true);
   const [encountersOnly, setEncountersOnly] = useState(false);
   const [shinyOnly, setShinyOnly] = useState(false);
-  const [onlyHunts, setOnlyHunts] = useState(false);
+  const [onlyHunts, setOnlyHunts] = useState(() => params.get('onlyHunts') === '1');
   const [query, setQuery] = useState('');
   const eventOf = useEventMarks('research');
   if (q.isPending) return <Spinner />;
@@ -1105,13 +1297,15 @@ function LiveError({ retry }: { retry: () => void }) {
 function EventSpawnsTab() {
   const t = useT();
   const { lang } = useLang();
+  const [params] = useSearchParams();
   const nowMs = useNowMinute();
   const dataset = useDataset();
   const q = useEventSpawns();
   const { hasMissing, isWanted } = useMissingHunts();
   const [view, setView] = useState<'all' | 'events'>('all');
-  const [onlyHunts, setOnlyHunts] = useState(false);
+  const [onlyHunts, setOnlyHunts] = useState(() => params.get('onlyHunts') === '1');
   const [shinyOnly, setShinyOnly] = useState(false);
+  const [openEvent, setOpenEvent] = useState<EventSpawns | null>(null);
   if (q.isPending) return <Spinner />;
   if (q.isError) return <LiveError retry={() => void q.refetch()} />;
   const title = (e: EventSpawns) => eventTitle(e.name, dataset.data?.speciesByDex, lang);
@@ -1137,7 +1331,7 @@ function EventSpawnsTab() {
   const soonFiltered = filterEvents(soon);
   const card = ({ e, feat, spw }: { e: EventSpawns; feat: LivePokemon[]; spw: LivePokemon[] }) => (
     <li key={e.eventID} className="card overflow-hidden">
-      <a href={e.link} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3">
+      <button type="button" onClick={() => setOpenEvent(e)} className="flex w-full items-center gap-3 p-3 text-left transition hover:bg-paper-2/40">
         {e.image && <img src={e.image} alt="" width={64} height={36} loading="lazy" className="h-9 w-16 shrink-0 rounded-md object-cover" />}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5 font-bold leading-tight">
@@ -1146,7 +1340,8 @@ function EventSpawnsTab() {
           </span>
           <span className="block text-xs text-ink-3">{e.start && `${date(e.start)} → `}{date(e.end)}</span>
         </span>
-      </a>
+        <span className="shrink-0 text-sm text-ink-3" aria-hidden="true">›</span>
+      </button>
       {feat.length > 0 && (
         <div className="border-t border-line px-3 py-2">
           <p className="mb-1 text-xs font-semibold text-ink-3">{t.spawns_featured}</p>
@@ -1197,6 +1392,7 @@ function EventSpawnsTab() {
           )}
         </>
       )}
+      <EventDetailModal event={openEvent} now={nowMs} onClose={() => setOpenEvent(null)} />
     </>
   );
 }
@@ -1206,7 +1402,7 @@ function EventSpawnsTab() {
  * A Mega or Primal boss is caught in its normal form.
  */
 function raidCatchCp(idx: DatasetIndex, liveKeyOf: string | null): { normal: [number, number]; boosted: [number, number] } | null {
-  const key = liveKeyOf?.replace(/\.f(MEGA|MEGA_X|MEGA_Y|PRIMAL)$/, '');
+  const key = liveKeyOf?.replace(/\.f(MEGA(?:_[A-Z0-9_]+)?|PRIMAL)$/, '');
   const p = key ? idx.pvpByKey.get(key) ?? idx.pvpByKey.get(key.split('.')[0]!) : undefined;
   const cpm = idx.ds.pvp?.cpm;
   if (!p || !cpm) return null;

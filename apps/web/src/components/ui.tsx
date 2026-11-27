@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { useMe } from '../lib/auth.js';
+import { useFriendRequests } from '../lib/lists.js';
 import { useNotifications } from '../lib/social.js';
 import { useLang, useT } from '../lib/i18n.js';
 import { useTheme } from '../lib/theme.js';
@@ -15,14 +16,12 @@ const tones: Record<Tone, string> = {
   ghost: 'text-ink-2 hover:bg-paper-2 disabled:opacity-50',
 };
 
+export function buttonClass(tone: Tone = 'quiet', className = '') {
+  return `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition active:scale-[0.98] ${tones[tone]} ${className}`;
+}
+
 export function Button({ tone = 'quiet', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }) {
-  return (
-    <button
-      type="button"
-      {...props}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition active:scale-[0.98] ${tones[tone]} ${className}`}
-    />
-  );
+  return <button type="button" {...props} className={buttonClass(tone, className)} />;
 }
 
 export function IconButton({ label, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
@@ -102,7 +101,7 @@ export function TopBar({ title, back, actions, children }: { title: ReactNode; b
     <header className="topbar sky-header pt-safe sticky top-0 z-20">
       <div className="mx-auto flex min-h-14 max-w-6xl items-center gap-1 px-3 sm:px-5">
         {back && (
-          <IconButton label={t.close} onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/dex'))}>
+          <IconButton label={t.welcome_back} onClick={() => ((window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate('/dex'))}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
           </IconButton>
         )}
@@ -147,15 +146,18 @@ export function ThemeToggle() {
 
 export function BottomNav() {
   const t = useT();
+  const me = useMe();
+  const requests = useFriendRequests(!!me.data);
   const { pathname } = useLocation();
   if (pathname === '/login' || pathname === '/welcome') return null;
+  const incomingFriends = (requests.data ?? []).filter((r) => r.to.id === me.data?.id).length;
   const items = [
-    { to: '/dex', label: t.nav_dex, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
-    { to: '/lists', label: t.nav_lists, icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /> },
-    { to: '/game', label: t.nav_game, icon: <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 10h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /> },
-    { to: '/pvp', label: t.nav_pvp, icon: <path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /> },
-    { to: '/friends', label: t.nav_friends, icon: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /> },
-    { to: '/me', label: t.nav_me, icon: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /> },
+    { to: '/dex', label: t.nav_dex, badge: 0, icon: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-9 9h6m6 0h6M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" /> },
+    { to: '/lists', label: t.nav_lists, badge: 0, icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /> },
+    { to: '/game', label: t.nav_game, badge: 0, icon: <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 10h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /> },
+    { to: '/pvp', label: t.nav_pvp, badge: 0, icon: <path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 21 18M5 14l4 4M7 17l-3 3M3 19l2 2M14.5 6.5 18 3h3v3l-3.5 3.5" /> },
+    { to: '/friends', label: t.nav_friends, badge: incomingFriends, icon: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /> },
+    { to: '/me', label: t.nav_me, badge: 0, icon: <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" /> },
   ];
   // A rubber pill slides under the active tab: it stretches toward the new one, then squashes into place.
   const active = items.findIndex((it) => pathname.startsWith(it.to));
@@ -176,7 +178,14 @@ export function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={isActive ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">{it.icon}</svg>
+                <span className="relative">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={isActive ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round">{it.icon}</svg>
+                  {it.badge > 0 && (
+                    <span className="tnum absolute -right-2 -top-1 min-w-4 rounded-full bg-berry px-1 text-center text-[9px] font-bold leading-4 text-white">
+                      {it.badge > 9 ? '9+' : it.badge}
+                    </span>
+                  )}
+                </span>
                 {it.label}
               </>
             )}
@@ -187,8 +196,8 @@ export function BottomNav() {
   );
 }
 
-/** Bottom sheet. Closes on backdrop tap and Escape. */
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode }) {
+/** Bottom sheet. Closes on backdrop tap and Escape. Optional sticky footer stays visible below the scroll area. */
+export function Sheet({ open, onClose, title, footer, children }: { open: boolean; onClose: () => void; title?: ReactNode; footer?: ReactNode; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   const t = useT();
   useEffect(() => {
@@ -204,15 +213,18 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
       onClick={(e) => e.target === ref.current && onClose()}
       className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out] sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-3xl md:max-w-3xl"
     >
-      <div className="pb-safe px-4 pt-2 sm:px-5 sm:pt-4">
-        <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-line sm:hidden" />
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">{title}</h2>
+      <div className="pb-safe flex max-h-[90vh] flex-col px-4 pt-2 sm:max-h-[88vh] sm:px-5 sm:pt-4">
+        <div className="mx-auto mb-2 h-1.5 w-10 shrink-0 rounded-full bg-line sm:hidden" />
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+          <h2 className="min-w-0 flex-1 truncate text-lg font-bold">{title}</h2>
           <IconButton label={t.close} onClick={onClose}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </IconButton>
         </div>
-        <div className="max-h-[75vh] overflow-y-auto overflow-x-hidden pb-4 sm:max-h-[80vh]">{children}</div>
+        <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${footer ? 'pb-3' : 'pb-4'}`}>{children}</div>
+        {footer && (
+          <div className="shrink-0 border-t border-line bg-card pb-2 pt-3">{footer}</div>
+        )}
       </div>
     </dialog>
   );

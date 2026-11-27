@@ -93,7 +93,7 @@ test('"I have it" reaches the owner live, and notifies only when leaving the pag
     s.owner.waitForResponse((r) => r.url().includes('/api/notifications/read')),
     s.owner.getByText(`${s.uf.username} a un Pokémon de ta collection « Recherche Kanto »`).click(),
   ]);
-  await expect(s.owner).toHaveURL(new RegExp(`/lists/${s.listId}$`));
+  await expect(s.owner).toHaveURL(new RegExp(`/lists/${s.listId}\\?filter=offered$`));
   await s.owner.goto('/dex'); // the bell lives on top-level pages
   await expect(s.owner.getByRole('link', { name: 'Notifications', exact: true })).toBeVisible({ timeout: 10_000 }); // read
   await s.owner.goto(`/lists/${s.listId}`);
@@ -260,14 +260,14 @@ test('image and PDF exports support custom styles (shiny, lucky…), custom note
 
 test('notification settings: one switch per kind, saved on the account', async ({ page }) => {
   await apiRegister(page.request);
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await expect(page.getByRole('heading', { name: 'Notifications sur cet appareil' })).toBeVisible();
-  const offer = page.getByLabel('un ami a un Pokémon de mes collections');
-  await expect(offer).toBeChecked();
-  await offer.uncheck();
-  await expect(offer).not.toBeChecked();
+  const offer = page.getByRole('button', { name: 'un ami a un Pokémon de mes collections' });
+  await expect(offer).toHaveAttribute('aria-pressed', 'true');
+  await offer.click();
+  await expect(offer).toHaveAttribute('aria-pressed', 'false');
   await page.reload();
-  await expect(page.getByLabel('un ami a un Pokémon de mes collections')).not.toBeChecked();
+  await expect(page.getByRole('button', { name: 'un ami a un Pokémon de mes collections' })).toHaveAttribute('aria-pressed', 'false');
   const prefs = await (await page.request.get('/api/notifications/prefs')).json();
   expect(prefs.prefs.offer).toBe(false);
 });
@@ -299,7 +299,7 @@ test("a friend's QR code, read from a screenshot, fills in the friend code", asy
     delete (window as unknown as { BarcodeDetector?: unknown }).BarcodeDetector;
   });
   await scanner.goto('/friends');
-  await scanner.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
+  await scanner.getByRole('tab', { name: 'Ajouter', exact: true }).click();
   await scanner.getByRole('button', { name: 'Scanner un QR code' }).click();
   await scanner.locator('dialog[open] input[type=file]').setInputFiles({ name: 'qr.png', mimeType: 'image/png', buffer: png });
   await expect(scanner.getByPlaceholder('Code ami à 12 chiffres')).toHaveValue(ua.friendCode.replace(/(\d{4})(?=\d)/g, '$1 '));
@@ -341,17 +341,18 @@ test('friend profile shows their shared collections, badges and postcards withou
   }
 });
 
-test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & profile, and Add friend matches Vivillon', async ({ browser }) => {
+test('Lucky Friends toggle persists, postcards edit inline in Vivillon tab, show on Friends & profile, and discover matches Vivillon', async ({ browser }) => {
   const { owner, uf, close } = await friends(browser, 31);
   const c1 = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.32.1' } });
   const c2 = await browser.newContext({ extraHTTPHeaders: { 'x-forwarded-for': '10.7.32.2' } });
   const sender = await c1.newPage();
   const seeker = await c2.newPage();
   try {
-    // 1. Lucky Friends toggle persists on FriendsPage, and global Trades tab is replaced by Add friend.
+    // 1. Lucky Friends toggle persists on FriendsPage, and global Trades tab is replaced by Add + Vivillon tabs.
     await owner.goto('/friends');
     await expect(owner.getByRole('tab', { name: /Échanges/ })).toHaveCount(0);
-    await expect(owner.getByRole('tab', { name: 'Ajout d’amis · Prismillon' })).toBeVisible();
+    await expect(owner.getByRole('tab', { name: 'Ajouter', exact: true })).toBeVisible();
+    await expect(owner.getByRole('tab', { name: /Prismillon/ })).toBeVisible();
     const row = owner.locator('li', { hasText: uf.username });
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'Marquer Ami Chanceux' }).click();
@@ -359,7 +360,7 @@ test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & pro
     await owner.reload();
     await expect(owner.locator('li', { hasText: uf.username }).getByText('✨ Ami Chanceux')).toBeVisible();
 
-    // 2. Vivillon postcards: sender declares Ocean (unlimited) + Sandstorm (3) from their Me profile page.
+    // 2. Vivillon postcards: sender declares Ocean (unlimited) + Sandstorm (3) directly in Friends -> Prismillon.
     const uSender = await apiRegister(sender.request, uniq('vivi_send'));
     const uSeeker = await apiRegister(seeker.request, uniq('vivi_seek'));
     const vList = (await (await seeker.request.post('/api/lists', { data: { name: 'Mes Prismillon', visibility: 'friends' } })).json()).list;
@@ -367,7 +368,7 @@ test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & pro
       data: { entries: [{ variantKey: '666.fOCEAN', gender: 'm', shiny: false, tag: '', done: false }] },
     });
 
-    await sender.goto('/me');
+    await sender.goto('/friends?tab=postcards');
     await sender.getByRole('button', { name: 'Gérer mes cartes' }).click();
     const sheet = sender.locator('dialog[open]');
     await sheet.getByRole('button', { name: /Soleil Levant/ }).click();
@@ -378,11 +379,11 @@ test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & pro
     await expect(sender.getByText('Soleil Levant').first()).toBeVisible();
     await expect(sender.getByText('×3').first()).toBeVisible();
 
-    // 3. Seeker visits Friends -> Ajout d'amis · Prismillon, automatically sees Ocean missing & sender suggested, sends request in 1 tap.
+    // 3. Seeker visits Friends -> Prismillon, sees inline manage button, Ocean missing & sender suggested, sends request in 1 tap.
     await seeker.goto('/friends');
-    await seeker.getByRole('tab', { name: 'Ajout d’amis · Prismillon' }).click();
-    await expect(seeker).toHaveURL(/\/friends\?tab=add$/);
-    await expect(seeker.getByRole('link', { name: /Modifier sur mon profil/ })).toBeVisible();
+    await seeker.getByRole('tab', { name: /Prismillon/ }).click();
+    await expect(seeker).toHaveURL(/\/friends\?tab=postcards$/);
+    await expect(seeker.getByRole('button', { name: 'Gérer mes cartes' })).toBeVisible();
     await expect(seeker.getByText('1 motif manquant dans tes collections')).toBeVisible();
     const suggestion = seeker.locator('li', { hasText: uSender.username });
     await expect(suggestion).toBeVisible();
@@ -395,7 +396,7 @@ test('Lucky Friends toggle persists, postcards edit on Me, show on Friends & pro
     await sender.goto('/friends');
     await sender.locator('li', { hasText: uSeeker.username }).getByRole('button', { name: 'Accepter' }).click();
     await expect(sender.getByRole('link', { name: new RegExp(uSeeker.username) })).toBeVisible();
-    await seeker.goto('/friends?tab=add');
+    await seeker.goto('/friends?tab=postcards');
     await expect(seeker.locator('li', { hasText: uSender.username })).toHaveCount(0);
 
     await seeker.goto('/friends');

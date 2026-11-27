@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import type { Lang } from '@mydexpogo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Chip, CopyButton, HoldButton, PasswordField, Sheet, SwitchThumb, TopBar } from '../components/ui.js';
+import { Badge, Button, Chip, CopyButton, HoldButton, PasswordField, Sheet, SwitchThumb, TopBar, buttonClass } from '../components/ui.js';
+import { BannerSlot } from '../components/BannerSlot.js';
+import { FriendQr } from '../components/FriendQr.js';
 import { PushSettings } from '../components/PushSettings.js';
 import { TrainerMedalsCard } from '../components/Medals.js';
-import { MyPostcardsCard } from '../components/VivillonPostcards.js';
 import { InstallBanner } from '../components/InstallBanner.js';
-import { PageTourBanner, PageTourButton, PageTourSheet } from '../components/PageTour.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { PageTourButton, PageTourSheet } from '../components/PageTour.js';
 import { useToast } from '../components/toast.js';
 import { api } from '../lib/api.js';
 import { useLogout, useMe } from '../lib/auth.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { useFriends, useLists } from '../lib/lists.js';
+import { useFriends, useLists, useMyPostcards } from '../lib/lists.js';
 import { applyTheme, getTheme, useTheme, type Theme } from '../lib/theme.js';
-import { fmtCode } from '../lib/errors.js';
+import { errorMessage, fmtCode } from '../lib/errors.js';
 import { useAdminStats, useDataStatus } from '../lib/admin.js';
 import { setFeedbackPref, useFeedbackPref } from '../lib/feedback.js';
 import { TEAMS, TEAM_META, setTeam, useTeam } from '../lib/team.js';
@@ -29,6 +29,7 @@ export function MePage() {
   const logout = useLogout();
   const lists = useLists();
   const friends = useFriends();
+  const postcards = useMyPostcards(!!me.data);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [theme, setTheme] = useState<Theme>(getTheme());
@@ -41,6 +42,9 @@ export function MePage() {
   const [password, setPassword] = useState('');
   const [delError, setDelError] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'prefs' ? 'prefs' : 'profile';
   const status = useDataStatus();
   const tour = useTourState();
   const isAdmin = me.data?.role === 'admin';
@@ -63,171 +67,200 @@ export function MePage() {
 
   return (
     <>
-      <TopBar title={t.nav_me} actions={<PageTourButton page="me" />} />
-      <main className="mx-auto max-w-6xl space-y-6 px-3 pb-24 sm:px-5">
-        <WhatsNewBanner />
-        <PageTourBanner page="me" />
-        <InstallBanner dismissible={false} />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
-          <div className="space-y-6">
-            {me.data ? (
-              <section className="card p-4">
-                <div className="flex items-center gap-2 text-[22px] font-bold">{me.data.username} {me.data.role !== 'user' && <Badge tone="grass">{t[`role_${me.data.role}`]}</Badge>}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</span>
-                  <CopyButton text={me.data.friendCode} className="min-h-8 px-2.5 text-xs" />
-                </div>
-                {(lists.data || friends.data) && (
-                  <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
-                    {lists.data && (
-                      <Link to="/lists" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
-                        {t.me_stats_lists(lists.data.length)}{totalEntries > 0 ? ` · ${t.progress(totalDone, totalEntries)}` : ''}
-                      </Link>
-                    )}
-                    {friends.data && (
-                      <Link to="/friends" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
-                        {t.me_stats_friends(friends.data.length)}
-                      </Link>
-                    )}
-                  </div>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
-                  <Button tone="ghost" onClick={() => { setPwError(null); setChanging(true); }}>{t.change_password}</Button>
-                </div>
-              </section>
-            ) : (
-              <section className="sky-header rounded-card p-4">
-                <h2 className="text-[22px] font-bold leading-tight">{t.welcome_title}</h2>
-                <p className="mt-1 text-sm opacity-80">{t.welcome_text}</p>
-                <Link to="/login" className="mt-3 inline-block"><Button tone="primary">{t.login}</Button></Link>
-              </section>
-            )}
-            {me.data && <TrainerMedalsCard />}
-            {me.data && <MyPostcardsCard />}
-            {isAdmin && <AdminCard />}
-            {(me.data?.role === 'manager' || me.data?.role === 'admin') && (
-              <Link to="/review" className="card flex items-center gap-3 p-4">
-                <span className="flex-1">
-                  <span className="block font-bold">{t.review_title}</span>
-                  <span className="block text-sm text-ink-2">{t.review_pending(status.data?.feed?.pending ?? 0)}</span>
-                </span>
-                {(status.data?.feed?.pending ?? 0) > 0 && <span className="tnum rounded-full bg-berry px-2 py-0.5 text-xs font-bold text-white">{status.data?.feed?.pending}</span>}
-                <span className="text-ink-3">›</span>
-              </Link>
-            )}
-            {me.data && (
-              <Link to="/welcome" className="card flex items-center gap-3 p-3 transition hover:brightness-[0.98] active:scale-[0.99]">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-go-soft text-lg" aria-hidden="true">🧭</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold">{t.welcome_replay}</span>
-                  <span className="block text-sm text-ink-2">{t.welcome_replay_hint}</span>
-                </span>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-              </Link>
-            )}
-            <section className="card p-3.5">
-              <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky/15 text-lg" aria-hidden="true">❓</span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{t.tour_me_title}</p>
-                  <p className="text-xs text-ink-2">{t.tour_me_hint(tour.seenCount, tour.totalCount)}</p>
-                  <div className="mt-2.5 flex flex-wrap gap-2">
-                    <Button
-                      tone="quiet"
-                      className="min-h-9 px-3 text-xs"
-                      onClick={() => {
-                        resetAllTours();
-                        toast(t.tour_me_enabled_toast);
-                      }}
-                    >
-                      {t.tour_me_enable}
-                    </Button>
-                    <Button tone="ghost" className="min-h-9 px-3 text-xs" onClick={() => setGuideOpen(true)}>
-                      {t.tour_me_browse}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          <div className="space-y-6">
-            {me.data && <PushSettings />}
-            <FeedbackSettings />
-
-            {me.data && (
-              <section>
-                <h2 className="mb-1 text-base font-bold">{t.start_page}</h2>
-                <p className="mb-2 text-xs text-ink-3">{t.start_page_hint}</p>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.start_page}>
-                  {START_PAGES.map((p) => (
-                    <Chip key={p} active={startPage === p} onClick={() => setStartPage(p)}>{startPageLabels[p]}</Chip>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <section>
-              <h2 className="mb-2 text-base font-bold">{t.language}</h2>
-              <div className="flex gap-2">
-                {(['fr', 'en'] as Lang[]).map((l) => (
-                  <Chip key={l} active={lang === l} onClick={() => setLang(l)}>{l === 'fr' ? 'Français' : 'English'}</Chip>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-2 text-base font-bold">{t.theme}</h2>
-              <div className="flex gap-2">
-                {(['auto', 'light', 'dark'] as Theme[]).map((th) => (
-                  <Chip key={th} active={theme === th} onClick={() => pick(th)}>{{ auto: t.theme_auto, light: t.theme_light, dark: t.theme_dark }[th]}</Chip>
-                ))}
-              </div>
-              <h3 className="mb-2 mt-4 text-sm font-semibold text-ink-2">{t.team_colour}</h3>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4" role="radiogroup" aria-label={t.team_colour}>
-                {TEAMS.map((tm) => {
-                  const p = TEAM_META[tm].preview;
-                  const active = team === tm;
-                  return (
-                    <button
-                      key={tm}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => setTeam(tm)}
-                      className={`card flex flex-col overflow-hidden p-0 text-left transition active:scale-[0.98] ${active ? 'ring-2 ring-go' : 'hover:brightness-[0.98]'}`}
-                    >
-                      <div className="flex h-10 w-full flex-col justify-between p-1.5" style={{ background: dark ? p.darkPaper : p.paper }}>
-                        <div className="h-3 w-full rounded-sm" style={{ background: `linear-gradient(135deg, ${p.top}, ${p.bottom})` }} />
-                        <div className="flex items-center gap-1">
-                          <span className="h-2.5 w-8 rounded-full" style={{ background: dark ? p.darkAccent : p.accent }} />
-                          <span className="h-2 w-4 rounded-full opacity-35" style={{ background: dark ? '#fff' : '#000' }} />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold">
-                        <span className="min-w-0 flex-1 truncate">{t.team_names[tm]}</span>
-                        {active && <span className="text-go-ink dark:text-go" aria-hidden="true">✓</span>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <Link to="/about" className="card flex items-center gap-3 p-3 transition hover:brightness-[0.98] active:scale-[0.99]">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper-2 text-lg" aria-hidden="true">ℹ️</span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{t.about_title}</span>
-                <span className="block text-sm text-ink-2">{t.about_link_hint}</span>
-              </span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-            </Link>
-          </div>
+      <TopBar title={t.nav_me} actions={<PageTourButton page="me" />}>
+        <div className="mx-auto flex max-w-6xl gap-2 px-3 pb-2 sm:px-5" role="tablist">
+          <Chip role="tab" aria-selected={tab === 'profile'} active={tab === 'profile'} onClick={() => setParams({}, { replace: true })}>
+            {t.me_tab_profile}
+          </Chip>
+          <Chip role="tab" aria-selected={tab === 'prefs'} active={tab === 'prefs'} onClick={() => setParams({ tab: 'prefs' }, { replace: true })}>
+            {t.me_tab_prefs}
+          </Chip>
         </div>
-        {/* Out of the way, at the very end of the page. */}
-        {me.data && (
-          <div className="pt-4 text-center">
-            <button type="button" onClick={() => { setDelError(null); setDeleting(true); }} className="text-sm font-semibold text-berry hover:underline">{t.delete_account}</button>
+      </TopBar>
+      <main className="mx-auto max-w-6xl space-y-6 px-3 pb-24 sm:px-5">
+        <BannerSlot page="me" />
+        {tab === 'profile' ? (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+            <div className="space-y-6">
+              {me.data ? (
+                <section className="card p-4">
+                  <div className="flex items-center gap-2 text-[22px] font-bold">{me.data.username} {me.data.role !== 'user' && <Badge tone="grass">{t[`role_${me.data.role}`]}</Badge>}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="tnum text-sm text-ink-2">{t.my_code} · {fmtCode(me.data.friendCode)}</span>
+                    <CopyButton text={me.data.friendCode} className="min-h-8 px-2.5 text-xs" />
+                    <Button tone="ghost" className="min-h-8 bg-paper-2 px-2.5 text-xs" aria-expanded={showQr} onClick={() => setShowQr((v) => !v)}>
+                      {showQr ? t.qr_hide : 'QR'}
+                    </Button>
+                  </div>
+                  {showQr && (
+                    <div className="mt-3 flex flex-col items-center gap-2 rounded-2xl bg-paper-2/60 p-3">
+                      <FriendQr code={me.data.friendCode} size={160} />
+                      <p className="text-center text-xs text-ink-2">{t.qr_show_hint}</p>
+                    </div>
+                  )}
+                  {(lists.data || friends.data) && (
+                    <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
+                      {lists.data && (
+                        <Link to="/lists" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
+                          {t.me_stats_lists(lists.data.length)}{totalEntries > 0 ? ` · ${t.progress(totalDone, totalEntries)}` : ''}
+                        </Link>
+                      )}
+                      {friends.data && (
+                        <Link to="/friends" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
+                          {t.me_stats_friends(friends.data.length)}
+                        </Link>
+                      )}
+                      {postcards.data && (
+                        <Link to="/friends?tab=postcards" className="tnum rounded-full bg-paper-2 px-2.5 py-1 text-ink-2 hover:text-ink">
+                          🦋 {t.me_stats_postcards(postcards.data.length)}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button onClick={async () => { await logout.mutateAsync(); navigate('/login'); }}>{t.logout}</Button>
+                    <Button tone="ghost" onClick={() => { setPwError(null); setChanging(true); }}>{t.change_password}</Button>
+                  </div>
+                </section>
+              ) : (
+                <section className="sky-header rounded-card p-4">
+                  <h2 className="text-[22px] font-bold leading-tight">{t.welcome_title}</h2>
+                  <p className="mt-1 text-sm opacity-80">{t.welcome_text}</p>
+                  <Link to="/login" className={buttonClass('primary', 'mt-3')}>{t.login}</Link>
+                </section>
+              )}
+              {isAdmin && <AdminCard />}
+              {(me.data?.role === 'manager' || me.data?.role === 'admin') && (
+                <Link to="/review" className="card flex items-center gap-3 p-4">
+                  <span className="flex-1">
+                    <span className="block font-bold">{t.review_title}</span>
+                    <span className="block text-sm text-ink-2">{t.review_pending(status.data?.feed?.pending ?? 0)}</span>
+                  </span>
+                  {(status.data?.feed?.pending ?? 0) > 0 && <span className="tnum rounded-full bg-berry px-2 py-0.5 text-xs font-bold text-white">{status.data?.feed?.pending}</span>}
+                  <span className="text-ink-3">›</span>
+                </Link>
+              )}
+            </div>
+
+            <div className="space-y-6">
+              {me.data && <TrainerMedalsCard />}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <InstallBanner dismissible={false} />
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+              <div className="space-y-6">
+                {me.data && <PushSettings />}
+                <FeedbackSettings />
+              </div>
+
+              <div className="space-y-6">
+                {me.data && (
+                  <section>
+                    <h2 className="mb-1 text-base font-bold">{t.start_page}</h2>
+                    <p className="mb-2 text-xs text-ink-3">{t.start_page_hint}</p>
+                    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t.start_page}>
+                      {START_PAGES.map((p) => (
+                        <Chip key={p} active={startPage === p} onClick={() => setStartPage(p)}>{startPageLabels[p]}</Chip>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <section>
+                  <h2 className="mb-2 text-base font-bold">{t.language}</h2>
+                  <div className="flex gap-2">
+                    {(['fr', 'en'] as Lang[]).map((l) => (
+                      <Chip key={l} active={lang === l} onClick={() => setLang(l)}>{l === 'fr' ? 'Français' : 'English'}</Chip>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="mb-2 text-base font-bold">{t.theme}</h2>
+                  <div className="flex gap-2">
+                    {(['auto', 'light', 'dark'] as Theme[]).map((th) => (
+                      <Chip key={th} active={theme === th} onClick={() => pick(th)}>{{ auto: t.theme_auto, light: t.theme_light, dark: t.theme_dark }[th]}</Chip>
+                    ))}
+                  </div>
+                  <h3 className="mb-2 mt-4 text-sm font-semibold text-ink-2">{t.team_colour}</h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4" role="group" aria-label={t.team_colour}>
+                    {TEAMS.map((tm) => {
+                      const p = TEAM_META[tm].preview;
+                      const active = team === tm;
+                      return (
+                        <button
+                          key={tm}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => setTeam(tm)}
+                          className={`card flex flex-col overflow-hidden p-0 text-left transition active:scale-[0.98] ${active ? 'ring-2 ring-go' : 'hover:brightness-[0.98]'}`}
+                        >
+                          <div className="flex h-10 w-full flex-col justify-between p-1.5" style={{ background: dark ? p.darkPaper : p.paper }}>
+                            <div className="h-3 w-full rounded-sm" style={{ background: `linear-gradient(135deg, ${p.top}, ${p.bottom})` }} />
+                            <div className="flex items-center gap-1">
+                              <span className="h-2.5 w-8 rounded-full" style={{ background: dark ? p.darkAccent : p.accent }} />
+                              <span className="h-2 w-4 rounded-full opacity-35" style={{ background: dark ? '#fff' : '#000' }} />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold">
+                            <span className="min-w-0 flex-1 truncate">{t.team_names[tm]}</span>
+                            {active && <span className="text-go-ink dark:text-go" aria-hidden="true">✓</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Unified Help & Guided Tours card */}
+                <section className="card p-3.5">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky/15 text-lg" aria-hidden="true">🧭</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{t.me_help_title}</p>
+                      <p className="text-xs text-ink-2">{t.tour_me_hint(tour.seenCount, tour.totalCount)}</p>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Button tone="quiet" className="min-h-9 px-3 text-xs" onClick={() => setGuideOpen(true)}>
+                          {t.tour_me_browse}
+                        </Button>
+                        <Button
+                          tone="ghost"
+                          className="min-h-9 px-3 text-xs"
+                          onClick={() => {
+                            resetAllTours();
+                            toast(t.tour_me_enabled_toast);
+                          }}
+                        >
+                          {t.tour_me_enable}
+                        </Button>
+                        {me.data && (
+                          <Link to="/welcome" className={buttonClass('ghost', 'min-h-9 px-3 text-xs')}>
+                            {t.welcome_replay}
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <Link to="/about" className="card flex items-center gap-3 p-3 transition hover:brightness-[0.98] active:scale-[0.99]">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-paper-2 text-lg" aria-hidden="true">ℹ️</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{t.about_title}</span>
+                    <span className="block text-sm text-ink-2">{t.about_link_hint}</span>
+                  </span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+                </Link>
+              </div>
+            </div>
+            {/* Out of the way, at the very end of preferences. */}
+            {me.data && (
+              <div className="pt-2 text-center">
+                <button type="button" onClick={() => { setDelError(null); setDeleting(true); }} className="text-sm font-semibold text-berry hover:underline">{t.delete_account}</button>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -245,7 +278,7 @@ export function MePage() {
               try {
                 await api('/auth/password', { body: { current: curPw, password: newPw } });
                 toast(t.password_changed); setChanging(false); setCurPw(''); setNewPw(''); setNewPw2('');
-              } catch { setPwError(t.err_invalid_credentials); }
+              } catch (err) { setPwError(errorMessage(t, err)); }
             }}>{t.save}</Button>
           </div>
         )}
@@ -266,8 +299,8 @@ export function MePage() {
                   qc.clear();
                   setDeleting(false);
                   navigate('/');
-                } catch {
-                  setDelError(t.err_invalid_credentials);
+                } catch (err) {
+                  setDelError(errorMessage(t, err));
                 }
               }}
             >

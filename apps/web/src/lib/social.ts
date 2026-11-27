@@ -40,7 +40,7 @@ export function flushOfferNotifications(listId: string, variants: OfferVariantIn
 export const useNotifications = (enabled = true) =>
   useQuery({ queryKey: ['notifications'], queryFn: () => api<{ items: AppNotification[]; unread: number }>('/notifications'), enabled, refetchInterval: 5 * 60_000 });
 
-/** Deletes one notification (or all, without an id); account changes stay. Gone from the page at once. */
+/** Deletes one notification (or all, without an id). Gone from the page at once. */
 export function useDeleteNotification() {
   const qc = useQueryClient();
   return useMutation({
@@ -48,7 +48,7 @@ export function useDeleteNotification() {
     onMutate: (id) => {
       qc.setQueryData<{ items: AppNotification[]; unread: number }>(['notifications'], (old) => {
         if (!old) return old;
-        const items = old.items.filter((n) => n.type === 'account' || (id ? n.id !== id : false));
+        const items = id ? old.items.filter((n) => n.id !== id) : [];
         return { items, unread: items.filter((n) => !n.readAt).length };
       });
     },
@@ -121,6 +121,9 @@ export function useRealtime(loggedIn: boolean) {
         void qc.invalidateQueries({ queryKey: ['notifications'] });
       } else if (e.type === 'announcement') {
         void qc.invalidateQueries({ queryKey: ['announcement'] });
+      } else if (e.type === 'dataset') {
+        void qc.invalidateQueries({ queryKey: ['dataset'] });
+        void qc.invalidateQueries({ queryKey: ['overrides'] });
       }
     });
     return () => {

@@ -17,12 +17,16 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const target = new URL(event.notification.data?.url || '/', self.location.origin);
+  const url = target.href;
+  const sameOrigin = target.origin === self.location.origin;
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      const open = wins.find((w) => w.url.startsWith(self.location.origin));
-      if (open) return open.focus().then((w) => w.navigate(url));
-      return self.clients.openWindow(url);
-    }),
+    sameOrigin
+      ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+          const open = wins.find((w) => w.url.startsWith(self.location.origin));
+          if (open) return open.focus().then((w) => w.navigate(url));
+          return self.clients.openWindow(url);
+        })
+      : self.clients.openWindow(url),
   );
 });

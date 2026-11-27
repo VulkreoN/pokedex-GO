@@ -18,6 +18,7 @@ const species = new Map(
     [714, 'Noibat', 'Sonistrelle'], [488, 'Cresselia', 'Cresselia'], [491, 'Darkrai', 'Darkrai'], [641, 'Tornadus', 'Boréas'], [642, 'Thundurus', 'Fulguris'],
     [645, 'Landorus', 'Démétéros'], [354, 'Banette', 'Branette'], [483, 'Dialga', 'Dialga'], [27, 'Sandshrew', 'Sabelette'], [36, 'Clefable', 'Mélodelfe'], [311, 'Plusle', 'Posipi'], [312, 'Minun', 'Négapi'], [818, 'Inteleon', 'Lézargus'],
     [94, 'Gengar', 'Ectoplasma'], [39, 'Jigglypuff', 'Rondoudou'], [25, 'Pikachu', 'Pikachu'],
+    [105, 'Marowak', 'Ossatueur'], [376, 'Metagross', 'Métalosse'], [122, 'Mr. Mime', 'M. Mime'],
   ].map(([dex, en, fr]) => [dex as number, { name: { en: en as string, fr: fr as string } }]),
 );
 
@@ -29,6 +30,9 @@ describe('event names in French', () => {
     expect(eventTitle('Mega Banette in Mega Raids', species, 'fr')).toBe('Méga-Branette dans les Méga-Raids');
     expect(eventTitle('Shadow Dialga in Shadow Raids', species, 'fr')).toBe('Dialga obscur dans les Raids obscurs');
     expect(eventTitle('Shadow Tornadus (Incarnate Forme) in Shadow Raids', species, 'fr')).toBe('Boréas (Avatar) obscur dans les Raids obscurs');
+    expect(monsFr('Shadow Metagross', species)).toBe('Métalosse obscur');
+    expect(monsFr('Shadow Alolan Marowak', species)).toBe("Ossatueur d'Alola obscur");
+    expect(monsFr('Shadow Mr. Mime', species)).toBe('M. Mime obscur');
     expect(eventTitle('Tornadus, Thundurus, and Landorus (Therian Formes) in 5-star Raid Battles', species, 'fr')).toBe('Boréas, Fulguris et Démétéros (Totémique) dans les Raids 5 étoiles');
     expect(eventTitle('Dynamax Alolan Sandshrew during Max Monday', species, 'fr')).toBe("Lundi Max : Sabelette d'Alola Dynamax");
     expect(eventTitle('December Community Day 2026', species, 'fr')).toBe('Journée Communauté de décembre 2026');
@@ -69,11 +73,19 @@ describe('event names in French', () => {
     );
     expect(eventTextFr('Enjoy event-themed raids and Field Research!', species, 'fr')).toContain('Études de terrain');
 
-    const moves = { MOONBLAST: { en: 'Moonblast', fr: 'Pouvoir Lunaire' }, HYDRO_CANNON: { en: 'Hydro Cannon', fr: 'Hydroblast' } };
+    const moves = {
+      MOONBLAST: { en: 'Moonblast', fr: 'Pouvoir Lunaire' },
+      HYDRO_CANNON: { en: 'Hydro Cannon', fr: 'Hydroblast' },
+      SHADOW_BALL: { en: 'Shadow Ball', fr: "Ball'Ombre" },
+    };
     expect(moveFr('Moonblast+', moves, 'fr')).toBe('Pouvoir Lunaire +');
     expect(eventLabelFr('Moonblast+', 'fr', species, moves)).toBe('Pouvoir Lunaire +');
     expect(eventLabelFr('Mega Clefable Debut', 'fr', species, moves)).toBe('Début de Méga-Mélodelfe');
-    expect(eventLabelFr('New Mega Level: Super Max', 'fr', species, moves)).toBe('Nouveau niveau Méga : Super Max');
+    expect(eventLabelFr('New Mega Level: Super Max', 'fr', species, moves)).toBe('Nouveau Méga-Niveau : Super Niveau Max');
+    expect(eventLabelFr('Super Max', 'fr', species, moves)).toBe('Super Niveau Max');
+    expect(
+      eventTextFr('Gengar will know the Charged Attack Shadow Ball.', species, 'fr', moves),
+    ).toBe("Ectoplasma connaîtra l’Attaque Chargée Ball'Ombre.");
     expect(
       eventTextFr('Mega Clefable, a Fairy- and Flying-type Pokémon, makes its Pokémon GO debut in Super Mega Raids!', species, 'fr', moves),
     ).toBe('Méga-Mélodelfe, un Pokémon de type Fée et Vol, fait ses débuts dans Pokémon GO (Super Méga-Raids) !');
@@ -93,7 +105,7 @@ describe('event names in French', () => {
         moves,
       ),
     ).toBe(
-      'Méga-Mélodelfe peut atteindre le niveau Super Max pour la première fois. Monte d’abord son niveau Méga au max, puis utilise de la Méga-Énergie Mélodelfe pour passer Super Max (les Méga-Raids donnent la Méga-Énergie nécessaire).',
+      'Méga-Mélodelfe peut atteindre le Super Niveau Max pour la première fois. Monte d’abord son Méga-Niveau au max, puis utilise de la Méga-Énergie Mélodelfe pour atteindre le Super Niveau Max (les Méga-Raids donnent la Méga-Énergie nécessaire).',
     );
   });
 

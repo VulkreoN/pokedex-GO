@@ -7,10 +7,12 @@ import { db, schema } from '../db/index.js';
 import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getEventSpawns } from '../game/eventSpawns.js';
-import { getRichEvents } from '../game/eventDetails.js';
+import { getRichEventById, getRichEvents } from '../game/eventDetails.js';
+import { dataService } from '../data/service.js';
 import { getResearch } from '../game/research.js';
 import { itemFr, questFr } from '../lib/gameTexts.js';
 import { LEAGUES, getBattleData, getPopularTeams, getPvpDetails, getPvpRankings, type League } from '../game/pvpRankings.js';
+import { rateLimit } from '../lib/ratelimit.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
@@ -53,25 +55,70 @@ export const gameRoutes = new Hono<AuthEnv>()
     }
   })
   /** Same-origin CORS-safe proxy for event bonus icons, banners & sprites during PNG/PDF infographic export. */
-  .get('/asset', async (c) => {
-    const u = parseAllowedAssetUrl(c.req.query('url'));
-    if (!u) return c.json({ error: 'invalid_url' }, 400);
+  .get('/asset', rateLimit({ windowMs: 60_000, max: 180 }), async (c) => {
+    let current = parseAllowedAssetUrl(c.req.query('url'));
+    if (!current) return c.json({ error: 'invalid_url' }, 400);
     try {
-      const res = await fetch(u.toString(), {
-        headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' },
-        signal: AbortSignal.timeout(6_000),
-      });
-      if (!res.ok) return c.json({ error: 'upstream_failed' }, 502);
-      const finalUrl = parseAllowedAssetUrl(res.url);
-      if (!finalUrl) return c.json({ error: 'invalid_redirect' }, 400);
+      let res: Response | null = null;
+      for (let hops = 0; hops < 4; hops++) {
+        res = await fetch(current.toString(), {
+          headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(6_000),
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get('location');
+          void res.body?.cancel();
+          if (!loc) return c.json({ error: 'invalid_redirect' }, 400);
+          let next: URL;
+          try {
+            next = new URL(loc, current);
+          } catch {
+            return c.json({ error: 'invalid_redirect' }, 400);
+          }
+          const allowed = parseAllowedAssetUrl(next.toString());
+          if (!allowed) return c.json({ error: 'invalid_redirect' }, 400);
+          current = allowed;
+          continue;
+        }
+        break;
+      }
+      if (!res || !res.ok) return c.json({ error: 'upstream_failed' }, 502);
       const ct = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
-      if (!ALLOWED_IMAGE_TYPES.has(ct)) return c.json({ error: 'invalid_type' }, 415);
-      const buf = await res.arrayBuffer();
-      if (buf.byteLength === 0 || buf.byteLength > MAX_ASSET_BYTES) return c.json({ error: 'too_large' }, 413);
+      if (!ALLOWED_IMAGE_TYPES.has(ct)) {
+        void res.body?.cancel();
+        return c.json({ error: 'invalid_type' }, 415);
+      }
+      const len = Number(res.headers.get('content-length') ?? 0);
+      if (len > MAX_ASSET_BYTES) {
+        void res.body?.cancel();
+        return c.json({ error: 'too_large' }, 413);
+      }
+      if (!res.body) return c.json({ error: 'upstream_failed' }, 502);
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_ASSET_BYTES) {
+          void reader.cancel();
+          return c.json({ error: 'too_large' }, 413);
+        }
+        chunks.push(value);
+      }
+      if (total === 0) return c.json({ error: 'too_large' }, 413);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const ch of chunks) {
+        out.set(ch, offset);
+        offset += ch.byteLength;
+      }
       c.header('content-type', ct);
       c.header('cache-control', 'public, max-age=86400');
       c.header('x-content-type-options', 'nosniff');
-      return c.body(buf, 200);
+      return c.body(out, 200);
     } catch {
       return c.json({ error: 'upstream_failed' }, 502);
     }
@@ -82,6 +129,17 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ events: await getRichEvents() });
     } catch (e) {
       return c.json({ events: [], error: (e as Error).message }, 502);
+    }
+  })
+  /** On-demand rich event detail for any event clicked from the weekly timeline (including raids, GBL, past events). */
+  .get('/events/:id', async (c) => {
+    const id = c.req.param('id');
+    try {
+      const event = await getRichEventById(id, dataService.findArchivedEvent(id) ?? null);
+      if (!event) return c.json({ error: 'not_found' }, 404);
+      return c.json({ event });
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 502);
     }
   })
   .get('/research', async (c) => {

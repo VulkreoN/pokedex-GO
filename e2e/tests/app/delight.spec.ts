@@ -47,7 +47,7 @@ test('copy buttons say "Copied ✓"; species have their cry; the header takes th
   await page.goto('/dex/25');
   await expect(page.getByRole('button', { name: 'Écouter le cri de Pikachu' })).toBeVisible();
 
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('button', { name: 'Bravoure' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-team', 'valor');
   await page.reload();
@@ -107,7 +107,7 @@ test('the app opens from what this device kept, even when the server does not an
 });
 
 test('Me leads to an About page: who made the app, the Discord, the version', async ({ page }) => {
-  await page.goto('/me');
+  await page.goto('/me?tab=prefs');
   await page.getByRole('link', { name: /À propos/ }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByText('Hakim', { exact: true })).toBeVisible();

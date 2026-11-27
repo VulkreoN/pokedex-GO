@@ -1,14 +1,14 @@
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { isValidVariantKey } from '@mydexpogo/shared';
+import { isValidVariantKey, neutralKey } from '@mydexpogo/shared';
 import { z } from 'zod';
 import { requireRole, type AuthEnv } from '../auth.js';
 import { dataService } from '../data/service.js';
 import { feedService } from '../feed/service.js';
 import { db, schema } from '../db/index.js';
 import { hashToken } from '../lib/ids.js';
-import { migrateStoredGenders } from '../lists/genders.js';
+import { syncCollectionsForOverrides } from '../lists/syncOverrides.js';
 import { randomBytes } from 'node:crypto';
 import { audit } from '../lib/audit.js';
 import { notifyAccount } from '../notify/service.js';
@@ -17,7 +17,16 @@ import { notifyAccount } from '../notify/service.js';
 /** The categories a manager can put a variant in. */
 const VARIANT_KINDS = ['base', 'costume', 'form', 'regional', 'mega', 'gmax'] as const;
 
-export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({ released: o.released, label: o.labelEn ? { en: o.labelEn, fr: o.labelFr } : null, genders: o.genders, shinyReleased: o.shinyReleased, noEvolve: o.noEvolve, noMega: o.noMega, kind: o.kind, hidden: o.hidden });
+export const overrideState = (o: typeof schema.variantOverrides.$inferSelect) => ({
+  released: o.released,
+  label: o.labelEn || o.labelFr ? { en: o.labelEn ?? '', fr: o.labelFr } : null,
+  genders: o.genders,
+  shinyReleased: o.shinyReleased,
+  noEvolve: o.noEvolve,
+  noMega: o.noMega,
+  kind: o.kind,
+  hidden: o.hidden,
+});
 
 /** Public: the generated dataset, the event archive, and the freshness status. */
 export const dataRoutes = new Hono<AuthEnv>()
@@ -50,9 +59,16 @@ export const dataRoutes = new Hono<AuthEnv>()
     return c.json({ started, status: dataService.getStatus() }, started ? 202 : 409);
   });
 
+const labelSchema = z
+  .object({
+    en: z.string().trim().max(60).optional(),
+    fr: z.string().trim().max(60).optional(),
+  })
+  .refine((l) => !!(l.en || l.fr), 'label cannot be empty');
+
 const overrideBody = z.object({
   released: z.boolean().nullable().optional(),
-  label: z.object({ en: z.string().trim().min(1).max(60), fr: z.string().trim().max(60).optional() }).nullable().optional(),
+  label: labelSchema.nullable().optional(),
   /** For forms the game master does not describe yet: which genders exist ([] = genderless). */
   genders: z.array(z.enum(['m', 'f'])).max(2).refine((g) => new Set(g).size === g.length, 'duplicate gender').nullable().optional(),
   /** The variant is out but its shiny is not (or the other way round). */
@@ -78,7 +94,7 @@ export const overrideRoutes = new Hono<AuthEnv>()
       overrides: rows.map(({ o, by }) => ({
         variantKey: o.variantKey,
         released: o.released,
-        label: o.labelEn ? { en: o.labelEn, fr: o.labelFr ?? undefined } : null,
+        label: o.labelEn || o.labelFr ? { en: o.labelEn ?? '', fr: o.labelFr ?? undefined } : null,
         genders: o.genders,
         shinyReleased: o.shinyReleased,
         noEvolve: o.noEvolve,
@@ -92,13 +108,25 @@ export const overrideRoutes = new Hono<AuthEnv>()
     });
   })
   /**
-   * Managers: the same change on many variants at once (released, shiny out, can't evolve, hidden). A field left out is
-   * not touched, and each variant keeps its other corrections (name, genders). One journal line per variant.
+   * Managers: the same change on many variants at once (released, shiny out, can't evolve, category, label, hidden).
+   * A field left out is not touched, and each variant keeps its other corrections. One journal line per variant.
    */
   .patch(
     '/',
     requireRole('manager'),
-    zValidator('json', z.object({ keys: z.array(z.string()).min(1).max(1000), released: z.boolean().nullable().optional(), shinyReleased: z.boolean().nullable().optional(), noEvolve: z.boolean().nullable().optional(), noMega: z.boolean().nullable().optional(), kind: z.enum(VARIANT_KINDS).nullable().optional(), hidden: z.boolean().nullable().optional() })),
+    zValidator(
+      'json',
+      z.object({
+        keys: z.array(z.string()).min(1).max(1000),
+        released: z.boolean().nullable().optional(),
+        label: labelSchema.nullable().optional(),
+        shinyReleased: z.boolean().nullable().optional(),
+        noEvolve: z.boolean().nullable().optional(),
+        noMega: z.boolean().nullable().optional(),
+        kind: z.enum(VARIANT_KINDS).nullable().optional(),
+        hidden: z.boolean().nullable().optional(),
+      }),
+    ),
     async (c) => {
       const { keys, ...patch } = c.req.valid('json');
       if (!keys.every(isValidVariantKey)) return c.json({ error: 'invalid_variant_key' }, 400);
@@ -108,11 +136,13 @@ export const overrideRoutes = new Hono<AuthEnv>()
       for (const k of keys) {
         const [before] = await db.select().from(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k)).limit(1);
         if (before) befores.set(k, before);
+        const nextLabelEn = patch.label !== undefined ? (patch.label?.en || null) : (before?.labelEn ?? null);
+        const nextLabelFr = patch.label !== undefined ? (patch.label?.fr || null) : (before?.labelFr ?? null);
         const values = {
           variantKey: k,
           released: patch.released !== undefined ? patch.released : (before?.released ?? null),
-          labelEn: before?.labelEn ?? null,
-          labelFr: before?.labelFr ?? null,
+          labelEn: nextLabelEn,
+          labelFr: nextLabelFr,
           genders: before?.genders ?? null,
           shinyReleased: patch.shinyReleased !== undefined ? patch.shinyReleased : (before?.shinyReleased ?? null),
           noEvolve: patch.noEvolve !== undefined ? patch.noEvolve : (before?.noEvolve ?? null),
@@ -122,18 +152,39 @@ export const overrideRoutes = new Hono<AuthEnv>()
           updatedBy: me,
           updatedAt: new Date(),
         };
-        if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
+        if (values.released === null && !values.labelEn && !values.labelFr && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
           await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, k));
         } else {
           await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
         }
       }
       dataService.invalidateOverrides();
+      const nowMap = new Map(await Promise.all(keys.map(async (k) => [k, await dataService.shownState(k)] as const)));
+      const sync = await syncCollectionsForOverrides(
+        keys.map((k) => ({
+          key: k,
+          was: was.get(k) ?? null,
+          now: nowMap.get(k) ?? null,
+          explicit: { released: patch.released, shinyReleased: patch.shinyReleased, hidden: patch.hidden },
+        })),
+        await dataService.variants(),
+      );
+      const recordedPruned = new Set<string>();
       for (const k of keys) {
         const before = befores.get(k);
-        await audit(me, 'override.set', 'variant', k, { before: before ? overrideState(before) : null, after: patch, was: was.get(k), now: await dataService.shownState(k), bulk: keys.length });
+        const nk = neutralKey(k);
+        const pruned = !recordedPruned.has(nk) ? sync.prunedByKey.get(nk) : undefined;
+        if (pruned?.length) recordedPruned.add(nk);
+        await audit(me, 'override.set', 'variant', k, {
+          before: before ? overrideState(before) : null,
+          after: patch,
+          was: was.get(k),
+          now: nowMap.get(k),
+          bulk: keys.length,
+          ...(pruned?.length ? { pruned } : {}),
+        });
       }
-      return c.json({ ok: true, count: keys.length });
+      return c.json({ ok: true, count: keys.length, updatedLists: sync.listsUpdated, removedEntries: sync.entriesRemoved });
     },
   )
   .put('/:key', requireRole('manager'), zValidator('json', overrideBody), async (c) => {
@@ -145,8 +196,8 @@ export const overrideRoutes = new Hono<AuthEnv>()
     const values = {
       variantKey: key,
       released: body.released ?? null,
-      labelEn: body.label?.en ?? null,
-      labelFr: body.label?.fr ?? null,
+      labelEn: body.label?.en || null,
+      labelFr: body.label?.fr || null,
       genders: body.genders ?? null,
       shinyReleased: body.shinyReleased ?? null,
       noEvolve: body.noEvolve ?? null,
@@ -156,25 +207,43 @@ export const overrideRoutes = new Hono<AuthEnv>()
       updatedBy: c.get('user').id,
       updatedAt: new Date(),
     };
-    if (values.released === null && !values.labelEn && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
+    if (values.released === null && !values.labelEn && !values.labelFr && !values.genders && values.shinyReleased === null && values.noEvolve === null && values.noMega === null && values.kind === null && values.hidden === null) {
       await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     } else {
       await db.insert(schema.variantOverrides).values(values).onConflictDoUpdate({ target: schema.variantOverrides.variantKey, set: values });
     }
     dataService.invalidateOverrides();
+    const now = await dataService.shownState(key);
+    const sync = await syncCollectionsForOverrides(
+      [
+        {
+          key,
+          was,
+          now,
+          explicit: { released: body.released, shinyReleased: body.shinyReleased, hidden: body.hidden, genders: body.genders },
+        },
+      ],
+      await dataService.variants(),
+    );
+    const pruned = sync.prunedByKey.get(neutralKey(key));
     // was / now: what players saw before and see after, so the journal can say what changed.
     await audit(c.get('user').id, 'override.set', 'variant', key, {
       before: before ? overrideState(before) : null,
-      after: { released: values.released, label: values.labelEn ? { en: values.labelEn, fr: values.labelFr } : null, genders: values.genders, shinyReleased: values.shinyReleased, noEvolve: values.noEvolve, noMega: values.noMega, kind: values.kind, hidden: values.hidden },
+      after: {
+        released: values.released,
+        label: values.labelEn || values.labelFr ? { en: values.labelEn ?? '', fr: values.labelFr } : null,
+        genders: values.genders,
+        shinyReleased: values.shinyReleased,
+        noEvolve: values.noEvolve,
+        noMega: values.noMega,
+        kind: values.kind,
+        hidden: values.hidden,
+      },
       was,
-      now: await dataService.shownState(key),
+      now,
+      ...(pruned?.length ? { pruned } : {}),
     });
-    // Entries now listed under a gender this variant does not have move to the right one.
-    if (body.genders) {
-      const variants = await dataService.variants();
-      if (variants) await migrateStoredGenders(variants);
-    }
-    return c.json({ ok: true });
+    return c.json({ ok: true, updatedLists: sync.listsUpdated, removedEntries: sync.entriesRemoved });
   })
   .delete('/:key', requireRole('manager'), async (c) => {
     const key = c.req.param('key');
@@ -182,8 +251,11 @@ export const overrideRoutes = new Hono<AuthEnv>()
     const was = await dataService.shownState(key);
     await db.delete(schema.variantOverrides).where(eq(schema.variantOverrides.variantKey, key));
     dataService.invalidateOverrides();
-    if (before) await audit(c.get('user').id, 'override.reset', 'variant', key, { before: overrideState(before), after: null, was, now: await dataService.shownState(key) });
-    return c.json({ ok: true });
+    const now = await dataService.shownState(key);
+    const sync = await syncCollectionsForOverrides([{ key, was, now }], await dataService.variants());
+    const pruned = sync.prunedByKey.get(neutralKey(key));
+    if (before) await audit(c.get('user').id, 'override.reset', 'variant', key, { before: overrideState(before), after: null, was, now, ...(pruned?.length ? { pruned } : {}) });
+    return c.json({ ok: true, updatedLists: sync.listsUpdated, removedEntries: sync.entriesRemoved });
   });
 
 /** Admin: promote or demote accounts. */

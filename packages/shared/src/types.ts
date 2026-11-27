@@ -294,6 +294,9 @@ export interface ListEvent {
   items: ListEventItem[];
   data?: Record<string, unknown> | null;
   at: string;
+  undoneAt?: string | null;
+  /** True when the viewer (collection owner) can reverse this operation from history. */
+  undoable?: boolean;
 }
 
 export interface ListDetail extends ListSummary {
@@ -382,7 +385,9 @@ export type LiveEvent =
   | { type: 'friends' }
   | { type: 'notification' }
   /** The banner everyone sees changed. */
-  | { type: 'announcement' };
+  | { type: 'announcement' }
+  /** The Pokédex dataset or manager overrides changed: open clients refresh their dataset copy. */
+  | { type: 'dataset' };
 
 export type Role = 'user' | 'manager' | 'admin';
 

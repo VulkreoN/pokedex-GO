@@ -49,9 +49,9 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
         },
         {
           icon: '✨',
-          title: 'Shiny, PvP & Sélection multiple',
+          title: 'Shiny, PvP, Ajout 1 clic & Sélection',
           where: 'Puces rapides sous la recherche',
-          text: 'Passe tout le Pokédex en shiny d’un clic, affiche les rangs PvP sur chaque carte ou active « Sélection » pour ajouter plusieurs Pokémon en même temps.',
+          text: 'Passe tout le Pokédex en shiny, affiche les rangs PvP, active « Ajout 1 clic » pour remplir directement une collection en touchant les cartes ou utilise « Sélection » pour ajouter en lot.',
         },
         {
           icon: '📖',
@@ -90,10 +90,10 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
       intro: 'Coche tes captures, exporte ta recherche pour le jeu et partage tes avancées.',
       steps: [
         {
-          icon: '✅',
-          title: 'Cocher (♂/♀) & Annuler',
-          where: 'Touche une carte ou ses bulles ♂ / ♀',
-          text: 'Touche une carte pour cocher tout d’un coup, ou une bulle ♂ / ♀ pour suivre chaque sexe à part. En cas de fausse manip, touche « Annuler ».',
+          icon: '➕',
+          title: 'Ajout rapide, Cocher (♂/♀) & Annuler',
+          where: 'Bouton « + Ajouter » · cartes et bulles ♂ / ♀',
+          text: 'Touche « + Ajouter » pour ajouter des Pokémon en 1 clic, importer une recherche ou appliquer un modèle. Touche une carte (ou ♂ / ♀) pour cocher — chaque opération peut être annulée depuis le bandeau ou l’historique (🕒).',
         },
         {
           icon: '📋',
@@ -194,7 +194,7 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
         {
           icon: '🦋',
           title: 'Ajouter un ami & cartes Prismillon',
-          where: 'Onglet « Ajout d’amis · Prismillon » en haut',
+          where: 'Onglets « Ajouter » et « 🦋 Prismillon » en haut',
           text: 'Ajoute un ami par code ou QR, déclare tes motifs de cartes postales (illimité ou quantité de voyage) et découvre les dresseurs qui ont les Prismillon qu’il te manque !',
         },
       ],
@@ -207,7 +207,7 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
           icon: '🏅',
           title: 'Médailles de dresseur à paliers',
           where: 'Bloc « Mes médailles »',
-          text: 'Débloque Bronze, Argent, Or et Platine sur 9 médailles de chasse + les 9 régions du Pokédex, calculées automatiquement depuis tes collections.',
+          text: 'Débloque Bronze, Argent, Or et Platine sur 26 médailles inspirées du jeu (Pokédex, défis Zarbi/Prismillon/Légendaires et 9 régions), calculées automatiquement depuis tes collections.',
         },
         {
           icon: '🎨',
@@ -243,9 +243,9 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
         },
         {
           icon: '✨',
-          title: 'Shiny, PvP & Multi-select',
+          title: 'Shiny, PvP, 1-tap Add & Multi-select',
           where: 'Quick chips under search',
-          text: 'Toggle shiny sprites across the whole Pokédex, show PvP ranks on cards or enable Multi-select to add many Pokémon at once.',
+          text: 'Toggle shiny sprites across the Pokédex, show PvP ranks, enable “1-tap add” to fill a collection directly by tapping cards, or use Multi-select for bulk actions.',
         },
         {
           icon: '📖',
@@ -284,10 +284,10 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
       intro: 'Tick what you caught, copy your game search string and share progress.',
       steps: [
         {
-          icon: '✅',
-          title: 'Tick (♂/♀) & Undo',
-          where: 'Tap a card or its ♂ / ♀ pills',
-          text: 'Tap a card to tick all genders, or tap ♂ / ♀ individually. Tapped by mistake? Hit “Undo” in the toast right away.',
+          icon: '➕',
+          title: 'Quick add, Tick (♂/♀) & Undo',
+          where: '“+ Add” button · cards and ♂ / ♀ pills',
+          text: 'Tap “+ Add” to add Pokémon in 1 tap, import a search or apply a template. Tap a card (or ♂ / ♀) to tick — any change can be undone right away or from History (🕒).',
         },
         {
           icon: '📋',
@@ -388,7 +388,7 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
         {
           icon: '🦋',
           title: 'Add friends & Vivillon postcards',
-          where: '“Add friends · Vivillon” tab at the top',
+          where: '“Add” and “🦋 Vivillon” tabs at the top',
           text: 'Add by code or QR, share the regional postcards you can send (unlimited or travel count) and find trainers who have the Vivillon patterns you are missing!',
         },
       ],
@@ -401,7 +401,7 @@ const GUIDES: Record<Lang, Record<TourPageId, PageTourDef>> = {
           icon: '🏅',
           title: 'Tiered trainer medals',
           where: '“My medals” card',
-          text: 'Progress from Bronze to Platinum across 9 hunting medals and all 9 Pokédex regions, calculated straight from your collections.',
+          text: 'Progress from Bronze to Platinum across 26 in-game inspired medals (Pokédex, Unown/Vivillon/Legendary challenges and all 9 regions), calculated straight from your collections.',
         },
         {
           icon: '🎨',
@@ -480,18 +480,19 @@ export function PageTourBanner({ page }: { page: TourPageId }) {
         </button>
       </div>
 
-      {/* Step progress bars (clickable to jump to any step) */}
-      <div className="mt-2.5 flex gap-1.5" role="tablist" aria-label={t.tour_badge(def.label)}>
+      {/* Step progress bars (clickable to jump to any step, 24px+ touch target) */}
+      <div className="mt-1 flex gap-1.5" role="group" aria-label={t.tour_badge(def.label)}>
         {def.steps.map((s, idx) => (
           <button
             key={s.title}
             type="button"
-            role="tab"
-            aria-selected={idx === stepIdx}
+            aria-current={idx === stepIdx ? 'step' : undefined}
             aria-label={`${idx + 1}. ${s.title}`}
             onClick={() => setStepIdx(idx)}
-            className={`h-1.5 flex-1 rounded-full transition ${idx <= stepIdx ? 'bg-go' : 'bg-paper-2 hover:bg-line'}`}
-          />
+            className="flex min-h-6 flex-1 items-center py-2"
+          >
+            <span className={`block h-1.5 w-full rounded-full transition ${idx <= stepIdx ? 'bg-go' : 'bg-paper-2 hover:bg-line'}`} />
+          </button>
         ))}
       </div>
 
@@ -611,15 +612,18 @@ export function PageTourSheet({
               >
                 {t.tour_prev}
               </Button>
-              <div className="flex flex-1 justify-center gap-1.5">
+              <div className="flex flex-1 justify-center gap-0.5">
                 {def.steps.map((s, idx) => (
                   <button
                     key={s.title}
                     type="button"
+                    aria-current={idx === stepIdx ? 'step' : undefined}
                     aria-label={`${idx + 1}. ${s.title}`}
                     onClick={() => setStepIdx(idx)}
-                    className={`h-2 rounded-full transition-all ${idx === stepIdx ? 'w-5 bg-go' : 'w-2 bg-line hover:bg-ink-3'}`}
-                  />
+                    className="flex min-h-7 min-w-7 items-center justify-center"
+                  >
+                    <span className={`block h-2 rounded-full transition-all ${idx === stepIdx ? 'w-5 bg-go' : 'w-2 bg-line hover:bg-ink-3'}`} />
+                  </button>
                 ))}
               </div>
               {isLast ? (

@@ -6,6 +6,8 @@ import { isValidVariantKey } from '@mydexpogo/shared';
 import { requireRole, type AuthEnv } from '../auth.js';
 import { db, schema } from '../db/index.js';
 import { feedService } from '../feed/service.js';
+import { audit } from '../lib/audit.js';
+import { hub } from '../notify/hub.js';
 
 /** Manager review queue of release signals. */
 export const feedRoutes = new Hono<AuthEnv>()
@@ -26,17 +28,20 @@ export const feedRoutes = new Hono<AuthEnv>()
     const [item] = await db.select({ id: schema.feedItems.id }).from(schema.feedItems).where(eq(schema.feedItems.id, id)).limit(1);
     if (!item) return c.json({ error: 'not_found' }, 404);
     await feedService.applyReleased(variantKeys, me.id);
+    if (variantKeys.length) await audit(me.id, 'override.feed_apply', 'feed', id, { variantKeys });
+    hub.emitAll({ type: 'dataset' });
     await db.update(schema.feedItems).set({ status: 'done', handledBy: me.id, handledAt: new Date() }).where(eq(schema.feedItems.id, id));
-    feedService.status.pending = Math.max(0, feedService.status.pending - 1);
+    await feedService.refreshPending().catch(() => {});
     return c.json({ ok: true });
   })
   .post('/:id/ignore', async (c) => {
     const me = c.get('user');
     await db.update(schema.feedItems).set({ status: 'ignored', handledBy: me.id, handledAt: new Date() }).where(eq(schema.feedItems.id, c.req.param('id')));
-    feedService.status.pending = Math.max(0, feedService.status.pending - 1);
+    await feedService.refreshPending().catch(() => {});
     return c.json({ ok: true });
   })
   .post('/:id/reopen', async (c) => {
     await db.update(schema.feedItems).set({ status: 'new', handledBy: null, handledAt: null }).where(eq(schema.feedItems.id, c.req.param('id')));
+    await feedService.refreshPending().catch(() => {});
     return c.json({ ok: true });
   });

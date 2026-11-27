@@ -39,7 +39,10 @@ spec:
                 - >-
                   set -e;
                   f=/backups/mydex-$(date +%Y%m%d-%H%M).sql.gz;
-                  pg_dump -h db -U mydex mydex | gzip > "$f.tmp" && mv "$f.tmp" "$f";
+                  rm -f "$f.tmp";
+                  pg_dump -h db -U mydex -Z 6 -f "$f.tmp" mydex;
+                  test -s "$f.tmp";
+                  mv "$f.tmp" "$f";
                   ls -1t /backups/mydex-*.sql.gz | tail -n +15 | xargs -r rm --;
                   ls -lh /backups
               volumeMounts:

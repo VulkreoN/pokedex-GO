@@ -416,7 +416,10 @@ export function monsFr(text: string, species: SpeciesNames | undefined): string 
     .replace(/\bGigantamax (\p{L}[\p{L}-]*)/gu, '$1 Gigamax')
     .replace(/\bDynamax (\p{L}[\p{L}-]*)/gu, '$1 Dynamax')
     .replace(/\b(Alolan|Galarian|Hisuian|Paldean) (\p{L}[\p{L}-]*)/gu, (_, r: string, n: string) => `${n} ${REGION_FR[r]}`)
-    .replace(/\bShadow (\p{L}[\p{L}-]*(?: \([^)]*\))?)/gu, '$1 obscur')
+    .replace(
+      /\bShadow (?!Raids?\b|Ball\b|Claw\b|Punch\b|Sneak\b|Force\b|Bone\b|Shard\b|Storm\b|Rush\b|End\b|Blitz\b|Rider\b|Pok[eé]mon\b)((?:M\.\s+\p{L}+|\p{L}[\p{L}.'-]*(?:\s+Jr\.)?)(?: (?:d['’]Alola|de Galar|de Hisui|de Paldea))?(?: \([^)]*\))?)/gu,
+      '$1 obscur',
+    )
     .replace(/,? and /g, ' et ')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -960,7 +963,7 @@ export function bonusFr(raw: string, species?: SpeciesNames, lang = 'fr'): strin
     [/^An additional ([\d,]+) Stardust from (.+)$/i, (m) => `+${m[1]!.replace(/,/g, ' ')} Poussières Étoile (${eventLabelFr(m[2]!, 'fr')})`],
     [/^(\d+)[x×]\s*GO Transporter Energy gained per hour.*$/i, (m) => `${m[1]}× Énergie Transporteur GO par heure (Pokémon HOME)`],
     [/^(\d+)[x×]\s*Mega Energy for exploring with (.+?) as your buddy.*$/i, (m) => `${m[1]}× Méga-Énergie en explorant avec ${mons(m[2]!)} en copain`],
-    [/^(.+?) caught from Super Mega Raids will have Mega Level 1 unlocked$/i, (m) => `${mons(m[1]!)} attrapé en Super Méga-Raid arrive Méga niveau 1`],
+    [/^(.+?) caught from Super Mega Raids will have Mega Level 1 unlocked$/i, (m) => `${mons(m[1]!)} attrapé en Super Méga-Raid arrive au Méga-Niveau 1`],
     [/^Take a few snapshots(?: during .+)? for a surprise!?$/i, () => 'Prends des clichés GO pendant l’événement pour une surprise !'],
     [/^Team GO Rocket will appear more frequently at Pok[eé]Stops and in balloons$/i, () => 'Team GO Rocket plus fréquente aux PokéStops et en montgolfière'],
     [/^You can use a Charged TM to help a Shadow Pok[eé]mon forget the Charged Attack Frustration$/i, () => 'Utilise une CT Chargée pour faire oublier Frustration aux Pokémon obscurs'],
@@ -1028,7 +1031,7 @@ export function eventTextFr(raw: string, species?: SpeciesNames, lang = 'fr', mo
     // Super Max recurring Niantic explanation
     [
       /^(.+?)\s+can reach Super Max Level for the first time\.\s*Raise its Mega[- ]Level to Max first,\s*then use (.+?)\s+Mega[- ]Energy to reach Super Max\..*$/i,
-      (m) => `${mons(m[1]!)} peut atteindre le niveau Super Max pour la première fois. Monte d’abord son niveau Méga au max, puis utilise de la Méga-Énergie ${mons(m[2]!)} pour passer Super Max (les Méga-Raids donnent la Méga-Énergie nécessaire).`,
+      (m) => `${mons(m[1]!)} peut atteindre le Super Niveau Max pour la première fois. Monte d’abord son Méga-Niveau au max, puis utilise de la Méga-Énergie ${mons(m[2]!)} pour atteindre le Super Niveau Max (les Méga-Raids donnent la Méga-Énergie nécessaire).`,
     ],
     [
       /^(.+?)\s+makes (?:its|their) Pok[eé]mon GO debut(?: in (.+?))?[!\.]?$/i,
@@ -1117,8 +1120,9 @@ export function eventTextFr(raw: string, species?: SpeciesNames, lang = 'fr', mo
     .replace(/\bCharged Attack\b/gi, 'Attaque Chargée')
     .replace(/\bFast Attack\b/gi, 'Attaque Immédiate')
     .replace(/\bSuper Mega Raid Day\b/gi, 'Super Journée de Méga-Raids')
-    .replace(/\bSuper Max Level\b/gi, 'niveau Super Max')
-    .replace(/\bMega[- ]Level\b/gi, 'niveau Méga')
+    .replace(/\bSuper Max Level\b/gi, 'Super Niveau Max')
+    .replace(/\bSuper Max\b/gi, 'Super Niveau Max')
+    .replace(/\bMega[- ]Level\b/gi, 'Méga-Niveau')
     .replace(/\bMega[- ]Energy\b/gi, 'Méga-Énergie')
     .replace(/\bMega[- ]Evolving\b/gi, 'Méga-Évoluer')
     .replace(/\bSpecial Backgrounds?\b/gi, 'Fonds spéciaux')
@@ -1135,6 +1139,7 @@ export function eventTextFr(raw: string, species?: SpeciesNames, lang = 'fr', mo
     .replace(/\bSuper Mega Raids?\b/gi, 'Super Méga-Raids')
     .replace(/\bMega Raids?\b/gi, 'Méga-Raids')
     .replace(/\bShadow Raids?\b/gi, 'Raids obscurs')
+    .replace(/\bShadow Pok[eé]mon\b/gi, 'Pokémon obscur')
     .replace(/\bRaid Battles?\b/gi, 'Raids')
     .replace(/\bOne-Star Raids?\b/gi, 'Raids 1★')
     .replace(/\bThree-Star Raids?\b/gi, 'Raids 3★')
@@ -1154,7 +1159,7 @@ export function eventTextFr(raw: string, species?: SpeciesNames, lang = 'fr', mo
     .replace(/\bXP\b/g, 'PX');
 
   out = datesToFr(out);
-  return withMoves(mons(out));
+  return mons(withMoves(out));
 }
 
 /** Translates sub-section headings (Raid tiers, GO Pass ranks, Eggs, Days, Debuts, Moves) into short French labels. */
@@ -1204,7 +1209,8 @@ export function eventLabelFr(raw: string, lang = 'fr', species?: SpeciesNames, m
     [/^Special Backgrounds?$/i, () => 'Fonds spéciaux'],
     [/^Pok[eé]mon Debut$/i, () => 'Nouveau Pokémon'],
     [/^(.+?)\s+Debut$/i, (m) => `Début de ${mons(m[1]!)}`],
-    [/^New Mega Level:\s*(.+)$/i, (m) => `Nouveau niveau Méga : ${m[1]}`],
+    [/^New Mega Level:\s*(.+)$/i, (m) => `Nouveau Méga-Niveau : ${/^Super Max(?: Level)?$/i.test(m[1]!.trim()) ? 'Super Niveau Max' : m[1]}`],
+    [/^Super Max(?: Level)?$/i, () => 'Super Niveau Max'],
     [/^New Attack:\s*(.+)$/i, (m) => `Nouvelle attaque : ${mv(m[1]!)}`],
     [/^Attack Availability Update$/i, () => 'Nouvelle attaque'],
     [/^Featured Attack$/i, () => 'Attaque exclusive'],

@@ -45,6 +45,7 @@ function ctx(): AudioContext | null {
  * (with a silent sound, which iOS needs), and again when the app comes back to the screen. Sounds then start at once.
  */
 function unlock() {
+  if (!read('sounds')) return;
   const a = ctx();
   if (!a) return;
   if (a.state !== 'running') void a.resume().catch(() => {});

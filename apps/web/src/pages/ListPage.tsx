@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import type { EntryTag, ListDetail, ListDetailEntry, ListVisibility } from '@mydexpogo/shared';
+import { BannerSlot } from '../components/BannerSlot.js';
 import { ExportSheet } from '../components/ExportSheet.js';
-import { ImportSearch } from '../components/ImportSearch.js';
 import { ListHistory } from '../components/ListHistory.js';
 import { CollectionStatsSheet } from '../components/Medals.js';
+import { QuickAddSheet } from '../components/QuickAddSheet.js';
 import { SearchStrings } from '../components/SearchStrings.js';
-import { PageTourBanner, PageTourButton } from '../components/PageTour.js';
-import { WhatsNewBanner } from '../components/WhatsNew.js';
+import { PageTourButton } from '../components/PageTour.js';
 import { Sparkle, Sprite } from '../components/Sprite.js';
 import { useToast } from '../components/toast.js';
-import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, useRolling } from '../components/ui.js';
+import { Badge, Button, CardsSkeleton, Chip, Empty, HoldButton, IconButton, Progress, Sheet, SwitchThumb, TextField, TopBar, buttonClass, useRolling } from '../components/ui.js';
 import { copyText } from '../lib/api.js';
 import { useMe } from '../lib/auth.js';
 import { entryVariant, genderSymbol, matchesQuery, normalize, tagLabel, useDataset, type DatasetIndex } from '../lib/dataset.js';
@@ -107,11 +107,12 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       flush(true);
     };
   }, [list.id, friend]);
+  const [searchParams] = useSearchParams();
   const [sharing, setSharing] = useState(false);
   const [view, setView] = useState<View>('missing');
   const [shinyFilter, setShinyFilter] = useState<'all' | 'shiny' | 'normal'>('all');
   const [tagFilter, setTagFilter] = useState<EntryTag | 'all'>('all');
-  const [offeredOnly, setOfferedOnly] = useState(false);
+  const [offeredOnly, setOfferedOnly] = useState(() => searchParams.get('filter') === 'offered');
   const [query, setQuery] = useState('');
   const [strings, setStrings] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -119,7 +120,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
   const [noteDraft, setNoteDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [quickAddTab, setQuickAddTab] = useState<'search' | 'import' | 'templates' | null>(null);
   const [templateBusy, setTemplateBusy] = useState(false);
   // Several cards at once: tapping a card picks it instead of ticking it.
   const [picking, setPicking] = useState(false);
@@ -212,7 +213,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
     if (!entries.length) return;
     setTemplateBusy(true);
     try {
-      await inParts(entries, (part) => upsert.mutateAsync({ id: list.id, entries: part }));
+      await inParts(entries, (part) => upsert.mutateAsync({ id: list.id, entries: part, insertOnly: true }));
       toast(t.template_count(entries.length));
     } catch {
       toast(t.err_generic);
@@ -321,13 +322,19 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
     if (changing.length) toast(step ? t.milestone(step) : value ? t.ticked(changing.length) : t.unticked(changing.length), { action: { label: t.undo, onClick: () => void writeDone(changing, !value) } });
     return bulk(() => inParts(pickedMembers.filter((m) => m.done !== value), (part) => part.length ? upsert.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, gender: m.gender, shiny: m.shiny, tag: m.tag, done: value, note: m.note })) }) : Promise.resolve()));
   };
-  const bulkRemove = () => {
-    if (!confirm(t.pick_confirm_remove(pickedMembers.length))) return;
+  const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
+  const runBulkRemove = () => {
+    setConfirmBulkRemove(false);
     const gone = pickedMembers;
+    if (!gone.length) return;
     void bulk(async () => {
       await inParts(gone, (part) => remove.mutateAsync({ id: list.id, entries: part.map((m) => ({ variantKey: m.variantKey, shiny: m.shiny, tag: m.tag, gender: m.gender })) }));
       toast(t.removed(gone.length), { action: { label: t.undo, onClick: () => void inParts(gone, (part) => writeDone(part, (m) => m.done)) } });
     });
+  };
+  const bulkRemove = () => {
+    if (!pickedMembers.length) return;
+    setConfirmBulkRemove(true);
   };
   const bulkOffer = () =>
     bulk(async () => {
@@ -377,11 +384,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
         }
       >
         <div className="mx-auto max-w-6xl px-3 pb-2 sm:px-5">
-          {!owner && <p className="muted text-sm">{t.by(list.ownerName)}</p>}
-          {friend && <p className="muted text-sm">{t.offer_hint(list.ownerName)}</p>}
-          {friend && following === false && <p className="muted text-sm">{t.unfollowed_hint}</p>}
-          {list.description && <p className="muted text-sm">{list.description}</p>}
-          <div className="mt-2 flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <Progress done={done} total={list.entries.length} />
             <span className="muted tnum shrink-0 text-xs font-semibold">{t.progress(rolledDone, list.entries.length)}</span>
           </div>
@@ -406,31 +409,50 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
               </Chip>
             ))}
           </div>
-<div className="mt-2 flex gap-2">
-          <Button tone="ghost" className="flex-1 gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setStrings(true)} disabled={list.entries.length === 0}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
-            {t.copy_for_game}
-          </Button>
-            <Button tone="ghost" className="gap-2 bg-white text-go-ink shadow-card hover:bg-white dark:bg-white/15 dark:text-white dark:hover:bg-white/20" onClick={() => setSharing(true)} disabled={list.entries.length === 0}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
-              {t.export_share}
-            </Button>
-          </div>
         </div>
       </TopBar>
 
       <main className={`mx-auto max-w-6xl px-3 sm:px-5 ${picking ? 'pb-72' : 'pb-44'}`}>
-        <WhatsNewBanner />
-        <PageTourBanner page="list" />
+        <BannerSlot page="list" />
+        {/* Non-sticky collection meta & export bar so the Pokémon grid gets maximum viewport height while scrolling. */}
+        {(!owner || list.description || list.entries.length > 0) && (
+          <div className="mt-2 space-y-1.5">
+            {(!owner || list.description) && (
+              <div className="space-y-0.5 text-sm text-ink-2">
+                {!owner && <p>{t.by(list.ownerName)}</p>}
+                {friend && <p>{t.offer_hint(list.ownerName)}</p>}
+                {friend && following === false && <p>{t.unfollowed_hint}</p>}
+                {list.description && <p>{list.description}</p>}
+              </div>
+            )}
+            {list.entries.length > 0 && (
+              <div className="flex gap-2">
+                <Button tone="quiet" className="min-h-10 flex-1 gap-2 border border-line bg-card text-sm text-go-ink shadow-card hover:bg-paper-2 dark:text-go" onClick={() => setStrings(true)}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a1 1 0 0 1 1-1h10" /></svg>
+                  {t.copy_for_game}
+                </Button>
+                <Button tone="quiet" className="min-h-10 gap-2 border border-line bg-card text-sm text-go-ink shadow-card hover:bg-paper-2 dark:text-go" onClick={() => setSharing(true)}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" /></svg>
+                  {t.export_share}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         {list.entries.length === 0 && (
           <Empty>
             {t.empty_list}
             {owner && (
               <>
                 <br />
-                <Link to={`/dex?to=${list.id}`} className="mt-3 inline-block font-semibold text-sky">{t.nav_dex}</Link>
-                <br />
-                <button type="button" onClick={() => setImporting(true)} className="mt-2 inline-block font-semibold text-sky">{t.import_title}</button>
+                <Button tone="primary" className="mt-4" onClick={() => setQuickAddTab('search')}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  {t.add_pokemon}
+                </Button>
+                <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm">
+                  <Link to={`/dex?to=${list.id}`} className="font-semibold text-sky">{t.quick_add_open_dex}</Link>
+                  <button type="button" onClick={() => setQuickAddTab('import')} className="font-semibold text-sky">{t.import_title}</button>
+                </div>
                 <div className="mt-5 text-left">
                   <p className="mb-2 text-center text-xs font-semibold text-ink-3">{t.template_title}</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
@@ -637,15 +659,11 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
 
       {owner && !picking && (
         <div className={`pb-safe pointer-events-none fixed inset-x-0 z-20 px-3 ${basketCount > 0 ? 'bottom-[calc(var(--nav-h)+58px)]' : 'bottom-[var(--nav-h)]'}`}>
-          <div className="mx-auto flex max-w-6xl justify-end gap-2">
-            <button type="button" onClick={() => setImporting(true)} aria-label={t.import_title} title={t.import_title} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-card px-4 font-semibold text-ink shadow-lg ring-1 ring-line hover:brightness-[0.98]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M11 8v6M8 11h6" /></svg>
-              {t.import_short}
-            </button>
-            <Link to={`/dex?to=${list.id}`} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg hover:brightness-110">
+          <div className="mx-auto flex max-w-6xl justify-end">
+            <button type="button" onClick={() => setQuickAddTab('search')} className="pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-full bg-go px-5 font-semibold text-white shadow-lg transition hover:brightness-110 active:scale-[0.98]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {t.add_pokemon}
-            </Link>
+            </button>
           </div>
         </div>
       )}
@@ -653,13 +671,11 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       <ExportSheet open={sharing} onClose={() => setSharing(false)} idx={idx} list={list} defaultOnlyMissing={view !== 'all'} friendCode={owner ? meFriendCode : undefined} />
 
       {owner && (
-        <Sheet open={importing} onClose={() => setImporting(false)} title={t.import_title}>
-          {importing && <ImportSearch idx={idx} list={list} onDone={() => setImporting(false)} />}
-        </Sheet>
+        <QuickAddSheet open={quickAddTab !== null} initialTab={quickAddTab ?? 'search'} idx={idx} list={list} onClose={() => setQuickAddTab(null)} />
       )}
 
       <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title={t.history}>
-        {historyOpen && <ListHistory idx={idx} listId={list.id} me={meName} />}
+        {historyOpen && <ListHistory idx={idx} listId={list.id} me={meName} owner={owner} />}
       </Sheet>
 
       <Sheet open={strings} onClose={() => setStrings(false)} title={t.game_strings_title}>
@@ -713,7 +729,7 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
                 </div>
               )}
               <div className="flex gap-2">
-                <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className="flex-1"><Button className="w-full">{t.nav_dex}</Button></Link>
+                <Link to={`/dex/${idx.variantByKey.get(selected.variantKey)?.dex}`} className={buttonClass('quiet', 'flex-1')}>{t.nav_dex}</Link>
                 {loggedIn && (
                   <Button
                     className="flex-1"
@@ -748,6 +764,17 @@ function ListBody({ idx, list, access, following, id, token, loggedIn, meName, m
       </Sheet>
 
       <CollectionStatsSheet open={statsOpen} onClose={() => setStatsOpen(false)} idx={idx} list={list} />
+      <Sheet open={confirmBulkRemove} onClose={() => setConfirmBulkRemove(false)} title={t.remove_entry}>
+        {confirmBulkRemove && (
+          <div className="space-y-3">
+            <p className="text-sm text-ink-2">{t.pick_confirm_remove(pickedMembers.length)}</p>
+            <div className="flex gap-2">
+              <Button tone="quiet" className="flex-1" onClick={() => setConfirmBulkRemove(false)}>{t.cancel}</Button>
+              <Button tone="danger" className="flex-1" disabled={bulkBusy} onClick={runBulkRemove}>{t.pick_remove}</Button>
+            </div>
+          </div>
+        )}
+      </Sheet>
       {owner && id && (
         <EditSheet
           open={editing}

@@ -33,7 +33,7 @@ export default defineConfig({
         shortcuts: [
           { name: 'Ma dernière collection', short_name: 'Collection', url: '/lists/last', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
           { name: 'Chercher un Pokémon', short_name: 'Chercher', url: '/dex?focus=search', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
-          { name: 'Raids du moment', short_name: 'Raids', url: '/game', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Raids du moment', short_name: 'Raids', url: '/game?tab=raids', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
           { name: 'Mon code ami', short_name: 'Code ami', url: '/friends?qr=1', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
         ],
         icons: [

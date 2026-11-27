@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchStrings, compressDexNumbers, dexRanges, plainTargets } from './search.js';
+import { buildSearchStrings, compressDexNumbers, dexRanges, plainTargets, regionOfVariant, targetFromVariant } from './search.js';
 import { makeVariantKey, parseVariantKey } from './keys.js';
 
 describe('dex ranges', () => {
@@ -118,5 +118,28 @@ describe('shinies and costumes in strings', () => {
     const text = strings.map((x) => x.text).join('\n');
     expect(text).toContain('shiny');
     expect(text).not.toMatch(/^!shiny/);
+  });
+});
+
+describe('reclassified regional variants', () => {
+  it('detects region from label when a manager reclassifies a variant as regional', () => {
+    const reclassified = {
+      key: '52.fMEGA_CUSTOM',
+      dex: 52,
+      form: 'MEGA_CUSTOM',
+      costume: null,
+      gender: null,
+      kind: 'regional' as const,
+      label: { en: 'Galarian', fr: 'de Galar' },
+      img: 'pm52.fMEGA_CUSTOM.icon.png',
+      hasShiny: true,
+      datamined: false,
+      inGameMaster: true,
+    };
+    expect(regionOfVariant(reclassified)).toBe('galar');
+    expect(targetFromVariant(reclassified, false, '').region).toBe('galar');
+
+    const nonRegional = { ...reclassified, kind: 'costume' as const };
+    expect(regionOfVariant(nonRegional)).toBeNull();
   });
 });

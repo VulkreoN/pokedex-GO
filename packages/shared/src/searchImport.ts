@@ -5,7 +5,7 @@
  * Terms: dex numbers and ranges, species names, "+name" for a family, and the trait keywords in English or French.
  * Anything else (CP, types, age...) cannot be read from a collection: it is set aside and reported.
  */
-import { regionOfForm } from './search.js';
+import { regionOfVariant } from './search.js';
 import type { EntryGender, EntryTag, Gender, LocalizedText, PokemonType, Species, Variant } from './types.js';
 
 type Term =
@@ -28,10 +28,10 @@ const KEYWORDS: Record<string, string> = {
   male: 'male', 'mâle': 'male', female: 'female', femelle: 'female',
   lucky: 'lucky', chanceux: 'lucky',
   shadow: 'shadow', obscur: 'shadow',
-  purified: 'purified', 'purifié': 'purified',
+  purified: 'purified', 'purifié': 'purified', purifie: 'purified',
   dynamax: 'dynamax', gigantamax: 'gigantamax', gigamax: 'gigantamax', gmax: 'gigantamax',
   xxl: 'xxl', xxs: 'xxs',
-  background: 'background',
+  background: 'background', fond: 'background', fondspecial: 'background',
   alola: 'alola', galar: 'galar', hisui: 'hisui', paldea: 'paldea',
   mega: 'mega', 'méga': 'mega', megaevolve: 'mega', mega1: 'mega', mega2: 'mega', mega3: 'mega', 'mega1-3': 'mega', 'mega0-3': 'mega',
   legendary: 'legendary', legendaire: 'legendary',
@@ -66,7 +66,7 @@ function termMatches(t: Term, p: Mon): boolean {
         case 'gigantamax': return p.v.kind === 'gmax';
         case 'mega': return p.v.kind === 'mega';
         case 'legendary': case 'mythic': case 'ultra_beast': return p.sp?.rarity === t.id;
-        case 'alola': case 'galar': case 'hisui': case 'paldea': return p.v.kind === 'regional' && regionOfForm(p.v.form) === t.id;
+        case 'alola': case 'galar': case 'hisui': case 'paldea': return p.v.kind === 'regional' && regionOfVariant(p.v) === t.id;
         default: return p.tag === t.id;
       }
   }

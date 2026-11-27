@@ -59,8 +59,9 @@ export function normalizeEntries<T extends EntryIn>(entries: T[], variants: Map<
  * - '' rows of a Pokémon with a distinct female picture were the male card: they become 'm';
  * - '' rows of other gendered Pokémon become one row per possible gender, keeping their state.
  */
-export async function migrateStoredGenders(variants: Map<string, Variant>): Promise<number> {
+export async function migrateStoredGendersDetailed(variants: Map<string, Variant>): Promise<{ changed: number; listIds: string[] }> {
   let changed = 0;
+  const listIds = new Set<string>();
   await db.transaction(async (tx) => {
     const g2 = await tx.select().from(schema.listEntries).where(like(schema.listEntries.variantKey, '%.g2'));
     const blank = await tx.select().from(schema.listEntries).where(and(eq(schema.listEntries.gender, ''), sql`${schema.listEntries.variantKey} not like '%.g2'`));
@@ -79,6 +80,7 @@ export async function migrateStoredGenders(variants: Map<string, Variant>): Prom
           });
       }
       await tx.delete(schema.listEntries).where(and(eq(schema.listEntries.listId, e.listId), eq(schema.listEntries.variantKey, e.variantKey), eq(schema.listEntries.shiny, e.shiny), eq(schema.listEntries.tag, e.tag), eq(schema.listEntries.gender, '')));
+      listIds.add(e.listId);
       changed++;
     }
     for (const e of g2) {
@@ -91,6 +93,7 @@ export async function migrateStoredGenders(variants: Map<string, Variant>): Prom
           set: { done: sql`${schema.listEntries.done} or excluded.done` },
         });
       await tx.delete(schema.listEntries).where(and(eq(schema.listEntries.listId, e.listId), eq(schema.listEntries.variantKey, e.variantKey), eq(schema.listEntries.shiny, e.shiny), eq(schema.listEntries.tag, e.tag), eq(schema.listEntries.gender, e.gender)));
+      listIds.add(e.listId);
       changed++;
     }
     // Entries whose gender the variant turned out not to have (a manager set "male only" on a new costume):
@@ -106,9 +109,14 @@ export async function migrateStoredGenders(variants: Map<string, Variant>): Prom
         (await tx.select().from(schema.listEntries).where(and(eq(schema.listEntries.listId, e.listId), eq(schema.listEntries.variantKey, e.variantKey), eq(schema.listEntries.shiny, e.shiny), eq(schema.listEntries.tag, e.tag), eq(schema.listEntries.gender, target))).limit(1)).length > 0;
       if (exists) await tx.delete(schema.listEntries).where(where);
       else await tx.update(schema.listEntries).set({ gender: target }).where(where);
+      listIds.add(e.listId);
       changed++;
     }
   });
   if (changed) console.log(`lists: ${changed} entries converted to per-gender entries`);
-  return changed;
+  return { changed, listIds: [...listIds] };
+}
+
+export async function migrateStoredGenders(variants: Map<string, Variant>): Promise<number> {
+  return (await migrateStoredGendersDetailed(variants)).changed;
 }

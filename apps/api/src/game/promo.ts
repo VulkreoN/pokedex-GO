@@ -16,7 +16,7 @@ export const resetPromoCache = () => void (cache = null);
 export async function getPromoCodes(): Promise<PromoCode[]> {
   if (cache && Date.now() - cache.at < 3600_000) return cache.codes;
   const html = await tracked('promo', async () => {
-    const res = await fetch('https://leekduck.com/promo-codes/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' } });
+    const res = await fetch('https://leekduck.com/promo-codes/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`promo: HTTP ${res.status}`);
     return res.text();
   });

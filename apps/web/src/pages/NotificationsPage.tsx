@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import type { AppNotification, EntryGender } from '@mydexpogo/shared';
 import { Sparkle, Sprite } from '../components/Sprite.js';
@@ -10,12 +10,13 @@ import { useMe } from '../lib/auth.js';
 import { useFriendRequests, useRespondFriendRequest } from '../lib/lists.js';
 
 function target(n: AppNotification): string {
-  if (n.type === 'raid') return '/game?tab=raids';
-  if (n.type === 'spawn') return '/game?tab=spawns';
-  if (n.type === 'quest') return '/game?tab=research';
+  if (n.type === 'raid') return '/game?tab=raids&onlyHunts=1';
+  if (n.type === 'spawn') return '/game?tab=spawns&onlyHunts=1';
+  if (n.type === 'quest') return '/game?tab=research&onlyHunts=1';
   if (n.type === 'account') return '/me';
   if (n.type === 'admin') return n.data.kind === 'report' ? '/review' : '/admin?tab=health';
-  if ((n.type === 'offer' || n.type === 'offer_caught') && n.list) return `/lists/${n.list.id}`;
+  if (n.type === 'offer' && n.list) return `/lists/${n.list.id}?filter=offered`;
+  if (n.type === 'offer_caught' && n.list) return `/lists/${n.list.id}`;
   if (n.type === 'friend_accepted' && n.actor) return `/friends/${n.actor.id}`;
   return '/friends';
 }
@@ -34,13 +35,6 @@ export function NotificationsPage() {
   const clear = useDeleteNotification();
   const [filter, setFilter] = useState<'all' | 'social' | 'game'>('all');
   const unread = q.data?.unread ?? 0;
-  // Opening the inbox counts as seeing it; rows stay highlighted until the next visit.
-  useEffect(() => {
-    if (unread > 0) {
-      const id = setTimeout(() => read.mutate(undefined), 1500);
-      return () => clearTimeout(id);
-    }
-  }, [unread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const text = (n: AppNotification) => {
     const who = n.actor?.username ?? '?';
@@ -48,8 +42,17 @@ export function NotificationsPage() {
     if (n.type === 'friend_accepted') return t.notif_friend_accepted(who);
     if (n.type === 'raid') return t.notif_raid(raidNames(n));
     if (n.type === 'spawn' || n.type === 'quest') {
-      const names = (n.data.names as string[] | undefined) ?? [];
-      const first = (n.data.mons as { where: string; whereFr?: string | null; from: string | null }[] | undefined)?.[0];
+      const mons = (n.data.mons as { key?: string; where: string; whereFr?: string | null; from: string | null }[] | undefined) ?? [];
+      const idx = dataset.data;
+      const names =
+        idx && mons.length && mons.every((m) => m.key)
+          ? mons.map((m) => {
+              const v = idx.variantByKey.get(m.key!);
+              const spName = localized(idx.speciesByDex.get(Number(m.key!.split('.')[0]))?.name, lang);
+              return [spName, v?.kind !== 'base' && v?.label ? localized(v.label, lang) : ''].filter(Boolean).join(' ');
+            })
+          : ((n.data.names as string[] | undefined) ?? []);
+      const first = mons[0];
       const where = (lang === 'fr' && first?.whereFr) || first?.where || '';
       if (n.data.remind) return t.notif_remind(names, (lang === 'fr' && (n.data.eventFr as string | undefined)) || String(n.data.event ?? ''), String(n.data.start ?? ''));
       return n.type === 'spawn' ? t.notif_spawn(names, where, first?.from ?? null) : t.notif_quest(names, where);
@@ -67,7 +70,9 @@ export function NotificationsPage() {
     return bosses.map((b) => {
       const v = idx.variantByKey.get(b.key);
       const name = localized(idx.speciesByDex.get(Number(b.key.split('.')[0]))?.name, lang);
-      return [name, v?.kind !== 'base' && v?.label ? localized(v.label, lang) : '', b.shadow ? t.tag_shadow.toLowerCase() : ''].filter(Boolean).join(' ');
+      const base = [name, v?.kind !== 'base' && v?.label ? localized(v.label, lang) : ''].filter(Boolean).join(' ');
+      if (!b.shadow) return base;
+      return lang === 'fr' ? `${base} ${t.tag_shadow.toLowerCase()}` : `${t.tag_shadow} ${base}`;
     });
   };
   const when = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -133,7 +138,7 @@ export function NotificationsPage() {
             const thumbs = spritesOf(n);
             return (
               <li key={n.id} className="relative">
-                <Link to={target(n)} onClick={() => { if (unread > 0) read.mutate(undefined); }} className={`card flex items-start gap-3 p-3 pr-12 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
+                <Link to={target(n)} onClick={() => { if (!n.readAt) read.mutate([n.id]); }} className={`card flex items-start gap-3 p-3 pr-12 ${n.readAt ? '' : 'ring-2 ring-sky/60'}`}>
                   <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? 'bg-transparent' : 'bg-sky'}`} />
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold">{text(n)}</span>

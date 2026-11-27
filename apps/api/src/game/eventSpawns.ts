@@ -41,7 +41,9 @@ interface LiveEvent {
 }
 
 const UA = { 'user-agent': 'Mozilla/5.0 (compatible; mydexpogo/1.0)' };
+const MAX_PAGES = 200;
 const pages = new Map<string, { at: number } & PageMons>();
+const pagesInFlight = new Map<string, Promise<PageMons>>();
 let list: { at: number; events: EventSpawns[] } | null = null;
 
 const decode = (s: string) => s.replace(/&amp;/g, '&').replace(/&#39;|&rsquo;|&#8217;/g, '’').replace(/&quot;/g, '"').trim();
@@ -72,22 +74,31 @@ function readMons(body: string, out: EventMon[]) {
 async function pageOf(link: string): Promise<PageMons> {
   const hit = pages.get(link);
   if (hit && Date.now() - hit.at < 3600_000) return hit;
-  const res = await fetch(link, { headers: UA, signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`event page: HTTP ${res.status}`);
-  const html = await res.text();
-  const parsed = {
-    at: Date.now(),
-    featured: sectionMons(html, 'featured-pokémon'),
-    spawns: sectionMons(html, 'spawns'),
-    raids: sectionMons(html, 'raids'),
-    eggs: sectionMons(html, /egg|hatch/),
-    research: sectionMons(html, /field-research/),
-    rocket: sectionMons(html, /rocket|^shadow-pokémon$/),
-  };
-  // A spawns heading but nothing read: Leek Duck's markup probably changed.
-  if (/<h2[^>]*id="spawns"/.test(html) && /pkmn-list-item/.test(html) && !parsed.spawns.length && !parsed.featured.length) console.warn(`event spawns: nothing read on ${link}, markup changed?`);
-  pages.set(link, parsed);
-  return parsed;
+  let pending = pagesInFlight.get(link);
+  if (!pending) {
+    pending = (async () => {
+      const res = await fetch(link, { headers: UA, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`event page: HTTP ${res.status}`);
+      const html = await res.text();
+      const parsed = {
+        at: Date.now(),
+        featured: sectionMons(html, 'featured-pokémon'),
+        spawns: sectionMons(html, 'spawns'),
+        raids: sectionMons(html, 'raids'),
+        eggs: sectionMons(html, /egg|hatch/),
+        research: sectionMons(html, /field-research/),
+        rocket: sectionMons(html, /rocket|^shadow-pokémon$/),
+      };
+      // A spawns heading but nothing read: Leek Duck's markup probably changed.
+      if (/<h2[^>]*id="spawns"/.test(html) && /pkmn-list-item/.test(html) && !parsed.spawns.length && !parsed.featured.length) console.warn(`event spawns: nothing read on ${link}, markup changed?`);
+      pages.delete(link);
+      pages.set(link, parsed);
+      while (pages.size > MAX_PAGES) pages.delete(pages.keys().next().value!);
+      return parsed;
+    })().finally(() => pagesInFlight.delete(link));
+    pagesInFlight.set(link, pending);
+  }
+  return pending;
 }
 
 export async function getEventSpawns(): Promise<EventSpawns[]> {

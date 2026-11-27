@@ -103,7 +103,7 @@ function nameOf(b: Boss, names: Map<number, LocalizedText>, variants: Map<string
 export const runRaidAlerts = (): Promise<number> => tracked('raids', alertOnce);
 
 async function alertOnce(): Promise<number> {
-  const res = await fetch(RAIDS_URL);
+  const res = await fetch(RAIDS_URL, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`raids: HTTP ${res.status}`);
   const raids = (await res.json()) as { name: string; image: string; canBeShiny?: boolean }[];
   const variants = await dataService.variants();

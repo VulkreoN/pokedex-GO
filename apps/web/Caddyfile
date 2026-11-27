@@ -14,6 +14,12 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 	root * /srv
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+	}
 
 	handle /api/* {
 		# The API rate-limits on this header: one address, the real client's, never what the client wrote.

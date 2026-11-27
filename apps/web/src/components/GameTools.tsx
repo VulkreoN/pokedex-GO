@@ -1,17 +1,17 @@
 /** The Game tab's tools: best counters (raids, Team GO Rocket, any Pokémon), costs, buddy distances, the GO Battle League. */
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { buildHuntMatcher, cupNameFr, gblSeasonFr, nextFullMoons, powerUpCost, rankCounters, weaknesses, type HuntMatcher, type PokemonType, type PowerUpKind, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
+import { Link, useSearchParams } from 'react-router';
+import { buildHuntMatcher, cupNameFr, entryMatchesLive, gblSeasonFr, inferHuntSource, neutralKey, nextFullMoons, powerUpCost, rankCounters, resolveLiveKey, weaknesses, type HuntMatcher, type HuntSource, type MembershipEntry, type PokemonType, type PowerUpKind, type ToolPokemon, type ToolsData } from '@mydexpogo/shared';
 import { Sprite } from './Sprite.js';
 import { TYPE_COLORS, TypeBadge } from './TypeBadge.js';
 import { Badge, Button, Chip, Empty, Sheet, Spinner } from './ui.js';
 import { useMe } from '../lib/auth.js';
 import { normalize, useDataset, type DatasetIndex } from '../lib/dataset.js';
 import { typeName, useLang, useT } from '../lib/i18n.js';
-import { useMembership } from '../lib/lists.js';
+import { useLists, useMembership } from '../lib/lists.js';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
-import { eventStatus, eventTitle, useEvents, type LivePokemon } from '../lib/live.js';
+import { currentRaidBosses, dexFromImage, eventStatus, eventTitle, liveName, useEvents, useRaids, type LivePokemon } from '../lib/live.js';
 import { liveKey, local, moveLabel, rocketName, useRockets, useTools } from '../lib/tools.js';
 
 /** Tells whether a live Pokémon (raid, egg, spawn, research, Rocket, Max) is missing in one of the signed-in player's collections. */
@@ -20,6 +20,57 @@ export function useMissingHunts(): HuntMatcher {
   const membership = useMembership(!!me.data);
   const dataset = useDataset();
   return useMemo(() => buildHuntMatcher(dataset.data?.hunt ?? null, membership.data ?? []), [dataset.data?.hunt, membership.data]);
+}
+
+export interface WantedMatchGroup {
+  listId: string;
+  listName: string;
+  exact: boolean;
+  shiny: boolean;
+  tag: MembershipEntry['tag'];
+  entries: MembershipEntry[];
+}
+
+/** Resolves WHICH collections want a live Pokémon (and which exact entries can be marked caught in 1 tap). */
+export function useWantedMatches() {
+  const me = useMe();
+  const membership = useMembership(!!me.data);
+  const lists = useLists();
+  const dataset = useDataset();
+  const hunt = dataset.data?.hunt ?? null;
+  const listNames = useMemo(() => new Map((lists.data ?? []).map((l) => [l.id, l.name])), [lists.data]);
+  const missing = useMemo(() => (membership.data ?? []).filter((e) => !e.done), [membership.data]);
+
+  const forKey = (rawKey: string, rawSource: HuntSource, canBeShiny?: boolean): WantedMatchGroup[] => {
+    if (!missing.length) return [];
+    const key = neutralKey(rawKey);
+    const source = inferHuntSource(rawSource, key);
+    const live = { key, source, canBeShiny };
+    const groups = new Map<string, WantedMatchGroup>();
+    for (const e of missing) {
+      if (!entryMatchesLive(hunt, e, live)) continue;
+      const targetKey = neutralKey(e.variantKey);
+      const exact = targetKey === key || (source === 'megaRaid' && targetKey === key.replace(/\.f(MEGA(?:_[A-Z0-9]+)*|PRIMAL)$/, ''));
+      const gid = `${e.listId}|${targetKey}|${e.shiny ? 1 : 0}|${e.tag}`;
+      let g = groups.get(gid);
+      if (!g) {
+        g = { listId: e.listId, listName: listNames.get(e.listId) ?? '…', exact, shiny: e.shiny, tag: e.tag, entries: [] };
+        groups.set(gid, g);
+      }
+      g.entries.push(e);
+    }
+    // Prefer exact-catchable matches first so 1-tap "Caught" targets the direct collection entry.
+    return [...groups.values()].sort((a, b) => Number(b.exact) - Number(a.exact));
+  };
+
+  const forLive = (image: string, name: string, rawSource: HuntSource, canBeShiny?: boolean): WantedMatchGroup[] => {
+    const key = resolveLiveKey(image, name, hunt ?? undefined);
+    if (!key) return [];
+    const source = inferHuntSource(rawSource, key, name);
+    return forKey(key, source, canBeShiny);
+  };
+
+  return { forKey, forLive };
 }
 
 /** The tools need both the Pokédex (pictures) and their own data. */
@@ -164,6 +215,38 @@ export function useKnownPokemon() {
   }, [idx]);
 }
 
+/** Authentic Pokémon GO Team GO Rocket Grunt pre-battle quotes (the #1 lookup cue players read in-game). */
+const ROCKET_QUOTES: Record<string, { fr: string; en: string }> = {
+  normal: { fr: '« Normal ne veut pas dire faible. »', en: '“Normal does not mean weak.”' },
+  fire: { fr: '« Tu sais à quel point le souffle ardent d’un Pokémon peut être chaud ? »', en: '“Do you know how hot Pokémon fire breath can get?”' },
+  water: { fr: '« Ces eaux sont traîtresses ! »', en: '“These waters are treacherous!”' },
+  grass: { fr: '« Ne te frotte pas à nous ! »', en: '“Don’t tangle with us!”' },
+  electric: { fr: '« Prépare-toi à un choc ! »', en: '“Get ready to be shocked!”' },
+  ice: { fr: '« Tu vas rester figé sur place. »', en: '“You’re gonna be frozen in your tracks.”' },
+  fighting: { fr: '« Ce corps musclé n’est pas que pour la frime ! »', en: '“This buff physique isn’t just for show!”' },
+  poison: { fr: '« Enroulé et prêt à frapper ! »', en: '“Coiled and ready to strike!”' },
+  ground: { fr: '« Tu vas mordre la poussière ! »', en: '“You’ll be defeated into the ground!”' },
+  flying: { fr: '« Mon Pokémon Oiseau veut se battre avec toi ! »', en: '“Battle against my Flying-type Pokémon!”' },
+  psychic: { fr: '« Les pouvoirs psychiques t’effraient-ils ? »', en: '“Are you scared of psychics that use unseen power?”' },
+  bug: { fr: '« Allez, mon super Pokémon Insecte ! »', en: '“Go, my super bug Pokémon!”' },
+  rock: { fr: '« Allons-y ! Rock and roll ! »', en: '“Let’s rock and roll!”' },
+  ghost: { fr: '« Ke… ke… ke… ke… ke… ke ! »', en: '“Ke…ke…ke…ke…ke…ke!”' },
+  dragon: { fr: '« ROAR ! … Qu’est-ce que tu en penses ? »', en: '“ROAR! …How’d that sound?”' },
+  dark: { fr: '« Là où il y a de la lumière, il y a aussi de l’ombre. »', en: '“Wherever there is a light, there is also shadow.”' },
+  steel: { fr: '« Tu n’es pas de taille face à ma volonté de fer ! »', en: '“You’re no match for my iron will!”' },
+  fairy: { fr: '« Regarde mon adorable Pokémon ! »', en: '“Check out my cute Pokémon!”' },
+  winning: { fr: '« Gagner, c’est pour les gagnants ! »', en: '“Winning is for winners!”' },
+  decoy: { fr: '« Trompé ! Tu pensais trouver Giovanni ? »', en: '“Fooled ya, twerp!”' },
+};
+
+function rocketQuote(name: string, type: string): { fr: string; en: string } | null {
+  if (/decoy/i.test(name)) return ROCKET_QUOTES.decoy!;
+  const low = type.toLowerCase();
+  if (low in ROCKET_QUOTES) return ROCKET_QUOTES[low]!;
+  if (/grunt/i.test(name) && (!low || low === 'typeless' || low === 'none')) return ROCKET_QUOTES.winning!;
+  return null;
+}
+
 /** Counters in a sheet over the page: seen at once, wherever the Pokémon was picked. */
 export function CountersSheet({ target, onClose }: { target: ToolPokemon | null; onClose: () => void }) {
   const t = useT();
@@ -171,31 +254,81 @@ export function CountersSheet({ target, onClose }: { target: ToolPokemon | null;
   const data = useToolData();
   const [megas, setMegas] = useState(false);
   const [shadows, setShadows] = useState(true);
+  const [noElite, setNoElite] = useState(false);
   return (
     <Sheet open={!!target} onClose={onClose} title={target ? t.counters_title(local(target.name, lang)) : ''}>
-      {target && (typeof data === 'string' ? <Loading state={data} /> : <CounterList idx={data.idx} tools={data.tools} target={target} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} />)}
+      {target && (typeof data === 'string' ? <Loading state={data} /> : <CounterList idx={data.idx} tools={data.tools} target={target} megas={megas} setMegas={setMegas} shadows={shadows} setShadows={setShadows} noElite={noElite} setNoElite={setNoElite} />)}
     </Sheet>
   );
 }
 
+/** Inline Counters tool with quick-pick chips for current raid bosses so the page is immediately useful. */
 export function CountersTool() {
   const t = useT();
+  const { lang } = useLang();
   const data = useToolData();
+  const raids = useRaids();
+  const events = useEvents();
+  const fromImage = useFromImage(typeof data === 'string' ? undefined : data.tools);
   const [target, setTarget] = useState<ToolPokemon | null>(null);
+  const [megas, setMegas] = useState(false);
+  const [shadows, setShadows] = useState(true);
+  const [noElite, setNoElite] = useState(false);
+
+  const quickBosses = useMemo(() => {
+    if (typeof data === 'string') return [];
+    const live = currentRaidBosses(raids.data ?? [], events.data ?? []).filter((b) => b.tier === '5' || b.tier === 'mega' || b.tier === 'shadow5');
+    const seen = new Set<string>();
+    const out: { mon: ToolPokemon; label: string; image: string }[] = [];
+    for (const b of live) {
+      const found = fromImage(b.image, b.name) ?? data.tools.pokemon.find((p) => p.dex === dexFromImage(b.image) && !p.mega);
+      if (!found || seen.has(found.key)) continue;
+      seen.add(found.key);
+      out.push({ mon: found, label: liveName(b.name, b.image, data.idx, lang), image: b.image });
+    }
+    return out.slice(0, 8);
+  }, [data, raids.data, events.data, fromImage, lang]);
+
   if (typeof data === 'string') return <Loading state={data} />;
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-2">{t.counters_help}</p>
       <PokemonPicker tools={data.tools} onPick={setTarget} />
-      <CountersSheet target={target} onClose={() => setTarget(null)} />
+      {quickBosses.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-ink-3">{t.counters_current_bosses}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {quickBosses.map(({ mon, label, image }) => (
+              <Chip key={mon.key} active={target?.key === mon.key} onClick={() => setTarget(mon)} className="min-h-8 pl-1.5 pr-2.5 text-xs">
+                <img src={image} alt="" width={22} height={22} className="h-5 w-5 shrink-0 object-contain" />
+                <span className="max-w-[10rem] truncate">{label}</span>
+              </Chip>
+            ))}
+          </div>
+        </div>
+      )}
+      {target && (
+        <CounterList
+          idx={data.idx}
+          tools={data.tools}
+          target={target}
+          megas={megas}
+          setMegas={setMegas}
+          shadows={shadows}
+          setShadows={setShadows}
+          noElite={noElite}
+          setNoElite={setNoElite}
+        />
+      )}
     </div>
   );
 }
 
-/** Team GO Rocket's current line-ups: three slots per trainer, the one to catch afterwards ringed in gold. */
+/** Team GO Rocket's current line-ups: three slots per trainer, catchphrase shown & searchable, catchable slot ringed in gold. */
 export function RocketTab() {
   const t = useT();
   const { lang } = useLang();
+  const [params] = useSearchParams();
   const rockets = useRockets();
   const tools = useTools();
   const fromImage = useFromImage(tools.data);
@@ -203,7 +336,7 @@ export function RocketTab() {
   const { hasMissing, isWanted } = useMissingHunts();
   const [target, setTarget] = useState<ToolPokemon | null>(null);
   const [query, setQuery] = useState('');
-  const [onlyHunts, setOnlyHunts] = useState(false);
+  const [onlyHunts, setOnlyHunts] = useState(() => params.get('onlyHunts') === '1');
   if (rockets.isPending) return <Spinner />;
   if (rockets.isError) return <Empty>{t.live_error}<br /><Button tone="ghost" className="mt-3" onClick={() => void rockets.refetch()}>{t.retry}</Button></Empty>;
 
@@ -219,6 +352,7 @@ export function RocketTab() {
     if (onlyHunts && !hasWantedEncounter(r)) return false;
     if (!q) return true;
     const title = rocketName(r.name, lang, (ty) => typeName(ty, lang));
+    const quote = rocketQuote(r.name, r.type);
     const mons = [r.firstPokemon, r.secondPokemon, r.thirdPokemon]
       .flat()
       .map((m) => {
@@ -226,7 +360,7 @@ export function RocketTab() {
         return `${m.name} ${p ? `${p.name.en} ${p.name.fr ?? ''}` : ''}`;
       })
       .join(' ');
-    return normalize(`${title} ${r.name} ${r.type} ${mons}`).includes(q);
+    return normalize(`${title} ${r.name} ${r.type} ${quote ? `${quote.fr} ${quote.en}` : ''} ${mons}`).includes(q);
   });
   const leaders = filtered.filter((r) => !/Grunt/.test(r.name));
   const grunts = filtered.filter((r) => /Grunt/.test(r.name));
@@ -236,9 +370,10 @@ export function RocketTab() {
     const gType = gruntTypeOf(r.type);
     const weak = gType ? weaknesses([gType]) : [];
     const wanted = hasWantedEncounter(r);
+    const quote = rocketQuote(r.name, r.type);
     return (
       <li key={r.name} className={`card p-2.5 ${wanted ? 'ring-2 ring-go/60' : ''}`}>
-        <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
           <p className="text-sm font-bold">{rocketName(r.name, lang, (ty) => typeName(ty, lang))}</p>
           {gType && <TypeBadge type={gType} small />}
           {wanted && <Badge tone="grass">{t.game_wanted_badge}</Badge>}
@@ -249,24 +384,31 @@ export function RocketTab() {
             </span>
           )}
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {quote && <p className="mb-2 text-xs italic text-ink-2">{lang === 'fr' ? quote.fr : quote.en}</p>}
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
           {[r.firstPokemon, r.secondPokemon, r.thirdPokemon].map((slot, i) => (
-            <div key={i} className="flex items-center gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
-              <span className="tnum text-[10px] font-bold text-ink-3">{i + 1}</span>
+            <div key={i} className="flex items-start gap-1 border-l border-line pl-2 first:border-0 first:pl-0">
+              <span className="tnum mt-2 text-[10px] font-bold text-ink-3">{i + 1}</span>
               {slot.map((m) => {
                 const p = fromImage(m.image, m.name);
+                const monLabel = p ? local(p.name, lang) : m.name;
+                const ev = eventOf(m.image, m.name);
                 const monWanted = m.isEncounter && isWanted(m.image, m.name, 'rocket', m.canBeShiny);
+                const tooltip = [monLabel, m.isEncounter ? t.rocket_catchable : '', ev ?? ''].filter(Boolean).join(' · ');
                 return (
                   <button
                     key={`${m.image}-${m.name}`}
                     type="button"
                     disabled={!p}
                     onClick={() => p && setTarget(p)}
-                    title={eventOf(m.image, m.name)}
-                    aria-label={`${p ? local(p.name, lang) : m.name}${m.isEncounter ? ` · ${t.rocket_catchable}` : ''}${eventOf(m.image, m.name) ? ` · ${eventOf(m.image, m.name)}` : ''}`}
-                    className={`relative rounded-lg p-0.5 hover:bg-paper-2 disabled:opacity-40 ${monWanted ? 'ring-2 ring-go' : m.isEncounter ? 'ring-2 ring-shiny' : ''} ${eventOf(m.image, m.name) ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}
+                    title={tooltip}
+                    aria-label={tooltip}
+                    className={`relative flex w-14 flex-col items-center rounded-lg p-1 text-center transition hover:bg-paper-2 disabled:opacity-40 ${
+                      m.isEncounter ? 'ring-2 ring-shiny' : ''
+                    } ${monWanted ? 'bg-go-soft/55' : ev ? (m.isEncounter ? 'bg-sky/15' : EVENT_MARK) : ''}`}
                   >
-                    <img src={m.image} alt="" width={38} height={38} loading="lazy" decoding="async" className="object-contain" />
+                    <img src={m.image} alt="" width={38} height={38} loading="lazy" decoding="async" className="h-9 w-9 object-contain" />
+                    <span className="mt-0.5 w-full truncate text-[10px] font-semibold leading-tight text-ink-2">{monLabel}</span>
                     {monWanted && <span className="absolute -left-1 -top-1 rounded-full bg-go px-1 text-[8px] font-bold leading-3.5 text-white">★</span>}
                   </button>
                 );
@@ -285,8 +427,8 @@ export function RocketTab() {
           inputMode="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t.rocket_search}
-          aria-label={t.rocket_search}
+          placeholder={t.rocket_search_quote}
+          aria-label={t.rocket_search_quote}
           className="min-h-10 w-full rounded-xl border border-line bg-card px-3 pr-9 text-[16px] placeholder:text-ink-3 focus:border-sky"
         />
         {query && (
@@ -320,12 +462,32 @@ export function RocketTab() {
   );
 }
 
-function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows }: { idx: DatasetIndex; tools: ToolsData; target: ToolPokemon; megas: boolean; setMegas: (v: boolean) => void; shadows: boolean; setShadows: (v: boolean) => void }) {
+function CounterList({
+  idx,
+  tools,
+  target,
+  megas,
+  setMegas,
+  shadows,
+  setShadows,
+  noElite,
+  setNoElite,
+}: {
+  idx: DatasetIndex;
+  tools: ToolsData;
+  target: ToolPokemon;
+  megas: boolean;
+  setMegas: (v: boolean) => void;
+  shadows: boolean;
+  setShadows: (v: boolean) => void;
+  noElite: boolean;
+  setNoElite: (v: boolean) => void;
+}) {
   const t = useT();
   const { lang } = useLang();
   // Hundos at level 40, the usual reference for raids.
   const cpm = idx.ds.pvp?.cpm[39] ?? 0.7903;
-  const counters = useMemo(() => rankCounters(tools, { types: target.types, def: target.def }, { cpm, megas, shadows, limit: 12 }), [tools, target, cpm, megas, shadows]);
+  const counters = useMemo(() => rankCounters(tools, { types: target.types, def: target.def }, { cpm, megas, shadows, noElite, limit: 12 }), [tools, target, cpm, megas, shadows, noElite]);
   const weak = weaknesses(target.types);
   const top = counters[0]?.score ?? 1;
   return (
@@ -346,7 +508,7 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
           </p>
         </div>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="h-5 w-5 accent-go" checked={shadows} onChange={(e) => setShadows(e.target.checked)} />
           {t.counters_shadows}
@@ -355,18 +517,25 @@ function CounterList({ idx, tools, target, megas, setMegas, shadows, setShadows 
           <input type="checkbox" className="h-5 w-5 accent-go" checked={megas} onChange={(e) => setMegas(e.target.checked)} />
           {t.counters_megas}
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="h-5 w-5 accent-go" checked={noElite} onChange={(e) => setNoElite(e.target.checked)} />
+          {t.counters_no_elite}
+        </label>
       </div>
       <ol className="space-y-1.5">
         {counters.map((c, i) => (
           <li key={`${c.pokemon.key}${c.shadow ? '-shadow' : ''}`} className="card flex items-center gap-2 p-2">
             <span className="tnum w-5 shrink-0 text-center text-sm font-bold text-ink-3">{i + 1}</span>
-            <FormSprite idx={idx} p={c.pokemon} size={44} />
+            <Link to={`/dex/${c.pokemon.dex}`} className="shrink-0">
+              <FormSprite idx={idx} p={c.pokemon} size={44} />
+            </Link>
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 font-semibold leading-snug">
-                <span className="truncate">
-                  {c.shadow && <span className="mr-1 text-shadow-ink">{t.counters_shadow}</span>}
+                <Link to={`/dex/${c.pokemon.dex}`} className="truncate hover:underline">
+                  {c.shadow && lang !== 'fr' && <span className="mr-1 text-shadow-ink">{t.counters_shadow}</span>}
                   {local(c.pokemon.name, lang)}
-                </span>
+                  {c.shadow && lang === 'fr' && <span className="ml-1 text-shadow-ink">{t.counters_shadow}</span>}
+                </Link>
                 {c.elite && <Badge tone="datamined">{t.counters_elite}</Badge>}
               </p>
               <p className="truncate text-xs text-ink-2">{moveLabel(tools, c.quick, lang)} · {moveLabel(tools, c.charged, lang)}</p>
@@ -551,8 +720,13 @@ export function BuddyTool() {
   const [picked, setPicked] = useState<ToolPokemon | null>(null);
   if (typeof data === 'string') return <Loading state={data} />;
   const { idx, tools } = data;
-  // One per species (forms walk the same), released ones.
-  const species = [...new Map(tools.pokemon.filter((p) => p.released && !p.mega && p.buddyKm).map((p) => [p.dex, p])).values()];
+  // One per species (forms walk the same), preferring the plain base form over alternate forms.
+  const speciesByDex = new Map<number, ToolPokemon>();
+  for (const p of tools.pokemon) {
+    if (!p.released || p.mega || !p.buddyKm) continue;
+    if (!speciesByDex.has(p.dex) || !p.key.includes('.')) speciesByDex.set(p.dex, p);
+  }
+  const species = [...speciesByDex.values()];
   const distances = [...new Set(species.map((p) => p.buddyKm!))].sort((a, b) => a - b);
   return (
     <div className="space-y-4">
@@ -605,7 +779,11 @@ export function LeagueTool() {
   const weeks = events.data
     .filter((e) => e.eventType === 'go-battle-league' && eventStatus(e) !== 'past')
     .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(lang, { day: 'numeric', month: 'short' }) : '?');
+  const date = (iso: string | null) => {
+    if (!iso) return '?';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '?' : d.toLocaleDateString(lang, { day: 'numeric', month: 'short' });
+  };
   const season = weeks[0]?.name.split(' | ')[1];
   return (
     <div className="space-y-3">

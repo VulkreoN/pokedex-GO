@@ -12,6 +12,8 @@ import { hub } from '../notify/hub.js';
 import { sentLog, vapidKeys } from '../notify/push.js';
 
 const actor = alias(schema.users, 'actor');
+const DEFAULT_NOTIFY_PREFS = { friend_request: true, friend_accepted: true, offer: true, offer_caught: true, raid: true, spawn: true, quest: true, announcement: true, admin: true };
+const MAX_SSE_PER_USER = 15;
 
 /** Inbox and push notification settings. */
 export const notificationRoutes = new Hono<AuthEnv>()
@@ -67,7 +69,7 @@ export const notificationRoutes = new Hono<AuthEnv>()
   })
   .get('/prefs', async (c) => {
     const [u] = await db.select({ prefs: schema.users.notifyPrefs }).from(schema.users).where(eq(schema.users.id, c.get('user').id));
-    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, offer_caught: true, raid: true, spawn: true, quest: true, announcement: true, admin: true, ...(u?.prefs ?? {}) } });
+    return c.json({ prefs: { ...DEFAULT_NOTIFY_PREFS, ...(u?.prefs ?? {}) } });
   })
   // Every kind can be switched off but 'account': what an admin does to your account always reaches you.
   .put('/prefs', zValidator('json', z.object({ friend_request: z.boolean(), friend_accepted: z.boolean(), offer: z.boolean(), offer_caught: z.boolean(), raid: z.boolean(), spawn: z.boolean(), quest: z.boolean(), announcement: z.boolean(), admin: z.boolean() }).partial()), async (c) => {
@@ -75,7 +77,7 @@ export const notificationRoutes = new Hono<AuthEnv>()
     const [u] = await db.select({ prefs: schema.users.notifyPrefs }).from(schema.users).where(eq(schema.users.id, me.id));
     const prefs = { ...(u?.prefs ?? {}), ...c.req.valid('json') };
     await db.update(schema.users).set({ notifyPrefs: prefs }).where(eq(schema.users.id, me.id));
-    return c.json({ prefs: { friend_request: true, friend_accepted: true, offer: true, offer_caught: true, ...prefs } });
+    return c.json({ prefs: { ...DEFAULT_NOTIFY_PREFS, ...prefs } });
   });
 
 const subscription = z.object({
@@ -110,6 +112,7 @@ export const pushRoutes = new Hono<AuthEnv>()
 /** Live events for the open app: list changes from friends, friend changes, new notifications. */
 export const streamRoutes = new Hono<AuthEnv>().use(requireAuth).get('/', (c) => {
   const me = c.get('user');
+  if (hub.countFor(me.id) >= MAX_SSE_PER_USER) return c.json({ error: 'too_many_connections' }, 429);
   c.header('cache-control', 'no-cache, no-transform');
   c.header('x-accel-buffering', 'no');
   return streamSSE(c, async (stream) => {
