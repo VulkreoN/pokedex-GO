@@ -568,7 +568,7 @@ const EVENT_FR: [RegExp, (m: RegExpExecArray, mons: (s: string) => string) => st
   [/^Catch Mastery(?:: (.+))?$/, (m, f) => (m[1] ? `Maîtrise de capture : ${f(m[1])}` : 'Maîtrise de capture')],
   [/^Team GO Rocket Takeover$/, () => 'Offensive de la Team GO Rocket'],
   [/^GO Battle (Day|Weekend)(?:: (.+))?$/, (m, f) => `${m[1] === 'Weekend' ? 'Week-end' : 'Journée'} Combat GO${m[2] ? ` : ${f(m[2])}` : ''}`],
-  [/^Pok[eé]Stop Showcase(?:: (.+))?$/, (m, f) => (m[1] ? `Épreuve PokéStop : ${f(m[1])}` : 'Épreuve PokéStop')],
+  [/^Pok[eé]Stop Showcase(?:: (.+))?$/, (m, f) => (m[1] ? `Concours PokéStop : ${f(m[1])}` : 'Concours PokéStop')],
   [/^New Year's (\d{4})$/, (m) => `Nouvel An ${m[1]}`],
   [/^Winter Holiday (\d{4})(?: Part (\d))?$/, (m) => `Fêtes de fin d’année ${m[1]}${m[2] ? ` (partie ${m[2]})` : ''}`],
   [/^Halloween (\d{4})(?: Part (\d))?$/, (m) => `Halloween ${m[1]}${m[2] ? ` (partie ${m[2]})` : ''}`],

@@ -14,6 +14,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-27-v1-4',
+    version: '1.4',
+    date: '2026-11-27',
+    fr: [
+      'Calendrier « Ma semaine » complet et plus lisible : retrouve les rendez-vous hebdomadaires récurrents (Lundi Max, Mardi Concours, Heure de Raid, Jeudi Combat GO, Vendredi Amitié, Dimanche Balade — repliables en un clic), la bande Raids, un bloc Événements unifié (événements du jour, barres multi-jours mondiales et événements mondiaux en cours comme GO Pass ou études longues), et le nom de la saison active.',
+      'Événements locaux et régionaux remontés automatiquement : les collabs et événements par pays/lieu (centres commerciaux en Asie, musées ESA en Europe, National Trust, Pokémon Fossil Museum, Pokémon Center, PokéPark KANTO, City Safari, GO Tour/Fest présentiels…) apparaissent avec leurs drapeaux dans « Aussi en cours · Locaux & exclusifs » et dans la liste dessous.',
+      'Filtres locaux pratiques : masque tous les événements locaux en un clic (dans le calendrier, dans les fiches dessous et dans l’export PNG/PDF), ou clique sur la nouvelle catégorie « 📍 Locaux » pour ne voir qu’eux et chercher par pays ou ville.',
+      'Export calendrier (.ics) sur chaque fiche d’événement : ajoute n’importe quel événement directement dans Apple Calendrier, Google Agenda ou Outlook avec ses horaires locaux, ses bonus et un rappel 15 min avant.',
+      'Confort de lecture sur les fiches : ouvrir une fiche d’événement (ou toute fenêtre) verrouille maintenant le défilement de la page derrière pour éviter de faire défiler le fond en arrivant en bas.',
+    ],
+    en: [
+      'Complete, cleaner “This week” schedule: recurring Daily Discoveries (Max Monday, Showcase Tuesday, Raid Hour, GO Battle Thursday, Friendship Friday, Scenic Sunday — collapsible in one tap), dedicated Raids row, unified Events band (daily events, multi-day global bars and ongoing global events like GO Pass or long researches), plus the active season badge.',
+      'Automatic local & regional events: country- and venue-exclusive collaborations (SEA Mall Exploration, ESA European museums, UK National Trust, Pokémon Fossil Museum, Pokémon Center, PokéPark KANTO, City Safari, in-person GO Tour/Fest…) now show up automatically with country flags in “Also happening · Local & exclusive” and in the feed below.',
+      'Handy local filters: hide all local events in one tap (across the weekly calendar, the event feed and PNG/PDF exports), or tap the new “📍 Local” category chip to browse only local events and search by country or city.',
+      'Per-event Calendar (.ics) export: add any event directly to Apple Calendar, Google Calendar or Outlook with local times, bonuses and a 15-minute reminder.',
+      'Smoother modal scrolling: opening an event sheet (or any dialog) now locks background scroll and focuses the sheet so scrolling to the end never scrolls the page underneath.',
+    ],
+  },
+  {
     id: '2026-11-27-v1-3-2',
     version: '1.3.2',
     date: '2026-11-27',

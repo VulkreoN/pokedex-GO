@@ -20,6 +20,7 @@ import {
 } from '@mydexpogo/shared';
 import { api } from '../lib/api.js';
 import { useDataset } from '../lib/dataset.js';
+import { exportEventIcs } from '../lib/eventIcal.js';
 import {
   exportEventInfographicPdf,
   exportWeeklyInfographicPdf,
@@ -29,7 +30,18 @@ import {
   resolveHeroMon,
 } from '../lib/eventInfographicExport.js';
 import { useLang, useT } from '../lib/i18n.js';
-import { countdownOf, dexFromImage, eventStatus, liveName, splitLiveLabel, useEvents, type GameEvent } from '../lib/live.js';
+import {
+  countdownOf,
+  DAILY_DISCOVERIES,
+  dexFromImage,
+  eventStatus,
+  formatLocationBadge,
+  isLocalEvent,
+  liveName,
+  splitLiveLabel,
+  useEvents,
+  type GameEvent,
+} from '../lib/live.js';
 import { canCopyPicture, canSharePictures, copyPicture, downloadBlob, sharePictures } from '../lib/shareImage.js';
 import { useTools } from '../lib/tools.js';
 import { CountersSheet, useFromImage, useMissingHunts } from './GameTools.js';
@@ -99,12 +111,22 @@ const TEMPLATE_THEMES: Record<EventTemplateKind, TemplateTheme> = {
   },
 };
 
-function DateTiles({ start, end, lang }: { start: string | null; end: string | null; lang: string }) {
+function DateTiles({ start, end, lang, ongoingLabel }: { start: string | null; end: string | null; lang: string; ongoingLabel?: string }) {
   if (!start) return null;
   const s = new Date(start);
   if (Number.isNaN(s.getTime())) return null;
   const rawE = end ? new Date(end) : null;
   const e = rawE && !Number.isNaN(rawE.getTime()) ? rawE : null;
+  if (!e && ongoingLabel) {
+    return (
+      <div className="flex shrink-0 flex-col items-center overflow-hidden rounded-lg bg-white text-slate-900 shadow-sm">
+        <span className="px-2 py-1 text-xs font-black">📍</span>
+        <span className="w-full bg-amber-400 px-2 py-0.5 text-center text-[9px] font-extrabold uppercase tracking-wide text-slate-900">
+          {ongoingLabel}
+        </span>
+      </div>
+    );
+  }
   const monthFmt = new Intl.DateTimeFormat(lang, { month: 'short' });
   const timeFmt = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' });
   const sameDay = !e || s.toDateString() === e.toDateString();
@@ -265,20 +287,44 @@ function fallbackRichEvent(ev: GameEvent): RichGameEvent {
   };
 }
 
+const HIDE_LOCAL_KEY = 'events-hide-local';
+const SHOW_DAILY_KEY = 'weekly-show-daily';
+
+function readBoolPref(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === '1' || raw === 'true') return true;
+    if (raw === '0' || raw === 'false') return false;
+  } catch { /* private mode / sandbox */ }
+  return fallback;
+}
+
+function writeBoolPref(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? '1' : '0');
+  } catch { /* ignore */ }
+}
+
 /**
  * Automatic Monday → Sunday weekly calendar ("Ma semaine") inspired by GO Weekly infographics.
- * Desktop: full 7-column calendar + spanning multi-day event bars.
- * Mobile: compact 7-day picker strip (zero horizontal overflow) + selected day details + multi-day bars.
+ * Includes recurring Daily Discoveries, Raids row, Daily Events, Global Multi-Day spanning bars,
+ * long-running global highlights, and hideable Local & exclusive events.
+ * Desktop: aligned 7-column Mon–Sun bands.
+ * Mobile: compact 7-day picker strip (zero horizontal overflow) + selected day details + stacked bars.
  */
 function WeeklySchedule({
   now,
   richEvents,
   countHunts,
+  hideLocal,
+  onToggleHideLocal,
   onSelectEvent,
 }: {
   now: number;
   richEvents: RichGameEvent[];
   countHunts: (e: RichGameEvent) => number;
+  hideLocal: boolean;
+  onToggleHideLocal: () => void;
   onSelectEvent: (ev: GameEvent, rich?: RichGameEvent) => void;
 }) {
   const t = useT();
@@ -289,17 +335,35 @@ function WeeklySchedule({
   const [weekOffset, setWeekOffset] = useState(0);
   const todayDow = (new Date(now).getDay() + 6) % 7;
   const [mobileDay, setMobileDay] = useState(todayDow);
+  const [showDaily, setShowDaily] = useState(() => readBoolPref(SHOW_DAILY_KEY, true));
   const [shareOpen, setShareOpen] = useState(false);
   const [exporting, setExporting] = useState<'image' | 'pdf' | 'copy' | 'share' | null>(null);
 
+  const toggleDaily = () => {
+    setShowDaily((prev) => {
+      const next = !prev;
+      writeBoolPref(SHOW_DAILY_KEY, next);
+      return next;
+    });
+  };
+
   const richById = useMemo(() => new Map(richEvents.map((e) => [e.eventID, e])), [richEvents]);
 
-  const { days, rangeLabel, dailyByDay, raidsByDay, multiDay } = useMemo(() => {
+  const { days, rangeLabel, seasonName, dailyByDay, raidsByDay, multiDay, alsoGlobal, alsoLocal } = useMemo(() => {
     const mon = startOfWeekMonday(now, weekOffset);
     const todayStr = new Date(now).toDateString();
+    const currentYear = mon.getFullYear();
 
     const wdFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' });
     const monthFmt = new Intl.DateTimeFormat(lang, { month: 'short' });
+    const endSameYearFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+    const endDiffYearFmt = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' });
+    const fmtEndDate = (ms: number | null): string | null => {
+      if (!ms || Number.isNaN(ms)) return null;
+      const d = new Date(ms);
+      return d.getFullYear() === currentYear ? endSameYearFmt.format(d) : endDiffYearFmt.format(d);
+    };
+
     const daysArr = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i);
       const nextDay = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i + 1);
@@ -346,6 +410,7 @@ function WeeklySchedule({
           image: r.image,
           start: r.start,
           end: r.end,
+          location: r.location ?? null,
         });
       }
     }
@@ -365,33 +430,100 @@ function WeeklySchedule({
       endsAfter: boolean;
       sprites: string[];
     }
+    interface AlsoEntry {
+      ev: GameEvent;
+      rich?: RichGameEvent;
+      startMs: number;
+      endMs: number;
+      endLabel: string | null;
+      ongoing?: boolean;
+      locationLabel?: string | null;
+      sprite: string | null;
+      hunts: number;
+      local: boolean;
+    }
 
     const daily: DayEntry[][] = Array.from({ length: 7 }, () => []);
     const raids: DayEntry[][] = Array.from({ length: 7 }, () => []);
     const multi: MultiEntry[] = [];
+    const globalLong: AlsoEntry[] = [];
+    const localList: AlsoEntry[] = [];
+    let activeSeason: string | null = null;
 
     for (const ev of merged.values()) {
       if (!ev.start) continue;
-      if (ev.eventType === 'season') continue;
+      const rich = richById.get(ev.eventID);
+      const local = isLocalEvent({ ...ev, summary: rich?.summary, location: rich?.location ?? ev.location });
       const sMs = new Date(ev.start).getTime();
-      const eMs = ev.end ? new Date(ev.end).getTime() : sMs + 3600_000;
+      const eMs = ev.end ? new Date(ev.end).getTime() : local ? Number.POSITIVE_INFINITY : sMs + 3600_000;
       if (Number.isNaN(sMs) || Number.isNaN(eMs)) continue;
       if (sMs > weekEnd || eMs < weekStart) continue;
-      const durationMs = Math.max(0, eMs - sMs);
-      // Skip ultra-long seasonal backdrops (> 21 days) so the weekly calendar stays crisp.
-      if (durationMs > 21 * DAY_MS) continue;
 
-      const rich = richById.get(ev.eventID);
+      if (ev.eventType === 'season') {
+        if (!activeSeason) activeSeason = eventTitle(ev.name, idx?.speciesByDex, lang);
+        continue;
+      }
+
+      const durationMs = Number.isFinite(eMs) ? Math.max(0, eMs - sMs) : Number.POSITIVE_INFINITY;
       const hunts = countHunts(rich ?? fallbackRichEvent(ev));
       const sprite = rich?.featured[0]
         ? resolveHeroMon(rich, rich.featured[0], idx, undefined, lang).image
         : previewSpriteOf(ev, rich);
 
+      // Local / in-person / venue-exclusive events live in their own hideable band so the global calendar stays crisp.
+      if (local) {
+        localList.push({
+          ev,
+          rich,
+          startMs: sMs,
+          endMs: eMs,
+          endLabel: ev.end ? fmtEndDate(eMs) : null,
+          ongoing: !ev.end,
+          locationLabel: formatLocationBadge(rich?.location ?? ev.location, lang),
+          sprite,
+          hunts,
+          local: true,
+        });
+        continue;
+      }
+
+      // Raid rotations: new rotations starting this week go to the Raids row; ongoing monthly/carry-over raids go to "Also happening".
       if (ev.eventType === 'raid-battles') {
         if (sMs >= weekStart && sMs <= weekEnd) {
           const dayIdx = dayIndexOf(sMs);
           raids[dayIdx]!.push({ ev, rich, startMs: sMs, endMs: eMs, sprite, hunts });
+        } else {
+          globalLong.push({
+            ev,
+            rich,
+            startMs: sMs,
+            endMs: eMs,
+            endLabel: fmtEndDate(ev.end ? eMs : null),
+            sprite,
+            hunts,
+            local: false,
+          });
         }
+        continue;
+      }
+
+      // Long-running global events (GO Pass, month-long Timed Research / collabs > 14d) go to "Also happening · Global".
+      const isLongGlobal =
+        ev.eventType === 'go-pass' ||
+        durationMs > 14 * DAY_MS ||
+        ((ev.eventType === 'timed-research' || ev.eventType === 'research') && durationMs > 10 * DAY_MS);
+
+      if (isLongGlobal) {
+        globalLong.push({
+          ev,
+          rich,
+          startMs: sMs,
+          endMs: eMs,
+          endLabel: fmtEndDate(ev.end ? eMs : null),
+          sprite,
+          hunts,
+          local: false,
+        });
         continue;
       }
 
@@ -433,9 +565,20 @@ function WeeklySchedule({
     for (const arr of daily) arr.sort((a, b) => a.startMs - b.startMs);
     for (const arr of raids) arr.sort((a, b) => a.startMs - b.startMs);
     multi.sort((a, b) => a.startCol - b.startCol || b.endCol - a.endCol);
+    globalLong.sort((a, b) => a.endMs - b.endMs);
+    localList.sort((a, b) => a.endMs - b.endMs || a.startMs - b.startMs);
 
-    return { days: daysArr, rangeLabel: label, dailyByDay: daily, raidsByDay: raids, multiDay: multi };
-  }, [now, weekOffset, lang, liveEvents.data, richEvents, richById, countHunts]);
+    return {
+      days: daysArr,
+      rangeLabel: label,
+      seasonName: activeSeason,
+      dailyByDay: daily,
+      raidsByDay: raids,
+      multiDay: multi,
+      alsoGlobal: globalLong,
+      alsoLocal: localList,
+    };
+  }, [now, weekOffset, lang, liveEvents.data, richEvents, richById, countHunts, idx]);
 
   const timeFmt = useMemo(() => new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' }), [lang]);
   const fmtTimeWindow = (sMs: number, eMs: number) => {
@@ -451,7 +594,17 @@ function WeeklySchedule({
 
   const exportWeek = async (kind: 'image' | 'pdf' | 'copy' | 'share') => {
     setExporting(kind);
-    const payload = { rangeLabel, days, raidsByDay, dailyByDay, multiDay };
+    const payload = {
+      rangeLabel,
+      seasonName,
+      showDaily,
+      days,
+      raidsByDay,
+      dailyByDay,
+      multiDay,
+      alsoGlobal,
+      alsoLocal: hideLocal ? [] : alsoLocal,
+    };
     try {
       if (kind === 'pdf') {
         await exportWeeklyInfographicPdf(payload, idx, lang, t);
@@ -480,12 +633,21 @@ function WeeklySchedule({
     }
   };
 
-  const hasAnything = dailyByDay.some((d) => d.length > 0) || raidsByDay.some((d) => d.length > 0) || multiDay.length > 0;
+  const hasRaidsRow = raidsByDay.some((d) => d.length > 0);
+  const hasAnything =
+    dailyByDay.some((d) => d.length > 0) ||
+    hasRaidsRow ||
+    multiDay.length > 0 ||
+    alsoGlobal.length > 0 ||
+    alsoLocal.length > 0;
   if (!hasAnything && liveEvents.isPending) return null;
 
   const selectedDay = days[Math.min(6, Math.max(0, mobileDay))]!;
   const selectedRaids = raidsByDay[selectedDay.index] ?? [];
   const selectedDaily = dailyByDay[selectedDay.index] ?? [];
+  const selectedDiscovery = DAILY_DISCOVERIES[selectedDay.index] ?? null;
+  const visibleLocal = hideLocal ? [] : alsoLocal;
+  const hasLocalSection = alsoLocal.length > 0;
 
   const renderRaidPill = (item: (typeof raidsByDay)[number][number], compact = false) => {
     const isMega = /mega/i.test(item.ev.name);
@@ -499,7 +661,7 @@ function WeeklySchedule({
         onClick={() => openEntry(item.ev, item.rich)}
         className={`flex w-full items-center gap-1.5 rounded-lg border px-1.5 py-1 text-left transition hover:brightness-110 ${
           isMega ? 'border-cyan-400/45 bg-cyan-950/60' : isShadow ? 'border-purple-400/45 bg-purple-950/60' : 'border-rose-400/45 bg-rose-950/55'
-        }`}
+        } ${item.hunts > 0 ? 'ring-1 ring-emerald-400' : ''}`}
       >
         <div className="flex shrink-0 -space-x-2">
           {(bosses.length ? bosses.slice(0, 2) : item.sprite ? [{ image: item.sprite, name: item.ev.name }] : []).map((b, i) => (
@@ -507,8 +669,11 @@ function WeeklySchedule({
           ))}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[9px] font-extrabold uppercase tracking-wide text-white/75">
-            {isMega ? (lang === 'fr' ? 'Méga' : 'Mega') : isShadow ? (lang === 'fr' ? 'Obscur' : 'Shadow') : '5★'} · {t.weekly_raids_new}
+          <div className="flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide text-white/75">
+            <span className="truncate">
+              {isMega ? (lang === 'fr' ? 'Méga' : 'Mega') : isShadow ? (lang === 'fr' ? 'Obscur' : 'Shadow') : '5★'} · {t.weekly_raids_new}
+            </span>
+            {item.hunts > 0 && <span className="ml-auto shrink-0 rounded-full bg-go px-1 text-[8px] font-bold text-white">★{item.hunts}</span>}
           </div>
           <div className={`font-bold leading-tight text-white ${compact ? 'line-clamp-2 text-[10px]' : 'truncate text-xs'}`}>{title}</div>
         </div>
@@ -518,11 +683,14 @@ function WeeklySchedule({
 
   const renderDailyCard = (item: (typeof dailyByDay)[number][number], compact = false) => {
     const st = weekKindStyle(item.ev, item.rich);
-    const title = eventTitle(item.ev.name, idx?.speciesByDex, lang);
+    const fullTitle = eventTitle(item.ev.name, idx?.speciesByDex, lang);
+    const isGbl = item.ev.eventType === 'go-battle-league';
+    const headline = isGbl ? t.weekly_gbl_rotation : fullTitle;
     return (
       <button
         key={item.ev.eventID}
         type="button"
+        title={fullTitle}
         onClick={() => openEntry(item.ev, item.rich)}
         className={`flex w-full flex-col rounded-xl border p-1.5 text-left transition hover:brightness-110 ${st.pill} ${item.hunts > 0 ? 'ring-1 ring-emerald-400' : ''}`}
       >
@@ -538,9 +706,47 @@ function WeeklySchedule({
             <img src={item.sprite} alt="" width={compact ? 30 : 38} height={compact ? 30 : 38} loading="lazy" className={`${compact ? 'h-7 w-7' : 'h-9 w-9'} shrink-0 object-contain drop-shadow`} />
           )}
           <div className="min-w-0 flex-1">
-            <div className={`font-bold leading-tight text-white ${compact ? 'line-clamp-2 text-[11px]' : 'text-xs'}`}>{title}</div>
+            <div className={`font-bold leading-tight text-white ${compact ? 'line-clamp-2 text-[11px]' : 'text-xs'}`}>{headline}</div>
+            {isGbl && <div className="mt-0.5 line-clamp-1 text-[10px] text-indigo-200/85">{fullTitle}</div>}
             {!compact && <div className="tnum mt-0.5 text-[10px] text-white/75">{fmtTimeWindow(item.startMs, item.endMs)}</div>}
           </div>
+        </div>
+      </button>
+    );
+  };
+
+  const renderAlsoCard = (item: (typeof alsoGlobal)[number]) => {
+    const title = eventTitle(item.ev.name, idx?.speciesByDex, lang);
+    const datePart = item.endLabel ? t.weekly_until(item.endLabel) : item.ongoing ? t.weekly_ongoing : null;
+    return (
+      <button
+        key={item.ev.eventID}
+        type="button"
+        onClick={() => openEntry(item.ev, item.rich)}
+        className={`flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition hover:brightness-110 ${
+          item.local
+            ? 'border-amber-300/35 bg-amber-950/35'
+            : 'border-sky-300/25 bg-white/[0.06]'
+        } ${item.hunts > 0 ? 'ring-1 ring-emerald-400' : ''}`}
+      >
+        {item.sprite ? (
+          <img src={item.sprite} alt="" width={32} height={32} loading="lazy" className="h-8 w-8 shrink-0 object-contain drop-shadow" />
+        ) : (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-sm" aria-hidden="true">
+            {item.local ? '📍' : '🌍'}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <span className="truncate text-xs font-bold leading-tight text-white">{title}</span>
+            {item.hunts > 0 && <span className="ml-auto shrink-0 rounded-full bg-go px-1 text-[8px] font-bold text-white">★{item.hunts}</span>}
+          </div>
+          {item.locationLabel && (
+            <div className="mt-0.5 truncate text-[10px] font-medium text-amber-100/90">{item.locationLabel}</div>
+          )}
+          {datePart && (
+            <div className="tnum mt-0.5 truncate text-[10px] text-sky-200/80">{datePart}</div>
+          )}
         </div>
       </button>
     );
@@ -552,19 +758,49 @@ function WeeklySchedule({
       className="mb-5 overflow-hidden rounded-2xl border border-sky/30 p-3 text-white shadow-card sm:p-4"
       style={{ background: 'linear-gradient(155deg, #091736 0%, #12285a 58%, #0c1d42 100%)' }}
     >
-      {/* Header: title, range, week switcher */}
+      {/* Header: title, range, season badge, view toggles & week switcher */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h2 className="text-base font-black tracking-tight sm:text-lg">📅 {t.weekly_title}</h2>
             <span className="tnum text-xs font-semibold text-sky-200 sm:text-sm">{rangeLabel}</span>
+            {seasonName && (
+              <span className="max-w-full truncate rounded-full border border-sky-300/30 bg-sky-400/15 px-2 py-0.5 text-[10px] font-bold text-sky-100">
+                ✨ {seasonName}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            aria-pressed={showDaily}
+            onClick={toggleDaily}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+              showDaily
+                ? 'bg-sky-400/25 text-white ring-1 ring-sky-300/60 hover:bg-sky-400/35'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+            }`}
+          >
+            📆 {t.weekly_daily_title}
+          </button>
+          <button
+            type="button"
+            aria-pressed={hideLocal}
+            onClick={onToggleHideLocal}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+              hideLocal
+                ? 'bg-amber-400/25 text-amber-100 ring-1 ring-amber-300/60 hover:bg-amber-400/35'
+                : 'bg-white/10 text-white/85 hover:bg-white/20'
+            }`}
+          >
+            📍 {hideLocal ? t.weekly_show_local : t.weekly_hide_local}
+            {alsoLocal.length > 0 && <span className="tnum ml-1 opacity-80">({alsoLocal.length})</span>}
+          </button>
           <button
             type="button"
             onClick={() => setShareOpen(true)}
-            className="mr-1 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-white/25"
+            className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-white/25"
           >
             🖼️ {t.weekly_export_btn}
           </button>
@@ -596,39 +832,156 @@ function WeeklySchedule({
         </div>
       </div>
 
-      {/* DESKTOP: 7-column Mon → Sun visual calendar */}
-      <div className="hidden md:grid md:grid-cols-7 md:gap-1.5">
-        {days.map((d) => {
-          const dRaids = raidsByDay[d.index] ?? [];
-          const dEvents = dailyByDay[d.index] ?? [];
-          return (
+      {/* DESKTOP: Aligned 7-column Mon → Sun bands (Days -> Daily Discoveries -> Raids -> Events) */}
+      <div className="hidden space-y-2 md:block">
+        {/* Day headers */}
+        <div className="grid grid-cols-7 gap-1.5">
+          {days.map((d) => (
             <div
               key={d.index}
-              className={`flex min-h-[126px] flex-col rounded-xl border p-1.5 ${
-                d.isToday ? 'border-amber-300/80 bg-white/10 ring-1 ring-amber-300/40' : 'border-white/10 bg-white/[0.04]'
+              className={`flex items-center justify-between gap-1 rounded-xl border px-2 py-1.5 ${
+                d.isToday ? 'border-amber-300/80 bg-amber-400/15 ring-1 ring-amber-300/40' : 'border-white/10 bg-white/[0.06]'
               }`}
             >
-              <div className="mb-1.5 flex items-center justify-between gap-1 border-b border-white/10 pb-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wide text-white/75">{d.wdShort}</span>
-                <span className={`tnum rounded-md px-1.5 py-0.5 text-[11px] font-black leading-none ${d.isToday ? 'bg-amber-400 text-slate-950' : 'bg-white/15 text-white'}`}>
-                  {d.dayNum}
-                </span>
-              </div>
-              <div className="flex flex-1 flex-col gap-1.5">
-                {dRaids.map((r) => renderRaidPill(r, true))}
-                {dEvents.map((e) => renderDailyCard(e, true))}
-              </div>
+              <span className="text-[11px] font-extrabold uppercase tracking-wide text-white/85">{d.wdShort}</span>
+              <span className={`tnum rounded-md px-1.5 py-0.5 text-[11px] font-black leading-none ${d.isToday ? 'bg-amber-400 text-slate-950' : 'bg-white/15 text-white'}`}>
+                {d.dayNum}
+              </span>
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        {/* Band 1: Recurring weekly Daily Discoveries */}
+        {showDaily && (
+          <div>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-sky-200/80">📆 {t.weekly_daily_title}</p>
+            <div className="grid grid-cols-7 gap-1.5">
+              {DAILY_DISCOVERIES.map((dd, i) => {
+                if (!dd) {
+                  return (
+                    <div
+                      key={i}
+                      aria-hidden="true"
+                      className="rounded-xl border border-dashed border-white/10 bg-white/[0.02]"
+                    />
+                  );
+                }
+                const copy = lang === 'fr' ? dd.fr : dd.en;
+                return (
+                  <div
+                    key={i}
+                    className={`flex flex-col rounded-xl border px-2 py-1.5 ${dd.accent} ${days[i]?.isToday ? 'ring-1 ring-amber-300/60' : ''}`}
+                  >
+                    <div className="flex items-center gap-1 text-[11px] font-extrabold leading-tight text-white">
+                      <span aria-hidden="true">{dd.icon}</span>
+                      <span className="truncate">{copy.title}</span>
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-[10px] leading-snug text-white/80">
+                      {copy.lines.map((line, li) => (
+                        <li key={li}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Band 2: Raids rotations starting this week */}
+        {hasRaidsRow && (
+          <div>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-rose-200/85">⚔️ {t.weekly_raids_row}</p>
+            <div className="grid grid-cols-7 gap-1.5">
+              {days.map((d) => {
+                const dRaids = raidsByDay[d.index] ?? [];
+                return (
+                  <div
+                    key={d.index}
+                    className={`flex min-h-[52px] flex-col gap-1 rounded-xl border p-1 ${
+                      d.isToday ? 'border-amber-300/50 bg-white/[0.07]' : 'border-white/[0.08] bg-white/[0.03]'
+                    }`}
+                  >
+                    {dRaids.map((r) => renderRaidPill(r, true))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Band 3: Global events (single-day grid + multi-day spanning bars + ongoing global events) */}
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-white/70">🗓️ {t.weekly_events_row}</p>
+          <div className="grid grid-cols-7 gap-1.5">
+            {days.map((d) => {
+              const dEvents = dailyByDay[d.index] ?? [];
+              return (
+                <div
+                  key={d.index}
+                  className={`flex min-h-[96px] flex-col gap-1.5 rounded-xl border p-1.5 ${
+                    d.isToday ? 'border-amber-300/75 bg-white/10 ring-1 ring-amber-300/35' : 'border-white/10 bg-white/[0.04]'
+                  }`}
+                >
+                  {dEvents.map((e) => renderDailyCard(e, true))}
+                </div>
+              );
+            })}
+          </div>
+
+          {multiDay.length > 0 && (
+            <div className="grid grid-cols-7 gap-1.5">
+              {multiDay.map((m) => {
+                const st = weekKindStyle(m.ev, m.rich);
+                const title = eventTitle(m.ev.name, idx?.speciesByDex, lang);
+                return (
+                  <button
+                    key={m.ev.eventID}
+                    type="button"
+                    onClick={() => openEntry(m.ev, m.rich)}
+                    style={{ gridColumn: `${m.startCol} / ${m.endCol + 1}`, background: st.bar }}
+                    className={`flex items-center gap-2 rounded-xl border border-white/20 px-2.5 py-1.5 text-left shadow-sm transition hover:brightness-110 ${m.hunts > 0 ? 'ring-1 ring-emerald-400' : ''}`}
+                  >
+                    {m.startsBefore && <span className="text-xs opacity-70" aria-hidden="true">‹</span>}
+                    {!m.startsBefore && (
+                      <span className="tnum shrink-0 rounded bg-black/30 px-1.5 py-0.5 text-[10px] font-bold text-white/90">
+                        {timeFmt.format(new Date(m.startMs))}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-xs font-extrabold text-white">{title}</span>
+                        {m.hunts > 0 && <span className="shrink-0 rounded-full bg-go px-1.5 py-0.5 text-[9px] font-bold text-white">★{m.hunts}</span>}
+                      </div>
+                    </div>
+                    {m.sprites.length > 0 && (
+                      <div className="flex shrink-0 -space-x-1.5">
+                        {m.sprites.slice(0, 3).map((src, i) => (
+                          <img key={i} src={src} alt="" width={28} height={28} loading="lazy" className="h-7 w-7 object-contain drop-shadow" />
+                        ))}
+                      </div>
+                    )}
+                    {m.endsAfter && <span className="text-xs opacity-70" aria-hidden="true">›</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {alsoGlobal.length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+              {alsoGlobal.map(renderAlsoCard)}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* MOBILE: compact 7-day pill selector + selected day feed (fits 360px cleanly with 0 overflow) */}
+      {/* MOBILE: compact 7-day pill selector + selected day feed + global events (fits 360px cleanly with 0 overflow) */}
       <div className="md:hidden">
         <div className="grid grid-cols-7 gap-1" role="tablist" aria-label={t.weekly_title}>
           {days.map((d) => {
             const count = (raidsByDay[d.index]?.length ?? 0) + (dailyByDay[d.index]?.length ?? 0);
-            const hasHunts = (dailyByDay[d.index] ?? []).some((x) => x.hunts > 0);
+            const hasHunts = (dailyByDay[d.index] ?? []).some((x) => x.hunts > 0) || (raidsByDay[d.index] ?? []).some((x) => x.hunts > 0);
             const active = d.index === selectedDay.index;
             return (
               <button
@@ -658,11 +1011,23 @@ function WeeklySchedule({
             );
           })}
         </div>
-        <div className="mt-2.5 rounded-xl border border-white/10 bg-white/[0.06] p-2.5">
-          <div className="mb-2 flex items-center gap-2 text-xs font-bold text-white/90">
+        <div className="mt-2.5 space-y-2 rounded-xl border border-white/10 bg-white/[0.06] p-2.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-white/90">
             <span>{selectedDay.wdShort} {selectedDay.dayNum} {selectedDay.monthShort}</span>
             {selectedDay.isToday && <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-black text-slate-950">{t.weekly_today}</span>}
           </div>
+          {showDaily && selectedDiscovery && (
+            <div className={`rounded-xl border px-2.5 py-2 ${selectedDiscovery.accent}`}>
+              <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-white">
+                <span aria-hidden="true">{selectedDiscovery.icon}</span>
+                <span>{lang === 'fr' ? selectedDiscovery.fr.title : selectedDiscovery.en.title}</span>
+                <span className="ml-auto text-[9px] font-semibold uppercase tracking-wide text-white/65">{t.weekly_daily_short}</span>
+              </div>
+              <p className="mt-0.5 text-[11px] leading-snug text-white/85">
+                {(lang === 'fr' ? selectedDiscovery.fr.lines : selectedDiscovery.en.lines).join(' · ')}
+              </p>
+            </div>
+          )}
           {selectedRaids.length === 0 && selectedDaily.length === 0 ? (
             <p className="text-xs text-white/65">{t.weekly_empty_day}</p>
           ) : (
@@ -672,46 +1037,9 @@ function WeeklySchedule({
             </div>
           )}
         </div>
-      </div>
 
-      {/* Multi-day spanning events bar (exact Mon→Sun columns on desktop, stacked strips on mobile) */}
-      {multiDay.length > 0 && (
-        <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-white/65">{t.weekly_multiday}</p>
-          {/* Desktop aligned bars */}
-          <div className="hidden md:grid md:grid-cols-7 md:gap-1.5">
-            {multiDay.map((m) => {
-              const st = weekKindStyle(m.ev, m.rich);
-              const title = eventTitle(m.ev.name, idx?.speciesByDex, lang);
-              return (
-                <button
-                  key={m.ev.eventID}
-                  type="button"
-                  onClick={() => openEntry(m.ev, m.rich)}
-                  style={{ gridColumn: `${m.startCol} / ${m.endCol + 1}`, background: st.bar }}
-                  className={`flex items-center gap-2 rounded-xl border border-white/20 px-2.5 py-1.5 text-left shadow-sm transition hover:brightness-110 ${m.hunts > 0 ? 'ring-1 ring-emerald-400' : ''}`}
-                >
-                  {m.startsBefore && <span className="text-xs opacity-70" aria-hidden="true">‹</span>}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-xs font-extrabold text-white">{title}</span>
-                      {m.hunts > 0 && <span className="shrink-0 rounded-full bg-go px-1.5 py-0.5 text-[9px] font-bold text-white">★{m.hunts}</span>}
-                    </div>
-                  </div>
-                  {m.sprites.length > 0 && (
-                    <div className="flex shrink-0 -space-x-1.5">
-                      {m.sprites.slice(0, 3).map((src, i) => (
-                        <img key={i} src={src} alt="" width={28} height={28} loading="lazy" className="h-7 w-7 object-contain drop-shadow" />
-                      ))}
-                    </div>
-                  )}
-                  {m.endsAfter && <span className="text-xs opacity-70" aria-hidden="true">›</span>}
-                </button>
-              );
-            })}
-          </div>
-          {/* Mobile stacked multi-day strips */}
-          <div className="space-y-1.5 md:hidden">
+        {(multiDay.length > 0 || alsoGlobal.length > 0) && (
+          <div className="mt-2 space-y-1.5">
             {multiDay.map((m) => {
               const st = weekKindStyle(m.ev, m.rich);
               const title = eventTitle(m.ev.name, idx?.speciesByDex, lang);
@@ -744,9 +1072,51 @@ function WeeklySchedule({
                 </button>
               );
             })}
+            {alsoGlobal.length > 0 && (
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {alsoGlobal.map(renderAlsoCard)}
+              </div>
+            )}
           </div>
+        )}
+      </div>
+
+      {/* Also happening: hideable Local & exclusive events */}
+      {hasLocalSection && (
+        <div className="mt-3 space-y-1.5 border-t border-white/10 pt-2.5">
+          {visibleLocal.length > 0 ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-200/85">
+                  📍 {t.weekly_also_local} <span className="tnum opacity-75">({visibleLocal.length})</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={onToggleHideLocal}
+                  className="text-[11px] font-semibold text-amber-200/85 underline-offset-2 hover:text-white hover:underline"
+                >
+                  {t.weekly_hide_local}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+                {visibleLocal.map(renderAlsoCard)}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-1.5 text-xs text-amber-100">
+              <span>📍 {t.weekly_local_hidden(alsoLocal.length)}</span>
+              <button
+                type="button"
+                onClick={onToggleHideLocal}
+                className="font-bold text-white underline underline-offset-2 hover:text-amber-200"
+              >
+                {t.weekly_show_local}
+              </button>
+            </div>
+          )}
         </div>
       )}
+
       <Sheet open={shareOpen} onClose={() => setShareOpen(false)} title={`📅 ${t.weekly_export_title}`}>
         {shareOpen && (
           <div className="space-y-2.5">
@@ -836,11 +1206,21 @@ export function EventFeed({ now }: { now: number }) {
   const fromImage = useFromImage(tools.data);
   const { hasMissing, isWanted, isWantedKey } = useMissingHunts();
   const [statusFilter, setStatusFilter] = useState<'all' | 'current' | 'upcoming'>('all');
-  const [catFilter, setCatFilter] = useState<'all' | 'raids' | 'max' | 'spotlight' | 'events'>('all');
+  const [catFilter, setCatFilter] = useState<'all' | 'raids' | 'max' | 'spotlight' | 'events' | 'local'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyHunts, setOnlyHunts] = useState(false);
+  const [hideLocal, setHideLocal] = useState(() => readBoolPref(HIDE_LOCAL_KEY, false));
   const [selected, setSelected] = useState<{ event: RichGameEvent; needsFetch: boolean } | null>(null);
   const [counterTarget, setCounterTarget] = useState<ToolPokemon | null>(null);
+
+  const toggleHideLocal = () => {
+    setHideLocal((prev) => {
+      const next = !prev;
+      writeBoolPref(HIDE_LOCAL_KEY, next);
+      if (next && catFilter === 'local') setCatFilter('all');
+      return next;
+    });
+  };
 
   const detailQuery = useQuery({
     queryKey: ['live', 'rich-event', selected?.event.eventID],
@@ -882,29 +1262,37 @@ export function EventFeed({ now }: { now: number }) {
 
   const events = useMemo(() => {
     const all = (q.data ?? []).filter((e) => eventStatus(e, now) !== 'past');
-    return all.map((e) => ({ e, status: eventStatus(e, now), hunts: countHunts(e) }));
+    return all.map((e) => ({ e, status: eventStatus(e, now), hunts: countHunts(e), isLocal: isLocalEvent(e) }));
   }, [q.data, now, hasMissing, isWanted, isWantedKey, idx, tools.data, lang]);
 
   const anyHunts = events.some((x) => x.hunts > 0);
+  const localFeedCount = events.filter((x) => x.isLocal).length;
   const normSearch = searchQuery.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const matchesCat = (e: RichGameEvent) => {
+  const matchesCat = (e: RichGameEvent, isLocal: boolean) => {
     if (catFilter === 'all') return true;
+    if (catFilter === 'local') return isLocal;
     if (catFilter === 'raids') return e.template === 'raid_day' || e.eventType === 'raid-battles' || e.eventType === 'raid-hour' || e.raidGroups.length > 0;
     if (catFilter === 'max') return e.template === 'max' || e.eventType === 'max-mondays' || e.eventType === 'max-battles';
     if (catFilter === 'spotlight') return e.template === 'spotlight' || e.template === 'community_day';
-    return e.template === 'event';
+    return e.template === 'event' && !isLocal;
   };
   const matchesSearch = (e: RichGameEvent) => {
     if (!normSearch) return true;
     const title = eventTitle(e.name, idx?.speciesByDex, lang);
+    const locText = `${e.location ?? ''} ${formatLocationBadge(e.location, lang) ?? ''}`;
     const mons = [...e.featured, ...e.spawnGroups.flatMap((g) => g.mons), ...e.raidGroups.flatMap((g) => g.mons), ...e.research]
       .map((m) => `${m.name} ${liveName(m.name, m.image, idx, lang)}`)
       .join(' ');
-    const hay = `${title} ${e.name} ${mons}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const hay = `${title} ${e.name} ${locText} ${mons}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     return hay.includes(normSearch);
   };
   const visible = events.filter(
-    (x) => (statusFilter === 'all' || x.status === statusFilter) && (!onlyHunts || x.hunts > 0) && matchesCat(x.e) && matchesSearch(x.e),
+    (x) =>
+      (!hideLocal || !x.isLocal || catFilter === 'local') &&
+      (statusFilter === 'all' || x.status === statusFilter) &&
+      (!onlyHunts || x.hunts > 0) &&
+      matchesCat(x.e, x.isLocal) &&
+      matchesSearch(x.e),
   );
   const current = visible.filter((x) => x.status === 'current');
   const upcoming = visible.filter((x) => x.status === 'upcoming');
@@ -917,7 +1305,7 @@ export function EventFeed({ now }: { now: number }) {
   if (q.isPending) return <Spinner />;
   if (q.isError && !events.length) return null;
 
-  const renderCard = ({ e, hunts }: { e: RichGameEvent; hunts: number }) => {
+  const renderCard = ({ e, hunts, isLocal }: { e: RichGameEvent; hunts: number; isLocal: boolean }) => {
     const theme = TEMPLATE_THEMES[e.template];
     const cd = countdownOf(e, lang, now);
     const title = eventTitle(e.name, idx?.speciesByDex, lang);
@@ -965,6 +1353,11 @@ export function EventFeed({ now }: { now: number }) {
                     <span aria-hidden="true">{theme.icon}</span>
                     {t.events_templates[e.template] ?? e.heading}
                   </span>
+                  {isLocal && (
+                    <span className="inline-flex max-w-full items-center gap-0.5 truncate rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold text-amber-100 ring-1 ring-amber-300/45">
+                      📍 {formatLocationBadge(e.location, lang) ?? t.weekly_local_badge}
+                    </span>
+                  )}
                   {cd && (
                     <span className="tnum rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold text-white">
                       {cd.kind === 'ends' ? t.countdown_ends_in(cd.text) : t.countdown_starts_in(cd.text)}
@@ -986,7 +1379,7 @@ export function EventFeed({ now }: { now: number }) {
                   {e.bonuses.length > 0 && <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">{t.events_bonus_count(e.bonuses.length)}</span>}
                 </div>
               </div>
-              <DateTiles start={e.start} end={e.end} lang={lang} />
+              <DateTiles start={e.start} end={e.end} lang={lang} ongoingLabel={isLocal && !e.end ? t.weekly_ongoing : undefined} />
             </div>
           </div>
 
@@ -1033,6 +1426,8 @@ export function EventFeed({ now }: { now: number }) {
         now={now}
         richEvents={q.data ?? []}
         countHunts={countHunts}
+        hideLocal={hideLocal}
+        onToggleHideLocal={toggleHideLocal}
         onSelectEvent={(ev, rich) =>
           setSelected(rich ? { event: rich, needsFetch: false } : { event: fallbackRichEvent(ev), needsFetch: true })
         }
@@ -1060,13 +1455,18 @@ export function EventFeed({ now }: { now: number }) {
       <div className="mb-2 flex flex-wrap gap-1.5">
         <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} className="min-h-8 px-2.5 text-xs">{t.filter_all}</Chip>
         <Chip active={statusFilter === 'current'} onClick={() => setStatusFilter('current')} className="min-h-8 px-2.5 text-xs">
-          {t.events_now} {events.filter((x) => x.status === 'current').length > 0 && <span className="tnum opacity-75">· {events.filter((x) => x.status === 'current').length}</span>}
+          {t.events_now} {events.filter((x) => x.status === 'current' && (!hideLocal || !x.isLocal)).length > 0 && <span className="tnum opacity-75">· {events.filter((x) => x.status === 'current' && (!hideLocal || !x.isLocal)).length}</span>}
         </Chip>
         <Chip active={statusFilter === 'upcoming'} onClick={() => setStatusFilter('upcoming')} className="min-h-8 px-2.5 text-xs">
           {t.events_upcoming}
         </Chip>
         {anyHunts && (
           <Chip active={onlyHunts} onClick={() => setOnlyHunts((v) => !v)} className="min-h-8 px-2.5 text-xs">{t.game_my_hunts}</Chip>
+        )}
+        {localFeedCount > 0 && (
+          <Chip active={hideLocal} onClick={toggleHideLocal} className="min-h-8 px-2.5 text-xs">
+            📍 {hideLocal ? t.weekly_local_hidden(localFeedCount) : t.weekly_hide_local}
+          </Chip>
         )}
       </div>
 
@@ -1077,8 +1477,20 @@ export function EventFeed({ now }: { now: number }) {
           ['spotlight', t.events_cat_spotlight],
           ['raids', t.events_cat_raids],
           ['max', t.events_cat_max],
+          ['local', `📍 ${t.events_cat_local}${localFeedCount > 0 ? ` · ${localFeedCount}` : ''}`],
         ] as const).map(([cid, label]) => (
-          <Chip key={cid} active={catFilter === cid} onClick={() => setCatFilter(cid)} className="min-h-7 shrink-0 px-2.5 text-[11px]">
+          <Chip
+            key={cid}
+            active={catFilter === cid}
+            onClick={() => {
+              setCatFilter(cid);
+              if (cid === 'local' && hideLocal) {
+                setHideLocal(false);
+                writeBoolPref(HIDE_LOCAL_KEY, false);
+              }
+            }}
+            className="min-h-7 shrink-0 px-2.5 text-[11px]"
+          >
             {label}
           </Chip>
         ))}
@@ -1271,6 +1683,11 @@ function EventInfographicSheet({
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${theme.pillClass}`}>
                   {theme.icon} {t.events_templates[event.template] ?? event.heading}
                 </span>
+                {(event.location || isLocalEvent(event)) && (
+                  <span className="inline-flex max-w-full items-center gap-0.5 truncate rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold text-amber-100 ring-1 ring-amber-300/45">
+                    📍 {formatLocationBadge(event.location, lang) ?? t.weekly_local_badge}
+                  </span>
+                )}
                 {cd && (
                   <span className="tnum rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-bold">
                     {cd.kind === 'ends' ? t.countdown_ends_in(cd.text) : t.countdown_starts_in(cd.text)}
@@ -1280,7 +1697,7 @@ function EventInfographicSheet({
               <h2 className="mt-1.5 text-lg font-black leading-tight">{title}</h2>
               {event.summary && <p className="mt-1 text-xs leading-relaxed text-white/85">{eventTextFr(event.summary, idx?.speciesByDex, lang, moveNames)}</p>}
             </div>
-            <DateTiles start={event.start} end={event.end} lang={lang} />
+            <DateTiles start={event.start} end={event.end} lang={lang} ongoingLabel={isLocalEvent(event) && !event.end ? t.weekly_ongoing : undefined} />
           </div>
 
           {/* Max Battle / Spotlight / Raid Day centered hero showcase */}
@@ -1509,6 +1926,17 @@ function EventInfographicSheet({
             <Button className="min-h-9 flex-1 text-xs" disabled={!!exporting} onClick={() => exportEvent('pdf')}>
               {exporting === 'pdf' ? t.events_export_working : `📄 ${t.events_export_pdf}`}
             </Button>
+            {event.start && (
+              <Button
+                tone="ghost"
+                className="min-h-9 bg-card text-xs"
+                onClick={() => {
+                  if (exportEventIcs(event, idx, lang, tools.data)) toast(t.events_export_saved_ical);
+                }}
+              >
+                📅 {t.events_export_ical}
+              </Button>
+            )}
             {canCopyPicture() && (
               <Button tone="ghost" className="min-h-9 bg-card text-xs" disabled={!!exporting} onClick={() => exportEvent('copy')}>
                 {exporting === 'copy' ? t.events_export_working : `📋 ${t.events_export_copy}`}

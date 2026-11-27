@@ -185,10 +185,10 @@ test.describe('game tab', () => {
     const items = page.getByRole('button', { name: 'Objets', exact: true });
     // Upstream may be down: then only encounters, from the fallback, and no toggle.
     if (!(await items.isVisible({ timeout: 15_000 }).catch(() => false))) return;
-    const stardust = page.getByText("Poussière d'étoile").first();
-    await expect(stardust).toBeVisible();
+    const stardust = page.getByText(/×[\d\s\u00a0\u202f]+Poussières? (?:d['’])?[Éé]toile/i);
+    await expect(stardust.first()).toBeVisible();
     await items.click();
-    await expect(page.getByText("Poussière d'étoile")).toHaveCount(0);
+    await expect(stardust).toHaveCount(0);
   });
 
   test('tools: bottle caps copies the candidate search and tracks tasks', async ({ page }) => {
@@ -1012,6 +1012,30 @@ test('automatic Events tab renders multi-template infographics (Max Battle + Lon
             moves: [],
             goPass: { title: 'GO Pass', price: 'US$4.99', freeRewards: ['Lucky Egg'], deluxeRewards: ['Premium Battle Pass'] },
           },
+          {
+            eventID: 'city-safari-osaka-e2e',
+            name: 'Pokémon GO City Safari: Osaka',
+            eventType: 'city-safari',
+            heading: 'City Safari',
+            template: 'event',
+            link: 'https://leekduck.com/events/city-safari-osaka/',
+            image: '',
+            start: startPast,
+            end: endSoon,
+            location: 'Osaka, Japan',
+            summary: 'In-person event in Osaka.',
+            bonuses: [],
+            highlights: [],
+            featured: [],
+            spawnGroups: [],
+            raidGroups: [],
+            eggGroups: [],
+            research: [],
+            researchNote: null,
+            rocket: [],
+            newShinies: [],
+            moves: [],
+          },
         ],
       }),
     }),
@@ -1048,10 +1072,23 @@ test('automatic Events tab renders multi-template infographics (Max Battle + Lon
   await page.getByRole('button', { name: 'Réafficher' }).click();
   await expect(promoToggle).toBeVisible();
 
-  // Weekly schedule ("Ma semaine") displays today's Gigantamax event right in the calendar
+  // Weekly schedule ("Ma semaine") displays Daily Discoveries, global events, and hideable local events
   const weekly = page.getByRole('region', { name: 'Ma semaine' });
   await expect(weekly).toBeVisible();
   await expect(weekly.getByRole('button', { name: /Journée Combat Gigamax : Lézargus/ }).first()).toBeVisible();
+  await expect(weekly.getByRole('button', { name: /Rendez-vous hebdo/ })).toHaveAttribute('aria-pressed', 'true');
+  // Local event appears in both the calendar's local band and the event feed until hidden
+  await expect(weekly.getByRole('button', { name: /City Safari: Osaka/ })).toBeVisible();
+  await expect(page.locator('main ul button', { hasText: 'City Safari: Osaka' })).toBeVisible();
+  await weekly.getByRole('button', { name: /Masquer les locaux/ }).first().click();
+  await expect(weekly.getByRole('button', { name: /City Safari: Osaka/ })).toHaveCount(0);
+  await expect(page.locator('main ul button', { hasText: 'City Safari: Osaka' })).toHaveCount(0);
+  await expect(weekly.getByText(/\d+ événements? loc(?:al|aux) masqués?/)).toBeVisible();
+  // Tapping the dedicated "Locaux" category chip unhides and filters specifically to local events
+  await page.getByRole('button', { name: /Locaux/ }).click();
+  await expect(page.locator('main ul button', { hasText: 'City Safari: Osaka' })).toBeVisible();
+  await expect(page.locator('main ul button', { hasText: 'Journée Combat Gigamax : Lézargus' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tous', exact: true }).last().click();
 
   // Gigantamax Max Battle Day card + full sheet
   const gmaxCard = page.locator('main ul button', { hasText: 'Journée Combat Gigamax : Lézargus' });
@@ -1086,6 +1123,11 @@ test('automatic Events tab renders multi-template infographics (Max Battle + Lon
     sheet.getByRole('button', { name: /PDF/ }).click(),
   ]);
   expect(pdfDl.suggestedFilename()).toMatch(/\.pdf$/);
+  const [icsDl] = await Promise.all([
+    page.waitForEvent('download'),
+    sheet.getByRole('button', { name: /Calendrier \(\.ics\)/ }).click(),
+  ]);
+  expect(icsDl.suggestedFilename()).toMatch(/\.ics$/);
   await page.keyboard.press('Escape');
 
   // Super Mega Raid Day promotes Clefable to Méga-Mélodelfe with Fée + Vol types and French move/highlight texts!

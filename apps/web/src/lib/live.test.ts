@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { countdownOf, eventStatus, raidEventFor, shortDuration, type GameEvent, liveName } from './live.js';
+import {
+  DAILY_DISCOVERIES,
+  countdownOf,
+  eventStatus,
+  formatLocationBadge,
+  isLocalEvent,
+  liveName,
+  raidEventFor,
+  shortDuration,
+  type GameEvent,
+} from './live.js';
 import { rocketName } from './tools.js';
 
 const ev = (name: string, start: string | null, end: string | null, extra: Partial<GameEvent> = {}): GameEvent => ({
@@ -84,5 +94,42 @@ describe('countdownOf & shortDuration', () => {
     expect(countdownOf({ start: '2026-11-20T10:00:00Z', end: '2026-11-20T12:40:00Z' }, 'fr', base)).toEqual({ kind: 'ends', text: '40 min' });
     expect(countdownOf({ start: '2026-11-25T10:00:00Z', end: '2026-11-26T10:00:00Z' }, 'fr', base)).toBeNull();
     expect(countdownOf({ start: '2026-11-18T10:00:00Z', end: '2026-11-19T10:00:00Z' }, 'fr', base)).toBeNull();
+  });
+});
+
+describe('isLocalEvent & DAILY_DISCOVERIES', () => {
+  it('distinguishes local/in-person/exclusive events from global events accurately', () => {
+    expect(isLocalEvent({ eventType: 'pokemon-go-tour', heading: 'Pokémon GO Tour', name: 'Pokémon GO Tour: Alola - Los Angeles 2027' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'pokemon-go-tour', heading: 'Pokémon GO Tour', name: 'Pokémon GO Tour: Alola - Kaohsiung 2027' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'pokemon-go-tour', heading: 'Pokémon GO Tour', name: 'Pokémon GO Tour: Alola - Global 2027' })).toBe(false);
+    expect(isLocalEvent({ eventType: 'city-safari', heading: 'City Safari', name: 'City Safari: Milan' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'Apple Stores Collab Japan' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'APAC Cross-Region Stamp Rally' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'PokéPark Kanto' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'UK National Trust Sites' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'local-event', heading: 'Local Event', name: 'Pokémon 30th Anniversary Mall Exploration', location: 'Malaysia, Philippines' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'European Space Agency partnership' })).toBe(true);
+    expect(isLocalEvent({ eventType: 'event', heading: 'Event', name: 'Twilight Wishes' })).toBe(false);
+    expect(isLocalEvent({ eventType: 'max-mondays', heading: 'Max Mondays', name: 'Dynamax Alolan Sandshrew during Max Monday' })).toBe(false);
+    expect(isLocalEvent({ eventType: 'timed-research', heading: 'Timed Research', name: 'Pokémon GO and Duolingo Timed Research' })).toBe(false);
+    expect(isLocalEvent({ eventType: 'go-pass', heading: 'GO Pass', name: 'GO Pass: November' })).toBe(false);
+  });
+
+  it('defines all 7 weekday slots (Mon–Sun with Saturday open) and uses Mardi Concours', () => {
+    expect(DAILY_DISCOVERIES).toHaveLength(7);
+    expect(DAILY_DISCOVERIES[0]?.fr.title).toBe('Lundi Max');
+    expect(DAILY_DISCOVERIES[1]?.fr.title).toBe('Mardi Concours');
+    expect(DAILY_DISCOVERIES[1]?.fr.lines[0]).toContain('Concours PokéStop');
+    expect(DAILY_DISCOVERIES[4]?.fr.title).toBe('Vendredi Amitié');
+    expect(DAILY_DISCOVERIES[5]).toBeNull();
+    expect(DAILY_DISCOVERIES[6]?.fr.title).toBe('Dimanche Balade');
+  });
+
+  it('formats regional location badges with flags and French names', () => {
+    expect(formatLocationBadge('Select malls in Malaysia, Philippines, Singapore, Hong Kong, Thailand', 'fr')).toContain('🇵🇭');
+    expect(formatLocationBadge('Select malls in Malaysia, Philippines, Singapore, Hong Kong, Thailand', 'fr')).toContain('Malaisie');
+    expect(formatLocationBadge('Pokémon Center locations around Japan', 'fr')).toBe('🇯🇵 Pokémon Centers au Japon');
+    expect(formatLocationBadge('Participating science and space museums across Europe', 'fr')).toBe('🇪🇺 6 musées scientifiques en Europe');
+    expect(formatLocationBadge(null, 'fr')).toBeNull();
   });
 });

@@ -463,6 +463,8 @@ export interface RichGameEvent {
   image: string;
   start: string | null;
   end: string | null;
+  /** Regional/in-person location label when the event is restricted to specific places (e.g. "Japan", "Chicago, USA"). */
+  location?: string | null;
   summary: string | null;
   bonuses: EventBonusItem[];
   highlights: EventHighlight[];

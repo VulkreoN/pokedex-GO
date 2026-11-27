@@ -25,6 +25,8 @@ export interface GameEvent {
   image: string;
   start: string | null;
   end: string | null;
+  /** Optional location label for regional / in-person / venue-exclusive events. */
+  location?: string | null;
   /** Only known from our archive: Leek Duck no longer lists it. */
   archived?: boolean;
   extraData?: {
@@ -500,4 +502,151 @@ export function raidSchedule(events: GameEvent[], now = Date.now()) {
     moments: dated.filter((e) => (e.eventType === 'raid-hour' || e.eventType === 'raid-day') && new Date(e.start!).getTime() <= soon),
     next: dated.filter((e) => e.eventType === 'raid-battles' && eventStatus(e, now) === 'upcoming'),
   };
+}
+
+/**
+ * Recurring weekly Pokémon GO "Daily Discoveries" (Mon=0 .. Sun=6).
+ * Fixed bonuses active every week, displayed as a compact aligned strip in "Ma semaine".
+ */
+export interface DailyDiscovery {
+  /** Day index in Monday-first week: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun. */
+  dow: number;
+  icon: string;
+  accent: string;
+  fr: { title: string; lines: string[] };
+  en: { title: string; lines: string[] };
+}
+
+export const DAILY_DISCOVERIES: readonly (DailyDiscovery | null)[] = [
+  {
+    dow: 0,
+    icon: '⚡',
+    accent: 'border-fuchsia-400/35 bg-fuchsia-950/35',
+    fr: { title: 'Lundi Max', lines: ['1 Super Bonbon XL (Combats Max en personne)'] },
+    en: { title: 'Max Monday', lines: ['1 Rare Candy XL (in-person Max Battles)'] },
+  },
+  {
+    dow: 1,
+    icon: '🏅',
+    accent: 'border-amber-400/35 bg-amber-950/35',
+    fr: { title: 'Mardi Concours', lines: ['Participe jusqu’à 5 Concours PokéStop'] },
+    en: { title: 'Showcase Tuesday', lines: ['Enter up to 5 PokéStop Showcases'] },
+  },
+  {
+    dow: 2,
+    icon: '⚔️',
+    accent: 'border-rose-400/35 bg-rose-950/35',
+    fr: { title: 'Heure de Raid', lines: ['1 Super Bonbon XL (Raids en personne)'] },
+    en: { title: 'Raid Hour', lines: ['1 Rare Candy XL (in-person Raid Battles)'] },
+  },
+  {
+    dow: 3,
+    icon: '🏆',
+    accent: 'border-indigo-400/35 bg-indigo-950/35',
+    fr: { title: 'Jeudi Combat GO', lines: ['50 combats/jour', '4× Poussière en victoire'] },
+    en: { title: 'GO Battle Thursday', lines: ['50 battles/day', '4× Stardust from wins'] },
+  },
+  {
+    dow: 4,
+    icon: '🤝',
+    accent: 'border-emerald-400/35 bg-emerald-950/35',
+    fr: { title: 'Vendredi Amitié', lines: ['3 échanges spéciaux · 2 Bonbons XL', 'Chances accrues de Chanceux'] },
+    en: { title: 'Friendship Friday', lines: ['Up to 3 Special Trades · 2 Candy XL', 'Increased Lucky Trade chance'] },
+  },
+  null, // Saturday: reserved for weekend events
+  {
+    dow: 6,
+    icon: '🗺️',
+    accent: 'border-sky-400/35 bg-sky-950/35',
+    fr: { title: 'Dimanche Balade', lines: ['+ de Pokémon & Encens sur Routes', 'Mateo jusqu’à 3×'] },
+    en: { title: 'Scenic Sunday', lines: ['More spawns & Incense on Routes', 'Encounter Mateo up to 3×'] },
+  },
+];
+
+const LOCAL_EVENT_TYPES = new Set(['city-safari', 'safari-zone', 'live-event', 'local-event', 'regional-event']);
+const TOUR_OR_FEST_TYPES = new Set(['pokemon-go-tour', 'pokemon-go-fest', 'go-wild-area']);
+const LOCAL_EVENT_RE =
+  /\b(?:city safari|safari zone|stamp rally|pok[eé]park|pok[eé]xciting|pok[eé]mon center|pok[eé]mon observatory|astronomical observatory|fossil museum|national trust|mall exploration|apple stores?|partner research|air adventures|pok[eé]mon jet|pikachu jet|european space agency|\besa\b|in-person|select locations|select malls|participating stores|participating airports|participating museums|only available in|museums across|mcdonald'?s|7-eleven|familymart|starbucks|tully'?s|circle k|oxxo|aeon|apac|latam|philippines|malaysia|thailand|south korea|taiwan|japan|hong kong|indonesia|singapore|brazil|mexico city|los angeles|kaohsiung|osaka|sendai|fukuoka|tokyo|seoul|taipei|jakarta|chicago|new york|madrid|london|paris|milan|barcelona|amsterdam|munich|sydney|manila|bangkok|kuala lumpur|s[aã]o paulo|uk national|england|wales|northern ireland)\b/i;
+
+/**
+ * Returns true when an event is restricted to a specific city, country, venue, or regional partnership
+ * (e.g. GO Tour Los Angeles/Kaohsiung, City Safari, Apple Store Japan, Mall Exploration, ESA Museums, National Trust).
+ */
+export function isLocalEvent(
+  ev: Pick<GameEvent, 'eventType' | 'name' | 'heading'> & { summary?: string | null; location?: string | null },
+): boolean {
+  const title = `${ev.name} ${ev.heading ?? ''}`;
+  if (LOCAL_EVENT_TYPES.has(ev.eventType)) return true;
+  if (/\bglobal\b|\bworldwide\b/i.test(title) && !ev.location) return false;
+  if (ev.location && !/^(?:global|worldwide)$/i.test(ev.location.trim())) return true;
+  if (TOUR_OR_FEST_TYPES.has(ev.eventType)) return true;
+  if (LOCAL_EVENT_RE.test(title)) return true;
+  if (ev.summary && /\b(?:in-person event|only available in|select locations|select malls|participating stores|participating museums)\b/i.test(ev.summary)) return true;
+  return false;
+}
+
+const LOCATION_FLAGS: [RegExp, string][] = [
+  [/\b(?:japan|tokyo|osaka|sendai|kanagawa|fukuoka|inagi|yomiuriland)\b/i, '🇯🇵'],
+  [/\b(?:philippines|manila|cebu|davao)\b/i, '🇵🇭'],
+  [/\b(?:malaysia|kuala lumpur)\b/i, '🇲🇾'],
+  [/\b(?:singapore|changi)\b/i, '🇸🇬'],
+  [/\b(?:hong kong)\b/i, '🇭🇰'],
+  [/\b(?:thailand|bangkok)\b/i, '🇹🇭'],
+  [/\b(?:taiwan|taipei|kaohsiung|tainan)\b/i, '🇹🇼'],
+  [/\b(?:south korea|seoul|incheon)\b/i, '🇰🇷'],
+  [/\b(?:indonesia|jakarta)\b/i, '🇮🇩'],
+  [/\b(?:england|wales|northern ireland|united kingdom|\buk\b|london)\b/i, '🇬🇧'],
+  [/\b(?:europe|esa\b)\b/i, '🇪🇺'],
+  [/\b(?:france|paris|toulouse|marseille)\b/i, '🇫🇷'],
+  [/\b(?:germany|munich|nuremberg|cologne)\b/i, '🇩🇪'],
+  [/\b(?:spain|madrid|barcelona|val[eè]ncia|m[aá]laga)\b/i, '🇪🇸'],
+  [/\b(?:usa|u\.s\.|united states|chicago|los angeles|boston|new york|san francisco|miami)\b/i, '🇺🇸'],
+  [/\b(?:mexico)\b/i, '🇲🇽'],
+  [/\b(?:brazil|rio de janeiro|s[aã]o paulo)\b/i, '🇧🇷'],
+  [/\b(?:australia|sydney|brisbane|melbourne)\b/i, '🇦🇺'],
+  [/\b(?:india)\b/i, '🇮🇳'],
+];
+
+const LOCATION_FR: [RegExp, string][] = [
+  [/\bSelect malls in\b/gi, 'Centres commerciaux :'],
+  [/\bParticipating science and space museums across Europe\b/gi, '6 musées scientifiques en Europe'],
+  [/\bParticipating airports across Japan\b/gi, 'Aéroports participants au Japon'],
+  [/\bPok[eé]mon Center locations around Japan\b/gi, 'Pokémon Centers au Japon'],
+  [/\bNational Trust locations across England, Wales, and Northern Ireland\b/gi, 'Sites National Trust (Royaume-Uni)'],
+  [/\bWorldwide in specific locations\b/gi, 'Lieux précis dans le monde'],
+  [/\bJapan\b/gi, 'Japon'],
+  [/\bMalaysia\b/gi, 'Malaisie'],
+  [/\bSingapore\b/gi, 'Singapour'],
+  [/\bThailand\b/gi, 'Thaïlande'],
+  [/\bSouth Korea\b/gi, 'Corée du Sud'],
+  [/\bTaiwan\b/gi, 'Taïwan'],
+  [/\bIndonesia\b/gi, 'Indonésie'],
+  [/\bEngland\b/gi, 'Angleterre'],
+  [/\bWales\b/gi, 'Pays de Galles'],
+  [/\bNorthern Ireland\b/gi, 'Irlande du Nord'],
+  [/\bUnited Kingdom\b/gi, 'Royaume-Uni'],
+  [/\bGermany\b/gi, 'Allemagne'],
+  [/\bSpain\b/gi, 'Espagne'],
+  [/\bNetherlands\b/gi, 'Pays-Bas'],
+  [/\bBelgium\b/gi, 'Belgique'],
+  [/\bUnited States\b|\bUSA\b/g, 'États-Unis'],
+  [/\bBrazil\b/gi, 'Brésil'],
+  [/\bMexico\b/gi, 'Mexique'],
+  [/\bAustralia\b/gi, 'Australie'],
+  [/\bIndia\b/gi, 'Inde'],
+];
+
+/** Formats a regional location string with flag emojis and concise French country names for badges & cards. */
+export function formatLocationBadge(location: string | null | undefined, lang: string): string | null {
+  if (!location || !location.trim()) return null;
+  let text = location.trim();
+  const flags: string[] = [];
+  for (const [re, flag] of LOCATION_FLAGS) {
+    if (re.test(text) && !flags.includes(flag) && flags.length < 4) flags.push(flag);
+  }
+  if (lang === 'fr') {
+    for (const [re, fr] of LOCATION_FR) text = text.replace(re, fr);
+  }
+  if (text.length > 64) text = `${text.slice(0, 61).trimEnd()}…`;
+  return flags.length ? `${flags.join('')} ${text}` : text;
 }

@@ -196,22 +196,50 @@ export function BottomNav() {
   );
 }
 
-/** Bottom sheet. Closes on backdrop tap and Escape. Optional sticky footer stays visible below the scroll area. */
+let openSheetCount = 0;
+
+/** Bottom sheet. Closes on backdrop tap and Escape. Locks page scroll and focuses its scroll area so wheel/touch never leaks underneath. */
 export function Sheet({ open, onClose, title, footer, children }: { open: boolean; onClose: () => void; title?: ReactNode; footer?: ReactNode; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const t = useT();
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      d.showModal();
+      const body = bodyRef.current;
+      if (body) {
+        body.scrollTop = 0;
+        if (!d.querySelector('[autofocus]')) body.focus({ preventScroll: true });
+      }
+    }
     if (!open && d.open) d.close();
   }, [open]);
+
+  // Ref-counted body scroll lock (pairs with CSS `html:has(dialog[open])` for older browsers and nested sheets).
+  useEffect(() => {
+    if (!open) return;
+    openSheetCount++;
+    if (openSheetCount === 1) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      openSheetCount = Math.max(0, openSheetCount - 1);
+      if (openSheetCount === 0) {
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
+      }
+    };
+  }, [open]);
+
   return (
     <dialog
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-0 mt-auto w-full max-w-3xl justify-self-center rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out] sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-3xl md:max-w-3xl"
+      className="m-0 mt-auto w-full max-w-3xl justify-self-center overscroll-contain rounded-t-3xl bg-card p-0 text-ink backdrop:bg-[var(--backdrop)] open:animate-[sheet_.22s_ease-out] sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-3xl md:max-w-3xl"
     >
       <div className="pb-safe flex max-h-[90vh] flex-col px-4 pt-2 sm:max-h-[88vh] sm:px-5 sm:pt-4">
         <div className="mx-auto mb-2 h-1.5 w-10 shrink-0 rounded-full bg-line sm:hidden" />
@@ -221,7 +249,13 @@ export function Sheet({ open, onClose, title, footer, children }: { open: boolea
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </IconButton>
         </div>
-        <div className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${footer ? 'pb-3' : 'pb-4'}`}>{children}</div>
+        <div
+          ref={bodyRef}
+          tabIndex={-1}
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain focus:outline-none ${footer ? 'pb-3' : 'pb-4'}`}
+        >
+          {children}
+        </div>
         {footer && (
           <div className="shrink-0 border-t border-line bg-card pb-2 pt-3">{footer}</div>
         )}

@@ -1,154 +1,97 @@
 # MyDexPoGo
 
-Listes de chasse Pokémon GO à partager entre amis : costumes, shinies, formes, ce que tu as et ce qu'il te manque, avec une recherche prête à coller dans le jeu.
+Application web installable (**PWA**) pour suivre ses collections **Pokémon GO**, planifier sa semaine d’événements, préparer ses équipes PvP et échanger entre amis — hébergeable facilement avec Docker, **sans aucun service payant**.
 
-Web app installable (PWA), API Node, Postgres, le tout dans Docker. Aucun service payant.
+> **Version actuelle : `1.4`** · [Guide Utilisateur](docs/USER_GUIDE.md) · [Documentation Développeur](docs/DEVELOPER.md) · [Déploiement VPS](deploy/README.md) · [Déploiement Kubernetes](deploy/k8s/README.md)
 
-## Lancer en production (Docker)
+---
+
+## Fonctionnalités clés
+
+- **Pokédex complet & à jour** : toutes les espèces, formes régionales, costumes, Méga, Gigamax, sexes (♂ / ♀ / asexué), shinies et fonds spéciaux, avec filtres avancés, mode *Ajout 1 clic*, cris des Pokémon et suivi des sorties récentes.
+- **Collections de chasse partageables** : modèles prêts à l’emploi (*Living Dex*, *Shinys*, *Costumes*, *Chanceux*, *Gen 1 → 9*…), ajout rapide unifié, sélection groupée, historique avec **annulation (Undo)**, notes perso, **export image PNG / PDF** et générateur de **chaîne de recherche prête à coller dans Pokémon GO** (FR & EN).
+- **Onglet Jeu & Calendrier « Ma semaine »** :
+  - **Calendrier hebdo (Lun → Dim)** inspiré des infographies *GO Weekly* : *Rendez-vous hebdo* récurrents (Lundi Max, Mardi Concours, Heure de Raid, Jeudi Combat GO, Vendredi Amitié, Dimanche Balade), bande **Raids**, bande **Événements** unifiée (événements du jour, multi-jours mondiaux, GO Pass & études longues) et bande **Locaux & exclusifs** masquable en 1 clic.
+  - **Fiches d’événements automatiques** traduites en français (Gigamax/Dynamax, Journée Communauté, Heure vedette, Journée de Raids, événements longs et événements régionaux/locaux avec drapeaux) exportables en **Image PNG**, **PDF** et **Calendrier iCal (`.ics`)**.
+  - **Hub « Pour moi »** : toutes tes chasses actives en un seul écran (raids, pops sauvages, Combats Max, Team GO Rocket, études, œufs) avec case *Attrapé* directe, comptes à rebours et alertes pré-évolutions optionnelles.
+  - **Raids & Contres**, **Combats Max**, **Team GO Rocket** (avec phrases d’accroche des sbires), **Études de terrain**, **Œufs**, **Codes promo** et **Capsules (Hyper Training)**.
+- **PvP & Équipes** : calculateur de rangs d’IV (Super / Hyper / Master) et coûts exacts Poussières / Bonbons / XL, classements **PvPoke** (saison actuelle + aperçu saison suivante), programme **Ligue Combat GO**, **équipes de 3 sauvegardées** et **simulateur de combat 1v1**.
+- **Amis, Échanges & Prismillon** : suivi des collections d’amis en temps réel (SSE), bouton *« Je l’ai »*, onglet **Échanges** automatique, **Amis Chanceux ✨**, **QR code ami**, profils complets, onglet dédié **🦋 Prismillon** (cartes postales) et notifications in-app + **Web Push**.
+- **Profil, Médailles & Personnalisation** : **26 médailles** à paliers (*Bronze → Platine*) inspirées du jeu, **8 thèmes** (clair & sombre dont *Nuit OLED*), choix de la page au démarrage, sons & vibrations, guides interactifs (`?`) et panneau **Administration / Gérant** complet.
+
+---
+
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | Guide complet pour les dresseurs : prise en main, collections, recherche dans le jeu, calendrier *Ma semaine*, exports PNG/PDF/iCal, PvP, Prismillon, amis, médailles et installation PWA. |
+| **[docs/DEVELOPER.md](docs/DEVELOPER.md)** | Architecture du monorepo, installation locale, pipeline de données et sources (PokeMiners, Leek Duck, Pokémon GO Wiki, Serebii, PvPoke), schéma Postgres/Drizzle, routes API, tests et CI/CD. |
+| **[deploy/README.md](deploy/README.md)** | Mise en production clé en main sur un VPS (Docker Compose, Caddy HTTPS auto, sauvegardes, CI/CD GitHub Actions). |
+| **[deploy/k8s/README.md](deploy/k8s/README.md)** | Déploiement sur cluster Kubernetes avec ArgoCD. |
+
+---
+
+## Démarrage rapide
+
+### En production (Docker)
 
 ```bash
-cp .env.example .env            # change POSTGRES_PASSWORD
+cp .env.example .env            # modifie POSTGRES_PASSWORD
 docker compose up -d --build
-# http://localhost:8080
+# -> http://localhost:8080
 ```
 
-Trois conteneurs : `db` (Postgres 17), `api` (Hono + Drizzle, applique les migrations au démarrage et régénère les données toute seule), `web` (Caddy qui sert le front et proxifie `/api`).
+Trois conteneurs tournent ensemble :
+- **`db`** : PostgreSQL 17 ;
+- **`api`** : serveur Node (Hono + Drizzle), applique les migrations au démarrage et maintient le dataset Pokédex automatiquement ;
+- **`web`** : Caddy qui sert le front PWA et proxifie `/api`.
 
-### Sur un serveur avec un nom de domaine
+Pour exposer l’app sur un nom de domaine public en HTTPS automatique (Caddy + Let’s Encrypt), renseigne dans `.env` :
 
-Dans `.env` : `DOMAIN=dex.example.com`, `WEB_PORT=80`, `WEB_HTTPS_PORT=443`, `COOKIE_SECURE=true`. Pointe le DNS vers le serveur, `docker compose up -d --build`, Caddy obtient et renouvelle le certificat tout seul. Rien d'autre à planifier : le job de données tourne dans l'API.
-
-Le premier compte créé est administrateur. Mot de passe oublié : un admin génère un code à usage unique (24 h) depuis « Moi » → Administration et le transmet ; la personne le saisit via « Mot de passe oublié ? » sur l'écran de connexion. Connecté, chacun change son mot de passe depuis « Moi ». Depuis « Moi », il peut promouvoir des gérants (qui marquent une variante « sortie » ou la renomment depuis la fiche Pokémon) et forcer un rafraîchissement des données.
-
-## Exploitation
-
-### Secrets
-
-Tout passe par le fichier `.env` à la racine (copié depuis `.env.example`), lu par Docker Compose et jamais commité (`.gitignore`). Sur le serveur : `chmod 600 .env`. Il contient le mot de passe Postgres, éventuellement un `GITHUB_TOKEN` (lecture seule, dépôts publics) et `ADMIN_USERNAMES`. Les sessions n'ont pas besoin de secret : ce sont des jetons aléatoires stockés hachés en base.
-
-### Base de données à la main
-
-Postgres n'est pas exposé hors du réseau Docker. Pour y entrer :
-
-```bash
-docker compose exec db psql -U mydex -d mydex
+```dotenv
+DOMAIN=dex.example.com
+WEB_PORT=80
+WEB_HTTPS_PORT=443
+COOKIE_SECURE=true
 ```
 
-```sql
-select username, role, created_at from users order by created_at;
-update users set role = 'admin'   where username = 'hakim';   -- ou 'manager' / 'user'
-select * from variant_overrides;                               -- corrections des gérants
-delete from sessions where user_id = (select id from users where username = 'hakim');  -- déconnecter partout
-```
+> Le premier compte créé devient automatiquement **administrateur**. Consulte [deploy/README.md](deploy/README.md) pour la mise en production complète (sauvegardes, CI/CD, push HTTPS).
 
-Sauvegarde / restauration :
+### En développement local
 
-```bash
-docker compose exec -T db pg_dump -U mydex mydex | gzip > backup-$(date +%F).sql.gz
-gunzip -c backup-2026-11-14.sql.gz | docker compose exec -T db psql -U mydex -d mydex
-```
-
-Le volume `appdata` (dataset, archive d'événements, cache des sources) se régénère tout seul, pas besoin de le sauvegarder.
-
-### Logs
-
-```bash
-docker compose logs -f api     # job de données, requêtes
-docker compose logs -f web     # Caddy, certificats
-docker compose logs -f db
-```
-
-## Développer
+Prérequis : **Node >= 22**, **pnpm 10**, **Docker** (pour PostgreSQL).
 
 ```bash
 pnpm install
-docker compose -f docker-compose.dev.yml up -d   # Postgres seul
-pnpm db:migrate
-pnpm dev                                          # API sur :3000, front sur :5173 (proxy /api)
+docker compose -f docker-compose.dev.yml up -d   # démarre PostgreSQL seul
+pnpm db:migrate                                   # applique les migrations Drizzle
+pnpm dev                                          # API sur :3000, Web sur :5173 (proxy /api)
 ```
 
-Tests et typage : `pnpm test`, `pnpm typecheck`.
+### Tests & qualité
 
-## Données
-
-L'API reconstruit le dataset à heures fixes (`DATA_REFRESH_AT`, 0 h, 6 h, 12 h et 18 h par défaut, heure de `DATA_TIME_ZONE` : Europe/Paris), et rattrape au démarrage un créneau manqué et le sert sur `/api/data/pokedex.json`, avec les corrections des gérants appliquées. « Moi » affiche la date de génération, la dernière modification de chaque source amont et la prochaine exécution. `pnpm data:build` fait la même chose en ligne de commande vers `packages/data/dist` pour déboguer.
-
-Sources :
-
-- PokeMiners `game_masters` (espèces, formes, types, flag costume),
-- trade.pokemongopro.com (liste et images des Pokémon : miroir des icônes PokeMiners, costumes dataminés inclus, servi par Cloudflare ; un seul fichier texte à lire, pas d'API GitHub),
-- PokeMiners `pogo_assets` (textes du jeu pour les noms FR/EN et libellés de formes, et images des Méga que le miroir n'a pas),
-- WatWowMap `pogo-data-api` (noms des costumes historiques),
-- pogoapi.net (liste des espèces sorties, shinies sortis par espèce ; en retard de plusieurs mois, complétée par les espèces vues sur Leek Duck et les overrides),
-- trade.pokemongopro.com (fonds spéciaux : quel Pokémon peut porter quel fond d'évènement ou de lieu).
-
-Une espèce est « sortie » si elle est dans la liste pogoapi, ou vue sur Leek Duck (raids, œufs, études, évènements, mémorisé dans le volume), ou forcée par un override ; avoir une image chez PokeMiners ne suffit pas (Arceus, Manaphy… ont des images depuis des années).
-
-Une variante est marquée « pas encore sortie » quand elle existe dans les fichiers du jeu mais pas encore dans le game master. Le game master publié par PokeMiners a parfois des semaines de retard : un gérant corrige ça en deux taps depuis l'app, et `packages/data/src/overrides.json` garde les corrections permanentes.
-
-Les images sont servies depuis pokemongopro (Méga depuis GitHub PokeMiners) et mises en cache par le service worker.
-
-L'onglet « Jeu » :
-
-- Raids, Raids Dynamax (Max Mondays, Dynamax Trails, Gigantamax…), études de terrain, œufs : JSON de [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck), qui scrape Leek Duck toutes les heures.
-- Événements : codes promo actifs (page promo de Leek Duck, liens « Utiliser » directs vers la boutique), puis les infographies : des posts X ajoutés par les gérants en collant le lien du tweet (lu via l'oEmbed officiel de X, texte et liens cliquables, codes de réduction extraits en boutons, image via le widget officiel), et le flux officiel intégré du compte `@g47ix`. Aucun scraping de X, donc aucune clé ni compte. Leek Duck ne garde que le présent et le futur : le job archive chaque événement vu (volume `appdata`), ce qui alimente l'onglet « Passés ».
-- Outils → Capsules : Hyper Training, avec la chaîne de recherche des candidats et la tâche de chaque palier d'IV (liste reprise de [g47ix](https://g47ix.pro/bottlecap/), traduite).
-
-L'onglet « PvP » : rang des IV d'une forme et de ses évolutions en Ligue Super et Hyper, niveau visé, PC, et coût en poussières, bonbons et bonbons XL depuis le niveau actuel (ou le PC). Stats de base, multiplicateurs de niveau, coûts et évolutions viennent du game master (`dataset.pvp`), les calculs de `packages/shared/src/pvp.ts`. Les IV et le niveau sont dans l'URL, donc partageables.
-
-Une entrée de liste = une variante (forme/costume, sexe) × normal ou shiny × une particularité optionnelle (chanceux, fond spécial précis ou non, obscur, purifié, Dynamax, XXL, XXS). Chaque combinaison compte comme un Pokémon à part, et se retrouve dans les chaînes de recherche (`&shiny&lucky`...).
-
-## Signaux de sortie
-
-Le statut « sorti » automatique dépend du game master publié sur GitHub par PokeMiners, qui a souvent des semaines de retard. Pour aller plus vite, l'API relève des signaux et les met dans une file « À confirmer » (« Moi » → « À confirmer », rôle gérant) :
-
-- **News officielles** (`NEWS_LOCALES=fr`) : chaque article de pokemongo.com/news est lu ; s'il cite un Pokémon avec un mot de costume, ses variantes non sorties sont proposées. Un gérant coche et valide.
-- C'est volontairement la seule source de signaux : légère, officielle, sans bot ni compte tiers.
-
-## Listes, amis et notifications
-
-- L'onglet Listes sépare « Mes listes » et « Listes de mes amis » (les listes que ses amis montrent, en lecture seule, groupées par ami). Elles sont suivies par défaut ; « Ne plus suivre » (sur la liste ou la fiche de l'ami) en retire une, « Suivre » la remet.
-- Une liste est « Moi seulement » ou « Mes amis ». Le lien de partage reste possible sur une liste visible des amis.
-- Sexes : chaque entrée suit un sexe (♂, ♀, ou aucun pour les asexués), pour tous les Pokémon, pas seulement ceux qui ont une apparence différente. Une carte de liste porte une pastille par sexe. Les sexes possibles viennent du game master, forme par forme et costume par costume (Pikachu Docteur : ♀ seulement, Nidoran♀, Magnéti asexué...) et l'API refuse un sexe qui n'existe pas. Les costumes plus récents que le game master publié sont marqués « non confirmé » et listés dans « À confirmer » → « Sexes à vérifier » pour les gérants ; les corrections permanentes vont dans `packages/data/src/overrides.json` (`genders`).
-- Temps réel : l'app garde une connexion Server-Sent Events (`/api/stream`) tant qu'on est connecté. Quand un ami modifie une liste, ou qu'une demande d'ami arrive, l'écran se met à jour sans recharger.
-- « Je l'ai » : sur la liste d'un ami, toucher un Pokémon (ou une pastille ♂/♀) qu'il cherche le lui signale. Le propriétaire voit tous les amis qui l'ont, les autres amis ne voient que leur propre marque. Quand le propriétaire l'attrape, ceux qui l'avaient marqué sont prévenus (plus besoin de le garder) et les marques sont effacées.
-- Export PDF : bouton « PDF » sur une liste, grille A4 avec images, attrapés estompés et barrés (seulement les manquants si l'onglet « Manquants » est ouvert).
-- Notifications : une boîte dans l'app (cloche) et des notifications push (Web Push, clés VAPID générées dans le volume de données). Types : demande d'ami, demande acceptée, « un ami a un Pokémon de ta liste ». Anti-spam : les « je l'ai » d'un même ami sur une même liste dans l'heure sont regroupés en une notification, chaque type se coupe dans « Moi », et 15 push par jour au maximum.
-- Le push exige HTTPS : il marche une fois `DOMAIN` configuré (ou sur `localhost`), pas sur l'adresse IP locale en http. Sur iPhone, il faut ajouter l'app à l'écran d'accueil (iOS 16.4+).
-
-## Production
-
-Mise en ligne sur un VPS avec un nom de domaine, tests, images et déploiement automatiques à chaque push sur `main` :
-voir [deploy/README.md](deploy/README.md).
-
-## Tests
-
-```
-pnpm test:all                                   # tout, sans toucher aux données de dev ni de prod
-DEPLOY_URL=http://192.168.1.29:8080 pnpm test:all   # + contrôles en lecture seule du serveur déployé
+```bash
+pnpm typecheck     # vérification TypeScript de tous les workspaces
+pnpm test          # tests unitaires (shared, data, api, web)
+pnpm test:all      # batterie complète : typecheck + unitaires + build + API intégration + E2E Playwright
 ```
 
-`scripts/test-all.sh` enchaîne :
+`scripts/test-all.sh` lance une API jetable (port `3100`), une base `mydex_test` isolée et `vite preview` (port `4173`), puis nettoie tout à la fin sans toucher aux données de dev ni de prod (`--no-e2e` saute Playwright, `--keep` garde les services ouverts pour déboguer).
 
-1. typecheck, tests unitaires (`pnpm -r test`) et build de prod du front ;
-2. une API jetable sur le port 3100, branchée sur une base `mydex_test` toute neuve dans le Postgres de dev (`docker-compose.dev.yml`) ;
-3. les tests d'intégration de l'API (`apps/api/test`) : comptes, mots de passe, codes de réinit., rôles, corrections de gérant, listes, partage, amis, limiteur ;
-4. les tests navigateur Playwright (`e2e/tests/app`) sur le build de prod servi par `vite preview`, en vue téléphone ;
-5. si `DEPLOY_URL` est fourni, des contrôles en lecture seule de l'instance déployée (`e2e/tests/deploy`) : rien n'y est écrit.
+---
 
-L'API, l'aperçu et la base de test sont arrêtés et supprimés à la fin, même en cas d'échec (`--keep` les laisse pour déboguer, `--no-e2e` saute le navigateur).
+## Structure du dépôt
 
-## Recherche dans le jeu
-
-Depuis une liste, « Copier pour le jeu » génère **une seule chaîne** pour la barre de recherche du **stockage** Pokémon (la recherche de l'écran Pokédex n'accepte qu'un terme). Dans le jeu, `,` (ou) se lit à l'intérieur de chaque bloc `&` (et), mais un `!` en tête de bloc nie tout le bloc (`!hisui,100` = ni Hisui ni n°100) : l'app n'écrit donc les exclusions que seules (`&!costume`). Quand une exclusion ne peut pas être globale (un autre Pokémon de la liste veut cette version), elle saute pour le Pokémon concerné et la fenêtre l'annonce (« Montre aussi : Caninos de Hisui »). Chaque Pokémon de la liste devient des clauses qui listent les autres numéros pour ne viser que lui : « Caninos ♂ non hisuien, Canarticho de Galar ♀, Voltorbe de Hisui » donne `58,83,100&femelle,58,100&galar,58,100&hisui,58,83&mâle,83,100`. Une entrée est exacte : « normal » exclut shiny, costumes et formes régionales de l'espèce. Les numéros qui ne peuvent pas contredire une clause n'y figurent pas, ce qui garde la chaîne courte ; pas de limite de longueur (les joueurs collent des chaînes de plusieurs centaines de caractères). Le jeu ne comprend que les mots-clés de sa langue (`mâle`, `femelle`, `chromatique`, `chanceux`, `obscur`, `purifié` en français) : la fenêtre propose « Langue du jeu », Français par défaut. Les chaînes servent aux échanges pour obtenir des chanceux : elles commencent par des exclusions réglables, toutes actives par défaut (`!échangé&!4*&!chromatique&!costume&!obscur&!purifié&!chanceux`), sauf celles que la liste cherche elle-même. Sans mot-clé français connu (fond spécial, Dynamax, Gigamax), le filtre est laissé de côté et signalé : la recherche montre un peu plus, jamais moins. `packages/shared/src/search.semantics.test.ts` rejoue ces règles sur des centaines de listes aléatoires, en français et en anglais.
-
-## Structure
-
-```
-apps/web        React + Vite + Tailwind, PWA
-apps/api        Hono + Drizzle (Postgres), sessions cookie, amis, listes, partage par lien
-packages/shared types, clés de variantes, générateur de chaînes de recherche
-packages/data   pipeline de génération du dataset
+```text
+apps/web        Front React 19 + Vite 8 + Tailwind 4 (PWA)
+apps/api        API Hono + Drizzle ORM (PostgreSQL), SSE, Web Push, jobs de données
+packages/shared Types partagés, clés de variantes, recherche Pokémon GO, PvP, contres, médailles, traductions FR
+packages/data   Pipeline de construction du dataset Pokédex et des outils de combat
+e2e             Tests end-to-end Playwright (app + contrôles lecture seule en prod)
+docs            Guides Utilisateur et Développeur complets
+deploy          Configurations VPS (Docker Compose, Caddy, backups) et Kubernetes
+scripts         Scripts de tests complets, smoke checks et versioning
 ```
 
-L'ancienne version Flutter est conservée sous le tag git `flutter-legacy`.
+> L’ancienne version Flutter est archivée sous le tag git `flutter-legacy`.

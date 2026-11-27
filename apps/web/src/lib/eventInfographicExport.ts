@@ -23,7 +23,7 @@ import {
 import { TYPE_COLORS } from '../components/TypeBadge.js';
 import { imageUrl, type DatasetIndex } from './dataset.js';
 import { typeName } from './i18n.js';
-import { dexFromImage, liveName, splitLiveLabel, type GameEvent } from './live.js';
+import { DAILY_DISCOVERIES, dexFromImage, liveName, splitLiveLabel, type GameEvent } from './live.js';
 import { fetchSpriteBlob, fileSlug, mapLimit } from './pdf.js';
 import { downloadBlob } from './shareImage.js';
 
@@ -139,6 +139,12 @@ export interface EventExportLabels {
   weekly_raids_new: string;
   weekly_today: string;
   weekly_all_day: string;
+  weekly_daily_title: string;
+  weekly_also_global: string;
+  weekly_also_local: string;
+  weekly_until: (d: string) => string;
+  weekly_ongoing: string;
+  weekly_gbl_rotation: string;
 }
 
 /** Translates an English Pokémon GO move name (including "+" / "++" suffixes) via the game master moveNames table. */
@@ -1388,12 +1394,26 @@ export interface WeeklyExportMulti extends WeeklyExportEntry {
   sprites: string[];
 }
 
+export interface WeeklyExportAlso {
+  ev: GameEvent;
+  rich?: RichGameEvent;
+  endLabel: string | null;
+  ongoing?: boolean;
+  locationLabel?: string | null;
+  sprite: string | null;
+  local: boolean;
+}
+
 export interface WeeklyExportPayload {
   rangeLabel: string;
+  seasonName?: string | null;
+  showDaily?: boolean;
   days: WeeklyExportDay[];
   raidsByDay: WeeklyExportEntry[][];
   dailyByDay: WeeklyExportEntry[][];
   multiDay: WeeklyExportMulti[];
+  alsoGlobal?: WeeklyExportAlso[];
+  alsoLocal?: WeeklyExportAlso[];
 }
 
 function weekAccentHex(ev: GameEvent, rich?: RichGameEvent): { border: string; fill: string; icon: string } {
@@ -1431,6 +1451,9 @@ async function buildWeeklyCanvas(
   for (const m of data.multiDay) {
     for (const src of m.sprites.slice(0, 3)) spriteRequests.push({ image: src, name: m.ev.name });
   }
+  for (const a of [...(data.alsoGlobal ?? []), ...(data.alsoLocal ?? [])]) {
+    if (a.sprite) spriteRequests.push({ image: a.sprite, name: a.ev.name });
+  }
   const { byKey: sprites, cleanup } = await loadSprites(spriteRequests, idx);
 
   const timeFmt = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' });
@@ -1439,10 +1462,26 @@ async function buildWeeklyCanvas(
     ...data.days.map((_, i) => (data.raidsByDay[i]?.length ?? 0) + (data.dailyByDay[i]?.length ?? 0)),
   );
   const HEADER_H = 104;
-  const colBodyH = Math.max(410, 68 + maxItemsInCol * 118);
-  const multiH = data.multiDay.length ? 40 + data.multiDay.length * 60 : 0;
+  const dailyStripH = data.showDaily !== false ? 122 : 0;
+  const colBodyH = Math.max(360, 68 + maxItemsInCol * 114);
+  const multiH = data.multiDay.length ? data.multiDay.length * 58 : 0;
+  const globalItems = data.alsoGlobal ?? [];
+  const globalRows = globalItems.length ? Math.ceil(Math.min(globalItems.length, 8) / 4) : 0;
+  const globalH = globalRows ? globalRows * 66 : 0;
+  const localItems = data.alsoLocal ?? [];
+  const localRows = localItems.length ? Math.ceil(Math.min(localItems.length, 8) / 4) : 0;
+  const localH = localRows ? 36 + localRows * 68 : 0;
   const FOOTER_H = 56;
-  const H = PAD + HEADER_H + colBodyH + (multiH ? 22 + multiH : 0) + FOOTER_H + 12;
+  const H =
+    PAD +
+    HEADER_H +
+    (dailyStripH ? dailyStripH + 16 : 0) +
+    colBodyH +
+    (multiH ? 14 + multiH : 0) +
+    (globalH ? 12 + globalH : 0) +
+    (localH ? 20 + localH : 0) +
+    FOOTER_H +
+    12;
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -1464,10 +1503,38 @@ async function buildWeeklyCanvas(
     ctx.fillText(`📅  ${t.weekly_title}`, PAD, PAD + 44);
     ctx.fillStyle = '#bae6fd';
     ctx.font = `700 24px ${FONT}`;
-    ctx.fillText(data.rangeLabel, PAD, PAD + 80);
+    ctx.fillText(data.seasonName ? `${data.rangeLabel}  ·  ${data.seasonName}` : data.rangeLabel, PAD, PAD + 80);
+
+    // Optional Daily Discoveries strip (Mon–Sun recurring bonuses)
+    let gridY = PAD + HEADER_H;
+    if (dailyStripH) {
+      ctx.fillStyle = 'rgba(186,230,253,0.75)';
+      ctx.font = `800 13px ${FONT}`;
+      ctx.fillText(t.weekly_daily_title.toUpperCase(), PAD, gridY + 13);
+      const dy = gridY + 22;
+      const dh = dailyStripH - 22;
+      DAILY_DISCOVERIES.forEach((dd, i) => {
+        const x = PAD + i * (colW + colGap);
+        roundRect(ctx, x, dy, colW, dh, 14);
+        ctx.fillStyle = dd ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)';
+        ctx.fill();
+        ctx.strokeStyle = dd ? 'rgba(125,211,252,0.28)' : 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (!dd) return;
+        const copy = lang === 'fr' ? dd.fr : dd.en;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 14px ${FONT}`;
+        ctx.fillText(fitText(ctx, `${dd.icon} ${copy.title}`, colW - 18), x + 10, dy + 24);
+        ctx.fillStyle = 'rgba(224,242,254,0.82)';
+        ctx.font = `500 11.5px ${FONT}`;
+        const lines = wrapWords(ctx, copy.lines.join(' · '), colW - 18, 4);
+        lines.forEach((line, li) => ctx.fillText(line, x + 10, dy + 44 + li * 14));
+      });
+      gridY += dailyStripH + 16;
+    }
 
     // 7 day columns
-    const gridY = PAD + HEADER_H;
     data.days.forEach((d, i) => {
       const x = PAD + i * (colW + colGap);
       roundRect(ctx, x, gridY, colW, colBodyH, 18);
@@ -1551,13 +1618,10 @@ async function buildWeeklyCanvas(
       }
     });
 
-    // Multi-day spanning bars
+    // Global multi-day spanning bars + ongoing global events (directly inside Events band)
+    let nextY = gridY + colBodyH;
     if (data.multiDay.length > 0) {
-      let my = gridY + colBodyH + 22;
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.font = `800 14px ${FONT}`;
-      ctx.fillText(t.weekly_multiday.toUpperCase(), PAD, my + 14);
-      my += 26;
+      let my = nextY + 14;
       for (const m of data.multiDay) {
         const st = weekAccentHex(m.ev, m.rich);
         const bx = PAD + (m.startCol - 1) * (colW + colGap);
@@ -1581,6 +1645,53 @@ async function buildWeeklyCanvas(
         });
         my += 58;
       }
+      nextY = my;
+    }
+
+    const drawCardGrid = (items: WeeklyExportAlso[], topY: number, rowStep: number) => {
+      const cardGap = 12;
+      const cardW = (CW - 3 * cardGap) / 4;
+      items.slice(0, 8).forEach((a, idxItem) => {
+        const col = idxItem % 4;
+        const row = Math.floor(idxItem / 4);
+        const cx = PAD + col * (cardW + cardGap);
+        const cy = topY + row * rowStep;
+        roundRect(ctx, cx, cy, cardW, 58, 12);
+        ctx.fillStyle = a.local ? 'rgba(251,191,36,0.16)' : 'rgba(56,189,248,0.18)';
+        ctx.fill();
+        ctx.strokeStyle = a.local ? 'rgba(251,191,36,0.45)' : 'rgba(125,211,252,0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        if (a.sprite) drawSpriteOrFallback(ctx, sprites.get(a.sprite), cx + 8, cy + 7, 44);
+        const tx = a.sprite ? cx + 58 : cx + 14;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `700 14px ${FONT}`;
+        ctx.fillText(fitText(ctx, `${a.local ? '📍 ' : '🌍 '}${eventTitle(a.ev.name, idx?.speciesByDex, lang)}`, cardW - (tx - cx) - 10), tx, cy + 25);
+        const subParts: string[] = [];
+        if (a.locationLabel) subParts.push(a.locationLabel);
+        if (a.endLabel) subParts.push(t.weekly_until(a.endLabel));
+        else if (a.ongoing) subParts.push(t.weekly_ongoing);
+        if (subParts.length > 0) {
+          ctx.fillStyle = 'rgba(224,242,254,0.75)';
+          ctx.font = `600 12px ${FONT}`;
+          ctx.fillText(fitText(ctx, subParts.join(' · '), cardW - (tx - cx) - 10), tx, cy + 44);
+        }
+      });
+    };
+
+    if (globalItems.length > 0) {
+      const gy = nextY + 12;
+      drawCardGrid(globalItems, gy, 66);
+      nextY = gy + globalH;
+    }
+
+    // Also happening: local & exclusive events only (omitted when hidden)
+    if (localItems.length > 0) {
+      const ay = nextY + 20;
+      ctx.fillStyle = 'rgba(253,230,138,0.85)';
+      ctx.font = `800 14px ${FONT}`;
+      ctx.fillText(`📍  ${t.weekly_also_local.toUpperCase()}`, PAD, ay + 14);
+      drawCardGrid(localItems, ay + 24, 68);
     }
 
     // Footer

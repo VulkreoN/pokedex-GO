@@ -16,6 +16,12 @@ import type {
   RichGameEvent,
 } from '@mydexpogo/shared';
 import { tracked } from '../lib/health.js';
+import {
+  getRegionalEvents,
+  mergeRegionalEvents,
+  resetRegionalEventsCache,
+  type SpeciesSpriteLookup,
+} from './regionalEvents.js';
 
 interface LiveEvent {
   eventID: string;
@@ -54,6 +60,7 @@ export function resetEventDetailsCache() {
   pageInFlight.clear();
   listCache = null;
   rawEventsCache = null;
+  resetRegionalEventsCache();
 }
 
 const decode = (s: string) =>
@@ -473,11 +480,14 @@ async function loadRawEvents(): Promise<LiveEvent[]> {
   return all;
 }
 
-/** Active and upcoming events (next 30 days) enriched from Leek Duck pages, ordered soonest first. */
-export async function getRichEvents(): Promise<RichGameEvent[]> {
+/** Active and upcoming events (next 30 days) enriched from Leek Duck + regional/real-world wiki events, ordered soonest first. */
+export async function getRichEvents(speciesLookup?: SpeciesSpriteLookup): Promise<RichGameEvent[]> {
   if (listCache && Date.now() - listCache.at < CACHE_MS) return listCache.events;
   return tracked('events', async () => {
-    const all = await loadRawEvents();
+    const [all, regional] = await Promise.all([
+      loadRawEvents(),
+      getRegionalEvents(speciesLookup).catch(() => [] as RichGameEvent[]),
+    ]);
     const now = Date.now();
     const horizon = now + 30 * 86_400_000;
     const wanted = all.filter((e) => {
@@ -499,16 +509,26 @@ export async function getRichEvents(): Promise<RichGameEvent[]> {
       );
       out.push(...batch);
     }
-    out.sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-    listCache = { at: Date.now(), events: out };
-    return out;
+    const merged = mergeRegionalEvents(out, regional);
+    merged.sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+    listCache = { at: Date.now(), events: merged };
+    return merged;
   });
 }
 
-/** On-demand rich detail for any event in the weekly timeline (raids, raid hours, GBL, past or far-future events). */
-export async function getRichEventById(eventID: string, archived?: LiveEvent | null): Promise<RichGameEvent | null> {
+/** On-demand rich detail for any event in the weekly timeline (raids, raid hours, GBL, regional, past or far-future events). */
+export async function getRichEventById(
+  eventID: string,
+  archived?: LiveEvent | null,
+  speciesLookup?: SpeciesSpriteLookup,
+): Promise<RichGameEvent | null> {
   const fromList = listCache?.events.find((e) => e.eventID === eventID);
   if (fromList) return fromList;
+  if (eventID.startsWith('regional-') || eventID.startsWith('serebii-')) {
+    const reg = await getRegionalEvents(speciesLookup).catch(() => [] as RichGameEvent[]);
+    const hit = reg.find((e) => e.eventID === eventID);
+    if (hit) return hit;
+  }
   const live = await loadRawEvents().catch(() => [] as LiveEvent[]);
   const base = live.find((e) => e.eventID === eventID) ?? archived ?? null;
   if (!base) return null;

@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import { variantImageUrl } from '@mydexpogo/shared';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -8,6 +9,7 @@ import { fetchOEmbed, parseTweetUrl } from '../game/oembed.js';
 import { getPromoCodes } from '../game/promo.js';
 import { getEventSpawns } from '../game/eventSpawns.js';
 import { getRichEventById, getRichEvents } from '../game/eventDetails.js';
+import type { SpeciesSpriteLookup } from '../game/regionalEvents.js';
 import { dataService } from '../data/service.js';
 import { getResearch } from '../game/research.js';
 import { itemFr, questFr } from '../lib/gameTexts.js';
@@ -16,7 +18,32 @@ import { rateLimit } from '../lib/ratelimit.js';
 
 const serialize = (p: typeof schema.posts.$inferSelect) => ({ ...p, postedAt: p.postedAt?.toISOString() ?? null, createdAt: p.createdAt.toISOString() });
 
-const ALLOWED_ASSET_HOSTS = new Set(['cdn.leekduck.com', 'leekduck.com', 'www.leekduck.com', 'raw.githubusercontent.com', 'trade.pokemongopro.com']);
+const ALLOWED_ASSET_HOSTS = new Set([
+  'cdn.leekduck.com',
+  'leekduck.com',
+  'www.leekduck.com',
+  'raw.githubusercontent.com',
+  'trade.pokemongopro.com',
+  'static.wikia.nocookie.net',
+  'www.serebii.net',
+]);
+
+function buildSpeciesSpriteLookup(): SpeciesSpriteLookup | undefined {
+  const ds = dataService.rawDataset;
+  if (!ds) return undefined;
+  const coverByDex = new Map<number, (typeof ds.variants)[number]>();
+  for (const v of ds.variants) {
+    if (!coverByDex.has(v.dex) || (v.kind === 'base' && v.gender !== 'f')) coverByDex.set(v.dex, v);
+  }
+  const map: SpeciesSpriteLookup = new Map();
+  for (const sp of ds.species) {
+    const v = coverByDex.get(sp.dex);
+    if (!v) continue;
+    const img = variantImageUrl(ds, v, false);
+    if (img) map.set(sp.name.en.toLowerCase(), { dex: sp.dex, image: img });
+  }
+  return map;
+}
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 const MAX_ASSET_BYTES = 3 * 1024 * 1024;
 
@@ -123,19 +150,19 @@ export const gameRoutes = new Hono<AuthEnv>()
       return c.json({ error: 'upstream_failed' }, 502);
     }
   })
-  /** Rich event details (bonuses, debuts, tiered raids, GO Pass, ticket rewards) for automatic event infographics. */
+  /** Rich event details (bonuses, debuts, tiered raids, GO Pass, ticket rewards, regional events) for automatic event infographics. */
   .get('/events', async (c) => {
     try {
-      return c.json({ events: await getRichEvents() });
+      return c.json({ events: await getRichEvents(buildSpeciesSpriteLookup()) });
     } catch (e) {
       return c.json({ events: [], error: (e as Error).message }, 502);
     }
   })
-  /** On-demand rich event detail for any event clicked from the weekly timeline (including raids, GBL, past events). */
+  /** On-demand rich event detail for any event clicked from the weekly timeline (including raids, GBL, regional, past events). */
   .get('/events/:id', async (c) => {
     const id = c.req.param('id');
     try {
-      const event = await getRichEventById(id, dataService.findArchivedEvent(id) ?? null);
+      const event = await getRichEventById(id, dataService.findArchivedEvent(id) ?? null, buildSpeciesSpriteLookup());
       if (!event) return c.json({ error: 'not_found' }, 404);
       return c.json({ event });
     } catch (e) {
