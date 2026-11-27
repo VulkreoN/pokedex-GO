@@ -14,6 +14,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-11-27-v1-3-2',
+    version: '1.3.2',
+    date: '2026-11-27',
+    fr: [
+      'Correctif des sons de l’appli et des cris des Pokémon : les petits sons au clic refonctionnent de façon fiable sur iPhone, Android et ordinateur (y compris après un aller-retour dans Pokémon GO ou après avoir réactivé les sons dans Moi), et les cris gèrent mieux la bascule de secours.',
+    ],
+    en: [
+      'Fixed app sound effects and Pokémon cries: tick/celebration sounds now play reliably on iPhone, Android and desktop (including after switching back from Pokémon GO or re-enabling sounds in Me), and Pokémon cries fall back cleanly when needed.',
+    ],
+  },
+  {
     id: '2026-11-27-v1-3-1',
     version: '1.3.1',
     date: '2026-11-27',

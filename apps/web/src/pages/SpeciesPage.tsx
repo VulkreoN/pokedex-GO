@@ -540,19 +540,31 @@ function CryButton({ dex, name, english }: { dex: number; name: string; english:
     // Started from the tap itself, as iPhone wants; the one playing stops first.
     cryPlayer?.pause();
     const audio = new Audio(`https://play.pokemonshowdown.com/audio/cries/${showdownId(english)}.mp3`);
+    audio.preload = 'auto';
     cryPlayer = audio;
-    audio.volume = 0.5;
+    audio.volume = 0.6;
     setPlaying(true);
-    const done = () => { if (cryPlayer === audio) setPlaying(false); };
-    audio.onended = audio.onpause = done;
     let triedOgg = false;
-    audio.onerror = () => {
+    let switching = false;
+    const done = () => {
+      if (cryPlayer === audio) setPlaying(false);
+    };
+    const tryFallback = (err?: unknown) => {
+      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') return done();
       if (triedOgg || cryPlayer !== audio) return done();
       triedOgg = true;
+      switching = true;
       audio.src = `https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/${dex}.ogg`;
-      void audio.play().catch(done);
+      void audio.play().catch(() => {
+        switching = false;
+        done();
+      });
     };
-    void audio.play().catch(() => {});
+    audio.onplaying = () => { switching = false; };
+    audio.onended = () => { switching = false; done(); };
+    audio.onpause = () => { if (!switching) done(); };
+    audio.onerror = () => tryFallback();
+    void audio.play().catch((err) => tryFallback(err));
   };
   return (
     <button type="button" onClick={play} aria-label={t.cry(name)} title={t.cry(name)} className={`inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-ink-2 transition hover:bg-paper-2 active:scale-[0.92] ${playing ? 'bg-sky/15 text-sky' : ''}`}>
